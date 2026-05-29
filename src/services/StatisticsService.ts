@@ -1,4 +1,4 @@
-import type { IDatabaseService } from "../database/DatabaseFactory";
+import type { IDatabaseService, ILogger } from "../database/DatabaseService.interface";
 import {
   type Statistics,
   type ReviewLog,
@@ -13,7 +13,6 @@ import {
 } from "../database/types";
 import type { DecksSettings } from "../settings";
 import { FSRS, type RatingLabel } from "../algorithm/fsrs";
-import { Logger } from "../utils/logging";
 import { MinHeap } from "../utils/min-heap";
 import {
   toLocalDateString,
@@ -27,6 +26,7 @@ import type {
   PaceStatsRow,
   ForecastRow,
   CountResult,
+  SqlJsValue,
 } from "../database/sql-types";
 
 export interface TimeframeStats {
@@ -53,13 +53,13 @@ export class StatisticsService {
   private db: IDatabaseService;
   private settings: DecksSettings;
   private fsrs: FSRS;
-  private logger: Logger;
+  private logger: ILogger;
 
-  constructor(db: IDatabaseService, settings: DecksSettings) {
+  constructor(db: IDatabaseService, settings: DecksSettings, logger?: ILogger) {
     this.db = db;
     this.settings = settings;
     this.fsrs = new FSRS({ requestRetention: 0.9, profile: "STANDARD" });
-    this.logger = new Logger(settings);
+    this.logger = logger ?? { debug: () => {}, error: () => {} };
   }
 
   /**
@@ -522,7 +522,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const counts: Map<string, number> = new Map<string, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const date = row[0] as string;
       const count = row[1] as number;
       counts.set(date, count);
@@ -579,7 +579,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const counts = { new: 0, young: 0, mature: 0 };
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const maturityType = row[1] as string;
       const count = row[2] as number;
       if (maturityType === "new") counts.new = count;
@@ -637,7 +637,7 @@ export class StatisticsService {
       { again: number; hard: number; good: number; easy: number }
     >();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const date = row[0] as string;
       const rating = row[1] as number;
       const count = row[2] as number;
@@ -699,7 +699,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const hourCounts = new Map<number, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const hour = row[0] as number;
       const count = row[1] as number;
       hourCounts.set(hour, count);
@@ -746,7 +746,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const successRates = new Map<number, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const hour = row[0] as number;
       const total = row[1] as number;
       const passed = row[2] as number;
@@ -815,7 +815,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const distribution = new Map<string, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const bucket = row[0] as string;
       const count = row[1] as number;
       distribution.set(bucket, count);
@@ -885,7 +885,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const distribution = new Map<string, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const bucket = row[0] as string;
       const count = row[1] as number;
       distribution.set(bucket, count);
@@ -955,7 +955,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const distribution = new Map<string, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const bucket = row[0] as string;
       const count = row[1] as number;
       distribution.set(bucket, count);
@@ -1003,7 +1003,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const counts = new Map<string, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const date = row[0] as string;
       const count = row[1] as number;
       counts.set(date, count);
@@ -1071,7 +1071,7 @@ export class StatisticsService {
     const results = await this.db.querySql(sql, params);
     const distribution = new Map<string, number>();
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const bucket = row[0] as string;
       const count = row[1] as number;
       distribution.set(bucket, count);
@@ -1138,7 +1138,7 @@ export class StatisticsService {
     let allPassed = 0;
     let allTotal = 0;
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const maturityType = row[0] as string;
       const total = row[1] as number;
       const passed = row[2] as number;
@@ -1586,7 +1586,7 @@ export class StatisticsService {
       4: [],
     };
 
-    results.forEach((row: (string | number | null)[]) => {
+    results.forEach((row: SqlJsValue[]) => {
       const rating = row[0] as number;
       const oldStability = row[1] as number;
       const newStability = row[2] as number;

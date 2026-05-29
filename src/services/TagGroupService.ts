@@ -3,7 +3,7 @@ import type {
   DeckGroup,
   DeckProfile,
 } from "../database/types";
-import type { IDatabaseService } from "../database/DatabaseFactory";
+import type { IDatabaseService } from "../database/DatabaseService.interface";
 
 export class TagGroupService {
   constructor(private db: IDatabaseService) {}

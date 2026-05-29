@@ -1,4 +1,4 @@
-import type { Flashcard } from "@/database/types";
+import type { Flashcard } from "../database/types";
 
 export interface CardHealthThresholds {
   leechThreshold: number;

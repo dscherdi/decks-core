@@ -1,5 +1,4 @@
-import { getLanguage } from "obsidian";
-import type { DecksSettings } from "@/settings";
+import type { DecksSettings } from "../settings";
 import {
   LOCALES,
   type LanguageCode,
@@ -11,16 +10,21 @@ export class I18n {
   private static current: Translations = LOCALES.en;
   private static currentCode: LanguageCode = "en";
 
-  static init(settings: DecksSettings): void {
+  /**
+   * @param settings - DecksSettings object
+   * @param systemLanguage - BCP-47 language tag from the host platform
+   *   (Obsidian: `getLanguage()`, mobile: `Localization.locale`)
+   */
+  static init(settings: DecksSettings, systemLanguage?: string): void {
     const pref: LanguagePreference = settings.i18n?.language ?? "auto";
-    const resolved = pref === "auto" ? this.resolveFromObsidian() : pref;
+    const resolved = pref === "auto" ? this.resolveFromSystem(systemLanguage) : pref;
     this.currentCode = resolved;
     this.current = LOCALES[resolved] ?? LOCALES.en;
   }
 
-  private static resolveFromObsidian(): LanguageCode {
+  private static resolveFromSystem(raw: string | undefined): LanguageCode {
     try {
-      const raw = getLanguage();
+      if (!raw) return "en";
       const base = raw.split("-")[0];
       return this.isSupported(base) ? base : "en";
     } catch {

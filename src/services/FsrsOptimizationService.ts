@@ -1,5 +1,5 @@
-import type { IDatabaseService } from "../database/DatabaseFactory";
-import type { Logger } from "../utils/logging";
+import type { IDatabaseService } from "../database/DatabaseService.interface";
+import type { ILogger } from "../database/DatabaseService.interface";
 import { yieldToUI } from "../utils/ui";
 import {
   optimizeWeights,
@@ -21,7 +21,7 @@ import {
 export class FsrsOptimizationService {
   constructor(
     private readonly db: IDatabaseService,
-    private readonly logger?: Logger
+    private readonly logger?: ILogger
   ) {}
 
   async run(

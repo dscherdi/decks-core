@@ -15,8 +15,8 @@
 //      Out-of-order delivery is the common case; the wrong order must just
 //      converge to the same final state across devices.
 
-import type { IDatabaseService } from "../database/DatabaseFactory";
-import type { Logger } from "../utils/logging";
+import type { IDatabaseService } from "../database/DatabaseService.interface";
+import type { ILogger as Logger } from "../database/DatabaseService.interface";
 import type { SyncLogEntry } from "./SyncLog.types";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
 import type { ReviewLog } from "../database/types";

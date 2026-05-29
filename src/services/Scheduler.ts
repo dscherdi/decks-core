@@ -7,7 +7,7 @@ import type {
   DeckGroup,
   CustomDeckGroup,
 } from "../database/types";
-import type { IDatabaseService } from "../database/DatabaseFactory";
+import type { IDatabaseService, ILogger, IBackupService, ISyncLog } from "../database/DatabaseService.interface";
 import { FSRS, type RatingLabel, type SchedulingCard } from "../algorithm/fsrs";
 import {
   getMinMinutesForProfile,
@@ -15,11 +15,8 @@ import {
   type FSRSProfile,
 } from "../algorithm/fsrs-weights";
 import { yieldToUI } from "../utils/ui";
-import type { Logger } from "../utils/logging";
 import type { DecksSettings } from "../settings";
-import { BackupService } from "./BackupService";
 import { parseSteps } from "../utils/step-parser";
-import type { SyncLog } from "./SyncLog";
 import type { RateOp } from "./SyncLog.types";
 
 export interface SchedulerOptions {
@@ -53,16 +50,16 @@ export class Scheduler {
   private db: IDatabaseService;
   private fsrs: FSRS;
   private currentSessionId: string | null = null;
-  private logger?: Logger;
-  private backupService: BackupService;
+  private logger?: ILogger;
+  private backupService: IBackupService;
   private settings: DecksSettings;
-  private syncLog: SyncLog | null = null;
+  private syncLog: ISyncLog | null = null;
 
   constructor(
     db: IDatabaseService,
     settings: DecksSettings,
-    backupService: BackupService,
-    logger?: Logger
+    backupService: IBackupService,
+    logger?: ILogger
   ) {
     this.db = db;
     this.fsrs = new FSRS();
@@ -76,7 +73,7 @@ export class Scheduler {
    * just updates the local DB (the pre-Day-5 behavior). Plugin main.ts
    * injects the live SyncLog instance after both services are constructed.
    */
-  setSyncLog(syncLog: SyncLog): void {
+  setSyncLog(syncLog: ISyncLog): void {
     this.syncLog = syncLog;
   }
 
@@ -570,7 +567,7 @@ export class Scheduler {
     // never see either op — the cleanest possible outcome. If it has
     // already flushed, emit a `rate_undo` so they revert their copy.
     if (this.syncLog) {
-      const cancelled = this.syncLog.cancelBufferedRate(log.id);
+      const cancelled = this.syncLog.cancelBufferedRate?.(log.id) ?? false;
       if (!cancelled) {
         this.syncLog.append({ o: "rate_undo", p: { logId: log.id } });
       }

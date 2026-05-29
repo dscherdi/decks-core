@@ -1,0 +1,33 @@
+{
+  "name": "@decks/core",
+  "version": "0.1.0",
+  "description": "Core scheduling, parsing, and data logic for Decks spaced repetition",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --out-dir dist --clean",
+    "build:watch": "tsup src/index.ts --format esm --dts --out-dir dist --watch",
+    "test": "jest",
+    "test:unit": "jest --testPathIgnorePatterns=integration",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "@types/jest": "^30.0.0",
+    "tslib": "^2.8.1"
+  },
+  "license": "MIT"
+}

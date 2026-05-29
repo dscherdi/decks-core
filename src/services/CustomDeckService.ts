@@ -4,7 +4,7 @@ import type {
   DeckStats,
   FilterDefinition,
 } from "../database/types";
-import type { IDatabaseService } from "../database/DatabaseFactory";
+import type { IDatabaseService } from "../database/DatabaseService.interface";
 import { compileFilter, type FilterCompileOptions } from "./FilterEngine";
 
 export class CustomDeckService {

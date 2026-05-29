@@ -1,4 +1,4 @@
-import type { LanguagePreference } from "@/i18n/locales";
+import type { LanguagePreference } from "./i18n/locales";
 
 export type DeckListSortMode =
   | "name-asc"
