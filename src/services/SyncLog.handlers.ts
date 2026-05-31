@@ -144,7 +144,7 @@ async function handleRate(
   } catch (error) {
     logger.debug(
       `SyncLog rate: insertReviewLog failed for ${reviewLog.id}; likely duplicate, continuing`,
-      error as object
+      error
     );
   }
 
@@ -386,9 +386,9 @@ async function handleProfileUpsert(
        header_level, review_order,
        learning_steps, relearning_steps,
        fsrs_request_retention, fsrs_profile,
-       cloze_enabled, cloze_show_context,
+       cloze_enabled, cloze_show_context, refactor_prompt,
        is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -403,6 +403,7 @@ async function handleProfileUpsert(
        fsrs_profile = excluded.fsrs_profile,
        cloze_enabled = excluded.cloze_enabled,
        cloze_show_context = excluded.cloze_show_context,
+       refactor_prompt = excluded.refactor_prompt,
        is_default = excluded.is_default,
        modified = excluded.modified,
        deleted_at = NULL
@@ -422,6 +423,7 @@ async function handleProfileUpsert(
       normalizeProfile(p.fsrsProfile),
       p.clozeEnabled ? 1 : 0,
       p.clozeShowContext,
+      p.refactorPrompt ?? "",
       p.isDefault ? 1 : 0,
       p.created,
       p.modified,

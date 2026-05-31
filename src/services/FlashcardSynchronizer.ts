@@ -270,7 +270,7 @@ export class FlashcardSynchronizer {
       );
       stmt.bind([data.deckId]);
       while (stmt.step()) {
-        const row = stmt.getAsObject() as Record<string, SqlJsValue>;
+        const row = stmt.getAsObject();
         const tagsRaw = (row.tags as string) || "";
         const tags = tagsRaw === "" ? [] : tagsRaw.split(",").filter((t) => t.length > 0);
         existingFlashcards.push({

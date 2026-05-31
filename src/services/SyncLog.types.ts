@@ -204,6 +204,7 @@ export interface ProfileUpsertOp {
     fsrsProfile: "STANDARD" | "TRAINED" | "INTENSIVE";
     clozeEnabled: boolean;
     clozeShowContext: "open" | "hidden";
+    refactorPrompt: string;
     isDefault: boolean;
     created: string;
     modified: string;

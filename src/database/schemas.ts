@@ -1,5 +1,7 @@
+import type { Database } from "sql.js";
+
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 23;
+export const CURRENT_SCHEMA_VERSION = 24;
 
 // SQL Table Creation Schema - Used when database file doesn't exist
 export const CREATE_TABLES_SQL = `
@@ -22,6 +24,7 @@ export const CREATE_TABLES_SQL = `
     fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
     cloze_enabled INTEGER NOT NULL DEFAULT 1,
     cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
+    refactor_prompt TEXT NOT NULL DEFAULT '',
     is_default INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL,
     modified TEXT NOT NULL,
@@ -256,6 +259,439 @@ export const CREATE_TABLES_SQL = `
   PRAGMA foreign_keys = ON;
 `;
 
+function getColumnNames(db: Database, tableName: string): string[] {
+  try {
+    const stmt = db.prepare(`PRAGMA table_info(${tableName})`);
+    const columns: string[] = [];
+    while (stmt.step()) {
+      const row = stmt.get();
+      columns.push(row[1] as string); // column name is at index 1
+    }
+    stmt.free();
+    return columns;
+  } catch {
+    return [];
+  }
+}
+
+
+export function buildMigrationSQL(db: Database): string {
+  const reviewLogsColumns = getColumnNames(db, "review_logs");
+  const reviewLogsExists = reviewLogsColumns.length > 0;
+  const deckprofilesColumns = getColumnNames(db, "deckprofiles");
+  const needsLearningSteps = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("learning_steps");
+  const needsCloze = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("cloze_enabled");
+  const needsUseTrained = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("fsrs_use_trained");
+  const needsDeckprofilesDeletedAt = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("deleted_at");
+  const customDecksColumns = getColumnNames(db, "custom_decks");
+  const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
+  const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
+
+  // Helper: pick current column, fall back to old renamed column, then default
+  const col = (
+    columns: string[],
+    currentName: string,
+    oldName: string | null,
+    fallback: string
+  ): string => {
+    if (columns.includes(currentName)) return currentName;
+    if (oldName && columns.includes(oldName)) return `${oldName} as ${currentName}`;
+    return `${fallback} as ${currentName}`;
+  };
+
+  // Build review_logs migration (with fallbacks for renamed columns)
+  const rl = reviewLogsColumns;
+  const reviewLogsSelect = [
+    "id",
+    "flashcard_id",
+    col(rl, "session_id", null, "NULL"),
+    col(rl, "last_reviewed_at", null, "datetime('now')"),
+    col(rl, "shown_at", null, "NULL"),
+    col(rl, "reviewed_at", null, "datetime('now')"),
+    col(rl, "rating", null, "3"),
+    col(rl, "rating_label", null, "'good'"),
+    col(rl, "time_elapsed_ms", "time_elapsed", "NULL"),
+    col(rl, "old_state", null, "'new'"),
+    col(rl, "old_repetitions", null, "0"),
+    col(rl, "old_lapses", null, "0"),
+    col(rl, "old_stability", null, "0"),
+    col(rl, "old_difficulty", null, "5.0"),
+    col(rl, "new_state", null, "'review'"),
+    col(rl, "new_repetitions", null, "1"),
+    col(rl, "new_lapses", null, "0"),
+    col(rl, "new_stability", null, "2.5"),
+    col(rl, "new_difficulty", null, "5.0"),
+    col(rl, "old_interval_minutes", "old_interval", "0"),
+    col(rl, "new_interval_minutes", "new_interval", "1440"),
+    col(rl, "old_due_at", "old_due_date", "datetime('now')"),
+    col(rl, "new_due_at", "new_due_date", "datetime('now', '+1 day')"),
+    col(rl, "elapsed_days", null, "1.0"),
+    col(rl, "retrievability", null, "0.9"),
+    col(rl, "request_retention", null, "0.9"),
+    col(rl, "profile", null, "'STANDARD'"),
+    col(rl, "maximum_interval_days", null, "36500"),
+    col(rl, "min_minutes", null, "1"),
+    col(rl, "fsrs_weights_version", "weights_version", "'1.0'"),
+    col(rl, "scheduler_version", null, "'1.0'"),
+    col(rl, "note_model_id", null, "NULL"),
+    col(rl, "card_template_id", null, "NULL"),
+    col(rl, "content_hash", null, "NULL"),
+    col(rl, "client", null, "NULL"),
+    col(rl, "fsrs_weight_set_id", null, "NULL"),
+  ].join(", ");
+
+  return `
+    PRAGMA foreign_keys = OFF;
+    BEGIN;
+
+    -- Preserve deckprofiles (schema unchanged, CREATE IF NOT EXISTS keeps existing)
+    CREATE TABLE IF NOT EXISTS deckprofiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      has_new_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
+      new_cards_per_day INTEGER NOT NULL DEFAULT 20,
+      has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
+      review_cards_per_day INTEGER NOT NULL DEFAULT 100,
+      header_level INTEGER NOT NULL DEFAULT 2,
+      review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
+      learning_steps TEXT NOT NULL DEFAULT '1m',
+      relearning_steps TEXT NOT NULL DEFAULT '10m',
+      fsrs_request_retention REAL NOT NULL DEFAULT 0.9,
+      fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD')),
+      fsrs_use_trained INTEGER NOT NULL DEFAULT 0,
+      cloze_enabled INTEGER NOT NULL DEFAULT 0,
+      cloze_show_context TEXT NOT NULL DEFAULT 'open' CHECK (cloze_show_context IN ('open', 'hidden')),
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      deleted_at TEXT
+    );
+
+    ${needsLearningSteps ? `
+    ALTER TABLE deckprofiles ADD COLUMN learning_steps TEXT NOT NULL DEFAULT '1m';
+    ALTER TABLE deckprofiles ADD COLUMN relearning_steps TEXT NOT NULL DEFAULT '10m';
+    UPDATE deckprofiles SET learning_steps = '1m' WHERE fsrs_profile = 'INTENSIVE';
+    ` : ""}
+
+    ${needsCloze ? `
+    ALTER TABLE deckprofiles ADD COLUMN cloze_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE deckprofiles ADD COLUMN cloze_show_context TEXT NOT NULL DEFAULT 'open';
+    ` : ""}
+
+    ${needsUseTrained ? `
+    ALTER TABLE deckprofiles ADD COLUMN fsrs_use_trained INTEGER NOT NULL DEFAULT 0;
+    ` : ""}
+
+    ${needsDeckprofilesDeletedAt ? `
+    ALTER TABLE deckprofiles ADD COLUMN deleted_at TEXT;
+    ` : ""}
+
+    INSERT OR IGNORE INTO deckprofiles (
+      id, name,
+      has_new_cards_limit_enabled, new_cards_per_day,
+      has_review_cards_limit_enabled, review_cards_per_day,
+      header_level, review_order,
+      learning_steps, relearning_steps,
+      fsrs_request_retention, fsrs_profile,
+      is_default, created, modified
+    ) VALUES (
+      'profile_default',
+      'DEFAULT',
+      0, 20,
+      0, 100,
+      2, 'due-date',
+      '1m', '10m',
+      0.9, 'STANDARD',
+      1,
+      datetime('now'),
+      datetime('now')
+    );
+
+    -- Collapse INTENSIVE into STANDARD and promote the trained flag to a first-class
+    -- TRAINED profile. Rebuild is required to change the fsrs_profile CHECK and drop the
+    -- fsrs_use_trained column. The ALTER blocks above guarantee every referenced column
+    -- exists before this SELECT runs.
+    CREATE TABLE deckprofiles_new (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      has_new_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
+      new_cards_per_day INTEGER NOT NULL DEFAULT 20,
+      has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
+      review_cards_per_day INTEGER NOT NULL DEFAULT 100,
+      header_level INTEGER NOT NULL DEFAULT 2,
+      review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
+      learning_steps TEXT NOT NULL DEFAULT '1m',
+      relearning_steps TEXT NOT NULL DEFAULT '10m',
+      fsrs_request_retention REAL NOT NULL DEFAULT 0.9,
+      fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
+      cloze_enabled INTEGER NOT NULL DEFAULT 1,
+      cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
+      refactor_prompt TEXT NOT NULL DEFAULT '',
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      deleted_at TEXT
+    );
+
+    INSERT OR IGNORE INTO deckprofiles_new (
+      id, name,
+      has_new_cards_limit_enabled, new_cards_per_day,
+      has_review_cards_limit_enabled, review_cards_per_day,
+      header_level, review_order,
+      learning_steps, relearning_steps,
+      fsrs_request_retention, fsrs_profile,
+      cloze_enabled, cloze_show_context,
+      is_default, created, modified, deleted_at
+    )
+    SELECT
+      id, name,
+      has_new_cards_limit_enabled, new_cards_per_day,
+      has_review_cards_limit_enabled, review_cards_per_day,
+      header_level, review_order,
+      learning_steps, relearning_steps,
+      fsrs_request_retention,
+      CASE
+        WHEN fsrs_use_trained = 1 THEN 'TRAINED'
+        WHEN fsrs_profile = 'INTENSIVE' THEN 'STANDARD'
+        ELSE fsrs_profile
+      END,
+      cloze_enabled, cloze_show_context,
+      is_default, created, modified, deleted_at
+    FROM deckprofiles;
+
+    DROP TABLE deckprofiles;
+    ALTER TABLE deckprofiles_new RENAME TO deckprofiles;
+
+    -- Preserve profile_tag_mappings (recreate with UNIQUE(tag) constraint)
+    CREATE TABLE IF NOT EXISTS profile_tag_mappings (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      created TEXT NOT NULL
+    );
+
+    CREATE TABLE profile_tag_mappings_new (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      created TEXT NOT NULL,
+      deleted_at TEXT,
+      UNIQUE(tag)
+    );
+
+    INSERT OR IGNORE INTO profile_tag_mappings_new (id, profile_id, tag, created)
+    SELECT id, profile_id, tag, created
+    FROM profile_tag_mappings
+    ORDER BY created DESC;
+
+    DROP TABLE profile_tag_mappings;
+    ALTER TABLE profile_tag_mappings_new RENAME TO profile_tag_mappings;
+
+    -- Preserve review_sessions (schema stable, CREATE IF NOT EXISTS keeps existing)
+    CREATE TABLE IF NOT EXISTS review_sessions (
+      id TEXT PRIMARY KEY,
+      deck_id TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      goal_total INTEGER NOT NULL,
+      done_unique INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- Migrate review_logs (column renames handled, JS-level table existence guard)
+    CREATE TABLE review_logs_new (
+      id TEXT PRIMARY KEY,
+      flashcard_id TEXT NOT NULL,
+      session_id TEXT,
+      last_reviewed_at TEXT NOT NULL,
+      shown_at TEXT,
+      reviewed_at TEXT NOT NULL,
+      rating INTEGER NOT NULL CHECK (rating IN (1, 2, 3, 4)),
+      rating_label TEXT NOT NULL CHECK (rating_label IN ('again', 'hard', 'good', 'easy')),
+      time_elapsed_ms INTEGER,
+      old_state TEXT NOT NULL CHECK (old_state IN ('new', 'review')),
+      old_repetitions INTEGER NOT NULL DEFAULT 0,
+      old_lapses INTEGER NOT NULL DEFAULT 0,
+      old_stability REAL NOT NULL DEFAULT 0,
+      old_difficulty REAL NOT NULL DEFAULT 5.0,
+      new_state TEXT NOT NULL CHECK (new_state IN ('new', 'review')),
+      new_repetitions INTEGER NOT NULL DEFAULT 0,
+      new_lapses INTEGER NOT NULL DEFAULT 0,
+      new_stability REAL NOT NULL DEFAULT 2.5,
+      new_difficulty REAL NOT NULL DEFAULT 5.0,
+      old_interval_minutes INTEGER NOT NULL,
+      new_interval_minutes INTEGER NOT NULL,
+      old_due_at TEXT NOT NULL,
+      new_due_at TEXT NOT NULL,
+      elapsed_days REAL NOT NULL,
+      retrievability REAL NOT NULL,
+      request_retention REAL NOT NULL,
+      profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
+      maximum_interval_days INTEGER NOT NULL,
+      min_minutes INTEGER NOT NULL,
+      fsrs_weights_version TEXT NOT NULL,
+      scheduler_version TEXT NOT NULL,
+      note_model_id TEXT,
+      card_template_id TEXT,
+      content_hash TEXT,
+      client TEXT,
+      fsrs_weight_set_id TEXT
+    );
+
+    ${reviewLogsExists ? `INSERT OR IGNORE INTO review_logs_new (id, flashcard_id, session_id, last_reviewed_at, shown_at, reviewed_at, rating, rating_label, time_elapsed_ms, old_state, old_repetitions, old_lapses, old_stability, old_difficulty, new_state, new_repetitions, new_lapses, new_stability, new_difficulty, old_interval_minutes, new_interval_minutes, old_due_at, new_due_at, elapsed_days, retrievability, request_retention, profile, maximum_interval_days, min_minutes, fsrs_weights_version, scheduler_version, note_model_id, card_template_id, content_hash, client, fsrs_weight_set_id)
+    SELECT ${reviewLogsSelect} FROM review_logs;` : ""}
+
+    DROP TABLE IF EXISTS review_logs;
+    ALTER TABLE review_logs_new RENAME TO review_logs;
+
+    -- Trained FSRS weight sets (idempotent; created on upgrade)
+    CREATE TABLE IF NOT EXISTS fsrs_weight_sets (
+      id TEXT PRIMARY KEY,
+      weights TEXT NOT NULL,
+      trained_at TEXT NOT NULL,
+      reviews_trained INTEGER NOT NULL DEFAULT 0,
+      cards_trained INTEGER NOT NULL DEFAULT 0,
+      before_log_loss REAL,
+      after_log_loss REAL,
+      steps INTEGER NOT NULL DEFAULT 0,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      weights_version TEXT NOT NULL DEFAULT 'fsrs-6',
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      deleted_at TEXT
+    );
+
+    -- Drop and recreate decks/flashcards fresh (sync repopulates from vault)
+    DROP TABLE IF EXISTS flashcards;
+    DROP TABLE IF EXISTS decks;
+
+    CREATE TABLE decks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      filepath TEXT NOT NULL UNIQUE,
+      tag TEXT NOT NULL,
+      last_reviewed TEXT,
+      profile_id TEXT NOT NULL,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      last_synced_mtime INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE flashcards (
+      id TEXT PRIMARY KEY,
+      deck_id TEXT NOT NULL,
+      front TEXT NOT NULL,
+      back TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+      source_file TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      breadcrumb TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      cloze_text TEXT,
+      cloze_order INTEGER,
+      source_node_id TEXT,
+      edge_id TEXT,
+      hint TEXT NOT NULL DEFAULT '',
+      state TEXT NOT NULL CHECK (state IN ('new', 'review')),
+      due_date TEXT NOT NULL,
+      interval REAL NOT NULL,
+      repetitions INTEGER NOT NULL DEFAULT 0,
+      difficulty REAL NOT NULL DEFAULT 5.0,
+      stability REAL NOT NULL DEFAULT 0,
+      lapses INTEGER NOT NULL DEFAULT 0,
+      last_reviewed TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      tags TEXT NOT NULL DEFAULT '',
+      suspended_at TEXT,
+      buried_until TEXT,
+      FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
+    );
+
+    -- Custom decks table
+    CREATE TABLE IF NOT EXISTS custom_decks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      deck_type TEXT NOT NULL DEFAULT 'manual',
+      filter_definition TEXT,
+      last_reviewed TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      deleted_at TEXT
+    );
+
+    ${needsDeckType ? `
+    ALTER TABLE custom_decks ADD COLUMN deck_type TEXT NOT NULL DEFAULT 'manual';
+    ALTER TABLE custom_decks ADD COLUMN filter_definition TEXT;
+    ` : ""}
+
+    ${needsCustomDecksDeletedAt ? `
+    ALTER TABLE custom_decks ADD COLUMN deleted_at TEXT;
+    ` : ""}
+
+    -- Custom deck cards junction table (many-to-many)
+    CREATE TABLE IF NOT EXISTS custom_deck_cards (
+      id TEXT PRIMARY KEY,
+      custom_deck_id TEXT NOT NULL,
+      flashcard_id TEXT NOT NULL,
+      created TEXT NOT NULL,
+      UNIQUE(custom_deck_id, flashcard_id),
+      FOREIGN KEY (custom_deck_id) REFERENCES custom_decks(id) ON DELETE CASCADE,
+      FOREIGN KEY (flashcard_id) REFERENCES flashcards(id) ON DELETE CASCADE
+    );
+
+    -- Custom deck card tombstones (local-only; tracks junction-table removals for sync log idempotency)
+    CREATE TABLE IF NOT EXISTS custom_deck_card_tombstones (
+      custom_deck_id TEXT NOT NULL,
+      flashcard_id TEXT NOT NULL,
+      removed_at_hlc TEXT NOT NULL,
+      PRIMARY KEY (custom_deck_id, flashcard_id)
+    );
+
+    -- Sync log idempotency table (local-only; per-device high-water marks for applied ops)
+    CREATE TABLE IF NOT EXISTS journal_state (
+      source_device_id TEXT PRIMARY KEY,
+      last_applied_seq INTEGER NOT NULL,
+      last_applied_hlc TEXT NOT NULL,
+      last_applied_at TEXT NOT NULL,
+      byte_offset INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- Create indexes
+    CREATE INDEX IF NOT EXISTS idx_deckprofiles_name ON deckprofiles(name);
+    CREATE INDEX IF NOT EXISTS idx_deckprofiles_is_default ON deckprofiles(is_default);
+    CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_profile ON profile_tag_mappings(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_tag ON profile_tag_mappings(tag);
+    CREATE INDEX IF NOT EXISTS idx_decks_profile_id ON decks(profile_id);
+    CREATE INDEX IF NOT EXISTS idx_decks_tag ON decks(tag);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_deck_id ON flashcards(deck_id);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_due_date ON flashcards(due_date);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_suspended ON flashcards(suspended_at);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_buried ON flashcards(buried_until);
+    CREATE INDEX IF NOT EXISTS idx_review_sessions_deck_id ON review_sessions(deck_id);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_flashcard_id ON review_logs(flashcard_id);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_session_id ON review_logs(session_id);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_deck_due ON flashcards(deck_id, due_date);
+    CREATE INDEX IF NOT EXISTS idx_review_logs_join ON review_logs(flashcard_id, reviewed_at);
+    CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
+    CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
+
+    -- Tombstone indexes (so live-row scans stay cheap)
+    CREATE INDEX IF NOT EXISTS idx_deckprofiles_live ON deckprofiles(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_live ON profile_tag_mappings(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_custom_decks_live ON custom_decks(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_live ON fsrs_weight_sets(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_trained_at ON fsrs_weight_sets(trained_at);
+
+    -- Set schema version
+    PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
+
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `;
+}
+
+// Migration helper functions
 
 // SQL Query Constants
 export const SQL_QUERIES = {
@@ -323,9 +759,9 @@ export const SQL_QUERIES = {
       header_level, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
-      cloze_enabled, cloze_show_context,
+      cloze_enabled, cloze_show_context, refactor_prompt,
       is_default, created, modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -334,7 +770,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, refactor_prompt
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -344,7 +780,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, refactor_prompt
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -354,7 +790,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, refactor_prompt
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -366,7 +802,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, refactor_prompt
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -378,7 +814,7 @@ export const SQL_QUERIES = {
       header_level = ?, review_order = ?,
       learning_steps = ?, relearning_steps = ?,
       fsrs_request_retention = ?, fsrs_profile = ?,
-      cloze_enabled = ?, cloze_show_context = ?,
+      cloze_enabled = ?, cloze_show_context = ?, refactor_prompt = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,
