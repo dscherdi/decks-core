@@ -1,7 +1,7 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
 import { parseJsonBody, sendJson } from "./http-util";
 
 interface GeminiResponse {
@@ -20,18 +20,25 @@ export class GeminiProvider implements AiProvider {
     private readonly http: HttpClient,
   ) {}
 
-  async complete(
-    system: string,
-    user: string,
-    signal?: AbortSignal,
-  ): Promise<string> {
+  async complete({
+    system,
+    user,
+    images,
+    signal,
+  }: ProviderCompleteRequest): Promise<string> {
     const url = `${BASE}/v1beta/models/${encodeURIComponent(
       this.config.model,
     )}:generateContent?key=${encodeURIComponent(this.config.apiKey ?? "")}`;
 
+    const parts = [
+      { text: user },
+      ...(images ?? []).map((im) => ({
+        inlineData: { mimeType: im.mimeType, data: im.dataBase64 },
+      })),
+    ];
     const body = {
       system_instruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: user }] }],
+      contents: [{ role: "user", parts }],
       generationConfig: { responseMimeType: "application/json" },
     };
 

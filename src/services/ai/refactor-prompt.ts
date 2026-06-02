@@ -31,26 +31,58 @@ export function buildMessages(req: RefactorRequest): {
   system: string;
   user: string;
 } {
-  const keys = REFACTOR_FIELD_KEYS[req.current.type];
-  const fieldList = keys
+  const allKeys = REFACTOR_FIELD_KEYS[req.current.type];
+  // Fields the model may change. Default = all. A strict subset means the rest
+  // are context-only.
+  const targets =
+    req.targetKeys && req.targetKeys.length > 0
+      ? allKeys.filter((k) => req.targetKeys!.includes(k))
+      : allKeys;
+  const targetList = targets
     .map((k) => `"${k}" (${FIELD_LABELS[k] ?? k})`)
     .join(", ");
 
-  const system = [
+  const lines: (string | undefined)[] = [
     "You are an assistant that improves spaced-repetition flashcards.",
     req.prompt.trim(),
+  ];
+
+  const instructions = req.instructions?.trim();
+  if (instructions) {
+    lines.push("", "Additional instructions for this card:", instructions);
+  }
+
+  lines.push(
     "",
-    `The flashcard has these editable fields: ${fieldList}.`,
-    "Rewrite the fields according to the instructions above.",
-    "Return ONLY a JSON object whose keys are a subset of the field names listed,",
+    `You may rewrite ONLY these fields: ${targetList}.`,
+  );
+  if (targets.length < allKeys.length) {
+    const contextOnly = allKeys
+      .filter((k) => !targets.includes(k))
+      .map((k) => `"${k}" (${FIELD_LABELS[k] ?? k})`)
+      .join(", ");
+    lines.push(
+      `The other fields (${contextOnly}) are provided for context only — do NOT modify them or include them in your output.`,
+    );
+  }
+
+  lines.push(
+    "Return ONLY a JSON object whose keys are a subset of the rewritable field names,",
     "and whose values are the rewritten field text as strings.",
     "Include a field only if you are changing it; omit fields you leave unchanged.",
     "Do not wrap the JSON in markdown fences or add any commentary.",
-  ]
-    .filter((line) => line !== undefined)
-    .join("\n");
+  );
 
-  const user = JSON.stringify(fieldsToRecord(req.current), null, 2);
+  const system = lines.filter((line) => line !== undefined).join("\n");
+
+  // Always send all current field values so the model has holistic context.
+  let user = JSON.stringify(fieldsToRecord(req.current), null, 2);
+  const sourceContext = req.sourceContext?.trim();
+  if (sourceContext) {
+    user +=
+      "\n\nSurrounding source-note context (for reference only, do not return it):\n" +
+      sourceContext;
+  }
 
   return { system, user };
 }
@@ -80,6 +112,7 @@ function extractJson(raw: string): string {
 export function parseProposed(
   raw: string,
   current: RefactorFieldSet,
+  targetKeys?: string[],
 ): RefactorFieldSet {
   let obj: unknown;
   try {
@@ -91,7 +124,13 @@ export function parseProposed(
     throw new AiError("invalid_output", "Model output was not a JSON object");
   }
 
-  const keys = REFACTOR_FIELD_KEYS[current.type];
+  const allKeys = REFACTOR_FIELD_KEYS[current.type];
+  // Only merge fields the caller allowed to change. Keys outside the set (or
+  // unknown keys the model echoed) are silently ignored.
+  const keys =
+    targetKeys && targetKeys.length > 0
+      ? allKeys.filter((k) => targetKeys.includes(k))
+      : allKeys;
   const incoming = obj as Record<string, unknown>;
   const merged = { ...(current as unknown as Record<string, unknown>) };
   let sawKnownKey = false;

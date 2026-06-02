@@ -31,12 +31,49 @@ export class AiRefactoringService {
     const provider = createProvider(config, this.http);
     const { system, user } = buildMessages(req);
 
-    // Log endpoint/provider only — never headers, body, or keys.
+    // Debug logging (gated by the injected logger — never logs headers/keys, only
+    // the message text and raw response).
     this.logger?.debug(`AI refactor via ${config.provider} (${config.model})`);
+    this.logger?.debug(`AI request system:\n${system}`);
+    this.logger?.debug(`AI request user:\n${user}`);
+    if (req.images?.length) {
+      // Never log the base64 payload — only how many images and their types.
+      this.logger?.debug(
+        `AI request images: ${req.images.length} (${req.images
+          .map((im) => im.mimeType)
+          .join(", ")})`,
+      );
+    }
 
-    const raw = await provider.complete(system, user, signal);
-    const proposed = parseProposed(raw, req.current);
-    const proposals = diffFields(req.current, proposed);
-    return { proposed, proposals };
+    let raw: string;
+    try {
+      raw = await provider.complete({ system, user, images: req.images, signal });
+    } catch (e) {
+      if (req.debug && e instanceof AiError) {
+        e.debug = { system, user, raw: "" };
+      }
+      throw e;
+    }
+    this.logger?.debug(`AI raw response:\n${raw}`);
+
+    try {
+      const proposed = parseProposed(raw, req.current, req.targetKeys);
+      const proposals = diffFields(req.current, proposed);
+      this.logger?.debug(
+        `AI parsed ${proposals.length} proposal(s): ${proposals
+          .map((p) => p.key)
+          .join(", ")}`,
+      );
+      return {
+        proposed,
+        proposals,
+        ...(req.debug ? { debug: { system, user, raw } } : {}),
+      };
+    } catch (e) {
+      if (req.debug && e instanceof AiError) {
+        e.debug = { system, user, raw };
+      }
+      throw e;
+    }
   }
 }

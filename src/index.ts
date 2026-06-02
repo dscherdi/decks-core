@@ -110,9 +110,14 @@ export type {
   RefactorRequest,
   RefactorResult,
   RefactorProposal,
+  RefactorDebugInfo,
+  RefactorImage,
 } from "./services/ai/types";
 export type { HttpClient, HttpRequest, HttpResponse } from "./services/ai/HttpClient";
-export type { AiProvider } from "./services/ai/providers/AiProvider";
+export type {
+  AiProvider,
+  ProviderCompleteRequest,
+} from "./services/ai/providers/AiProvider";
 
 // Utils
 export {

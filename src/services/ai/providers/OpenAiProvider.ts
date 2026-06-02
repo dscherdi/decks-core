@@ -1,7 +1,7 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
 import { parseJsonBody, sendJson } from "./http-util";
 
 interface ChatCompletionResponse {
@@ -41,16 +41,26 @@ export class OpenAiProvider implements AiProvider {
     return headers;
   }
 
-  async complete(
-    system: string,
-    user: string,
-    signal?: AbortSignal,
-  ): Promise<string> {
+  async complete({
+    system,
+    user,
+    images,
+    signal,
+  }: ProviderCompleteRequest): Promise<string> {
+    const userContent = images?.length
+      ? [
+          { type: "text", text: user },
+          ...images.map((im) => ({
+            type: "image_url",
+            image_url: { url: `data:${im.mimeType};base64,${im.dataBase64}` },
+          })),
+        ]
+      : user;
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: [
         { role: "system", content: system },
-        { role: "user", content: user },
+        { role: "user", content: userContent },
       ],
     };
     if (this.useJsonResponseFormat()) {

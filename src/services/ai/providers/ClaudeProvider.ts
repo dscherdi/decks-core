@@ -1,7 +1,7 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
 import { parseJsonBody, sendJson } from "./http-util";
 
 interface ClaudeResponse {
@@ -19,16 +19,30 @@ export class ClaudeProvider implements AiProvider {
     private readonly http: HttpClient,
   ) {}
 
-  async complete(
-    system: string,
-    user: string,
-    signal?: AbortSignal,
-  ): Promise<string> {
+  async complete({
+    system,
+    user,
+    images,
+    signal,
+  }: ProviderCompleteRequest): Promise<string> {
+    const userContent = images?.length
+      ? [
+          { type: "text", text: user },
+          ...images.map((im) => ({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: im.mimeType,
+              data: im.dataBase64,
+            },
+          })),
+        ]
+      : user;
     const body = {
       model: this.config.model,
       max_tokens: MAX_TOKENS,
       system,
-      messages: [{ role: "user", content: user }],
+      messages: [{ role: "user", content: userContent }],
     };
 
     const res = await sendJson(this.http, {

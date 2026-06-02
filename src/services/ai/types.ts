@@ -32,11 +32,32 @@ export const REFACTOR_FIELD_KEYS: Record<RefactorCardType, string[]> = {
   spatial: ["front", "back", "hint"],
 };
 
+/** A base64-encoded image attached as context, sent to vision-capable models. */
+export interface RefactorImage {
+  /** MIME type, e.g. "image/png" or "image/jpeg". */
+  mimeType: string;
+  /** Raw base64 of the image bytes (no data: prefix). */
+  dataBase64: string;
+}
+
 export interface RefactorRequest {
   /** Per-DeckProfile prompt template guiding the refactor. */
   prompt: string;
   /** Current editable values for the card. */
   current: RefactorFieldSet;
+  /** Extra user instructions (custom text + selected presets), appended to the prompt. */
+  instructions?: string;
+  /**
+   * Subset of this card type's field keys the model may change. Other fields are
+   * still sent as context but must not be modified. Undefined = all fields mutable.
+   */
+  targetKeys?: string[];
+  /** Clipped source-note window (markdown), attached note text, or canvas node text. */
+  sourceContext?: string;
+  /** Image attachments to send as context (requires a vision-capable model). */
+  images?: RefactorImage[];
+  /** When true, the built messages + raw response are attached to the result/error for debugging. */
+  debug?: boolean;
 }
 
 export interface RefactorProposal {
@@ -45,11 +66,20 @@ export interface RefactorProposal {
   after: string;
 }
 
+/** The exact prompt sent and raw text received — populated only when debugging. */
+export interface RefactorDebugInfo {
+  system: string;
+  user: string;
+  raw: string;
+}
+
 export interface RefactorResult {
   /** Full proposed field set (same discriminant as the request). */
   proposed: RefactorFieldSet;
   /** Only the fields the model actually changed. */
   proposals: RefactorProposal[];
+  /** Present only when the request set `debug: true`. */
+  debug?: RefactorDebugInfo;
 }
 
 export type AiErrorCode =
@@ -63,6 +93,8 @@ export type AiErrorCode =
 export class AiError extends Error {
   readonly code: AiErrorCode;
   readonly status?: number;
+  /** Set by the orchestrator on failure when debugging, so callers can show the exchange. */
+  debug?: RefactorDebugInfo;
 
   constructor(code: AiErrorCode, message: string, status?: number) {
     super(message);

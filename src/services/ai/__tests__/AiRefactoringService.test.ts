@@ -1,7 +1,7 @@
 import type { HttpClient, HttpRequest, HttpResponse } from "../HttpClient";
 import { AiRefactoringService } from "../AiRefactoringService";
 import { createProvider } from "../providers";
-import { parseProposed, diffFields } from "../refactor-prompt";
+import { parseProposed, diffFields, buildMessages } from "../refactor-prompt";
 import { AiError } from "../types";
 import type { AiProviderConfig, RefactorFieldSet } from "../types";
 
@@ -41,7 +41,7 @@ describe("OpenAiProvider", () => {
       apiKey: "sk-test",
     };
     const provider = createProvider(config, http);
-    const out = await provider.complete("system", "user");
+    const out = await provider.complete({ system: "system", user: "user" });
 
     expect(out).toBe('{"back":"Paris"}');
     const req = http.requests[0];
@@ -51,6 +51,31 @@ describe("OpenAiProvider", () => {
     expect(body.model).toBe("gpt-4o-mini");
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages).toHaveLength(2);
+    // No images → user content stays a plain string.
+    expect(body.messages[1].content).toBe("user");
+  });
+
+  it("sends image parts as image_url when images are attached", async () => {
+    const http = new MockHttp(() =>
+      ok(JSON.stringify({ choices: [{ message: { content: "{}" } }] })),
+    );
+    const provider = createProvider(
+      { provider: "openai", model: "gpt-4o", apiKey: "sk" },
+      http,
+    );
+    await provider.complete({
+      system: "s",
+      user: "u",
+      images: [{ mimeType: "image/png", dataBase64: "AAAA" }],
+    });
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    expect(body.messages[1].content).toEqual([
+      { type: "text", text: "u" },
+      {
+        type: "image_url",
+        image_url: { url: "data:image/png;base64,AAAA" },
+      },
+    ]);
   });
 });
 
@@ -67,11 +92,35 @@ describe("GeminiProvider", () => {
       { provider: "gemini", model: "gemini-2.0-flash", apiKey: "g-key" },
       http,
     );
-    const out = await provider.complete("system", "user");
+    const out = await provider.complete({ system: "system", user: "user" });
     expect(out).toBe('{"back":"Paris"}');
     expect(http.requests[0].url).toContain(
       "/v1beta/models/gemini-2.0-flash:generateContent?key=g-key",
     );
+  });
+
+  it("appends inlineData parts for attached images", async () => {
+    const http = new MockHttp(() =>
+      ok(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: "{}" }] } }],
+        }),
+      ),
+    );
+    const provider = createProvider(
+      { provider: "gemini", model: "gemini-2.0-flash", apiKey: "g" },
+      http,
+    );
+    await provider.complete({
+      system: "s",
+      user: "u",
+      images: [{ mimeType: "image/jpeg", dataBase64: "ZZZ" }],
+    });
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    expect(body.contents[0].parts).toEqual([
+      { text: "u" },
+      { inlineData: { mimeType: "image/jpeg", data: "ZZZ" } },
+    ]);
   });
 });
 
@@ -88,12 +137,35 @@ describe("ClaudeProvider", () => {
       { provider: "claude", model: "claude-3-5-haiku-latest", apiKey: "a-key" },
       http,
     );
-    const out = await provider.complete("system", "user");
+    const out = await provider.complete({ system: "system", user: "user" });
     expect(out).toBe('{"back":"Paris"}');
     const req = http.requests[0];
     expect(req.url).toBe("https://api.anthropic.com/v1/messages");
     expect(req.headers["x-api-key"]).toBe("a-key");
     expect(req.headers["anthropic-version"]).toBe("2023-06-01");
+  });
+
+  it("sends base64 image source blocks for attached images", async () => {
+    const http = new MockHttp(() =>
+      ok(JSON.stringify({ content: [{ type: "text", text: "{}" }] })),
+    );
+    const provider = createProvider(
+      { provider: "claude", model: "claude-3-5-haiku-latest", apiKey: "a" },
+      http,
+    );
+    await provider.complete({
+      system: "s",
+      user: "u",
+      images: [{ mimeType: "image/webp", dataBase64: "WWW" }],
+    });
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    expect(body.messages[0].content).toEqual([
+      { type: "text", text: "u" },
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/webp", data: "WWW" },
+      },
+    ]);
   });
 });
 
@@ -114,7 +186,7 @@ describe("OpenAiCompatibleProvider", () => {
       },
       http,
     );
-    await provider.complete("system", "user");
+    await provider.complete({ system: "system", user: "user" });
     const req = http.requests[0];
     expect(req.url).toBe("http://localhost:11434/v1/chat/completions");
     expect(req.headers["Authorization"]).toBeUndefined();
@@ -143,7 +215,9 @@ describe("error handling", () => {
       { provider: "openai", model: "m", apiKey: "k" },
       http,
     );
-    await expect(provider.complete("s", "u")).rejects.toMatchObject({
+    await expect(
+      provider.complete({ system: "s", user: "u" }),
+    ).rejects.toMatchObject({
       code: "rate_limited",
     });
   });
@@ -154,7 +228,9 @@ describe("error handling", () => {
       { provider: "openai", model: "m", apiKey: "k" },
       http,
     );
-    await expect(provider.complete("s", "u")).rejects.toMatchObject({
+    await expect(
+      provider.complete({ system: "s", user: "u" }),
+    ).rejects.toMatchObject({
       code: "provider_error",
     });
   });
@@ -167,7 +243,9 @@ describe("error handling", () => {
       { provider: "openai", model: "m", apiKey: "k" },
       http,
     );
-    await expect(provider.complete("s", "u")).rejects.toMatchObject({
+    await expect(
+      provider.complete({ system: "s", user: "u" }),
+    ).rejects.toMatchObject({
       code: "network_error",
     });
   });
@@ -180,7 +258,9 @@ describe("error handling", () => {
     );
     const ac = new AbortController();
     ac.abort();
-    await expect(provider.complete("s", "u", ac.signal)).rejects.toMatchObject({
+    await expect(
+      provider.complete({ system: "s", user: "u", signal: ac.signal }),
+    ).rejects.toMatchObject({
       code: "aborted",
     });
   });
@@ -222,6 +302,43 @@ describe("parseProposed", () => {
       AiError,
     );
   });
+
+  it("only merges fields in targetKeys; ignores non-target changes", () => {
+    const out = parseProposed(
+      '{"front":"NEW FRONT","back":"Paris"}',
+      headerParaCard,
+      ["back"],
+    );
+    expect(out).toEqual({
+      type: "header-paragraph",
+      front: "What is the capital of France?", // unchanged: front not targeted
+      back: "Paris",
+    });
+  });
+});
+
+describe("buildMessages", () => {
+  it("includes custom instructions and source context", () => {
+    const { system, user } = buildMessages({
+      prompt: "Improve the card",
+      current: headerParaCard,
+      instructions: "Translate to English.",
+      sourceContext: "10: surrounding note text",
+    });
+    expect(system).toContain("Translate to English.");
+    expect(user).toContain("surrounding note text");
+  });
+
+  it("restricts rewritable fields to targetKeys and marks others context-only", () => {
+    const { system } = buildMessages({
+      prompt: "Improve the card",
+      current: { type: "table", front: "F", back: "B", notes: "N" },
+      targetKeys: ["front", "back"],
+    });
+    expect(system).toContain('You may rewrite ONLY these fields: "front"');
+    expect(system).toContain('"notes"'); // listed as context-only
+    expect(system).toMatch(/context only/i);
+  });
 });
 
 describe("diffFields", () => {
@@ -256,5 +373,37 @@ describe("AiRefactoringService.refactorCard", () => {
     expect(result.proposals).toEqual([
       { key: "back", before: "paris", after: "Paris" },
     ]);
+    expect(result.debug).toBeUndefined();
+  });
+
+  it("attaches the exchange to the result when debug is set", async () => {
+    const http = new MockHttp(() =>
+      ok(
+        JSON.stringify({
+          choices: [{ message: { content: '{"back":"Paris"}' } }],
+        }),
+      ),
+    );
+    const svc = new AiRefactoringService(http);
+    const result = await svc.refactorCard(
+      { provider: "openai", model: "gpt-4o-mini", apiKey: "sk" },
+      { prompt: "Capitalize properly", current: headerParaCard, debug: true },
+    );
+    expect(result.debug?.system).toContain("Capitalize properly");
+    expect(result.debug?.user).toContain("paris");
+    expect(result.debug?.raw).toContain("Paris");
+  });
+
+  it("attaches the exchange to a parse-error AiError when debug is set", async () => {
+    const http = new MockHttp(() =>
+      ok(JSON.stringify({ choices: [{ message: { content: "not json" } }] })),
+    );
+    const svc = new AiRefactoringService(http);
+    await expect(
+      svc.refactorCard(
+        { provider: "openai", model: "gpt-4o-mini", apiKey: "sk" },
+        { prompt: "p", current: headerParaCard, debug: true },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_output", debug: { raw: "not json" } });
   });
 });
