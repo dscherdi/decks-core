@@ -1,7 +1,12 @@
 import type { ILogger } from "../../database/DatabaseService.interface";
 import type { HttpClient } from "./HttpClient";
 import { createProvider } from "./providers";
-import { buildMessages, diffFields, parseProposed } from "./refactor-prompt";
+import {
+  buildMessages,
+  diffFields,
+  parseProposed,
+  parseSplitProposed,
+} from "./refactor-prompt";
 import type { AiProviderConfig, RefactorRequest, RefactorResult } from "./types";
 import { AiError } from "./types";
 
@@ -57,6 +62,16 @@ export class AiRefactoringService {
     this.logger?.debug(`AI raw response:\n${raw}`);
 
     try {
+      if (req.split) {
+        const splitCards = parseSplitProposed(raw, req.current.type);
+        this.logger?.debug(`AI split into ${splitCards.length} card(s)`);
+        return {
+          proposed: req.current,
+          proposals: [],
+          splitCards,
+          ...(req.debug ? { debug: { system, user, raw } } : {}),
+        };
+      }
       const proposed = parseProposed(raw, req.current, req.targetKeys);
       const proposals = diffFields(req.current, proposed);
       this.logger?.debug(

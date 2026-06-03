@@ -100,6 +100,11 @@ export { applyOp } from "./services/SyncLog.handlers";
 // AI refactoring
 export { AiRefactoringService } from "./services/ai/AiRefactoringService";
 export { createProvider } from "./services/ai/providers";
+export {
+  FLASHCARD_DESIGN_GUIDANCE,
+  SPLIT_INSTRUCTION,
+  cardTypeFieldGuidance,
+} from "./services/ai/refactor-prompt";
 export { AiError, REFACTOR_FIELD_KEYS } from "./services/ai/types";
 export type {
   AiProviderId,

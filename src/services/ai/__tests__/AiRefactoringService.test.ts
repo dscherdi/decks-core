@@ -1,7 +1,12 @@
 import type { HttpClient, HttpRequest, HttpResponse } from "../HttpClient";
 import { AiRefactoringService } from "../AiRefactoringService";
 import { createProvider } from "../providers";
-import { parseProposed, diffFields, buildMessages } from "../refactor-prompt";
+import {
+  parseProposed,
+  parseSplitProposed,
+  diffFields,
+  buildMessages,
+} from "../refactor-prompt";
 import { AiError } from "../types";
 import type { AiProviderConfig, RefactorFieldSet } from "../types";
 
@@ -266,6 +271,48 @@ describe("error handling", () => {
   });
 });
 
+describe("parseSplitProposed", () => {
+  it("parses a JSON array into full field sets for the type", () => {
+    const cards = parseSplitProposed(
+      '[{"front":"Q1","back":"A1"},{"front":"Q2","back":"A2"}]',
+      "header-paragraph",
+    );
+    expect(cards).toEqual([
+      { type: "header-paragraph", front: "Q1", back: "A1" },
+      { type: "header-paragraph", front: "Q2", back: "A2" },
+    ]);
+  });
+
+  it("fills missing fields with empty strings and strips code fences", () => {
+    const cards = parseSplitProposed('```json\n[{"front":"Only front"}]\n```', "table");
+    expect(cards).toEqual([
+      { type: "table", front: "Only front", back: "", notes: "" },
+    ]);
+  });
+
+  it("repairs unescaped LaTeX backslashes (e.g. \\pi) in array output", () => {
+    const cards = parseSplitProposed(
+      '[{"front":"Area?","back":"$A = \\pi r^2$"}]',
+      "header-paragraph",
+    );
+    expect(cards).toEqual([
+      { type: "header-paragraph", front: "Area?", back: "$A = \\pi r^2$" },
+    ]);
+  });
+
+  it("throws invalid_output when not an array", () => {
+    expect(() => parseSplitProposed('{"front":"x"}', "header-paragraph")).toThrow(
+      AiError,
+    );
+  });
+
+  it("throws invalid_output when no element has a usable field", () => {
+    expect(() => parseSplitProposed('[{"bogus":"x"}]', "header-paragraph")).toThrow(
+      AiError,
+    );
+  });
+});
+
 describe("parseProposed", () => {
   it("merges known string fields onto the current values", () => {
     const out = parseProposed('{"back":"Paris"}', headerParaCard);
@@ -291,6 +338,11 @@ describe("parseProposed", () => {
     );
     expect(out as Record<string, unknown>).not.toHaveProperty("bogus");
     expect((out as { back: string }).back).toBe("Paris");
+  });
+
+  it("repairs unescaped LaTeX backslashes (e.g. \\pi) before parsing", () => {
+    const out = parseProposed('{"back":"$A = \\pi r^2$"}', headerParaCard);
+    expect((out as { back: string }).back).toBe("$A = \\pi r^2$");
   });
 
   it("throws invalid_output on malformed JSON", () => {
@@ -338,6 +390,39 @@ describe("buildMessages", () => {
     expect(system).toContain('You may rewrite ONLY these fields: "front"');
     expect(system).toContain('"notes"'); // listed as context-only
     expect(system).toMatch(/context only/i);
+  });
+
+  it("always prepends the hardcoded master design guidance", () => {
+    const { system } = buildMessages({
+      prompt: "Improve the card",
+      current: headerParaCard,
+    });
+    expect(system).toContain("==double equals==");
+    expect(system).toMatch(/minimum information principle/i);
+    // The profile prompt still follows the guidance.
+    expect(system).toContain("Improve the card");
+  });
+
+  it("switches to split instruction + array output when split is set", () => {
+    const { system } = buildMessages({
+      prompt: "p",
+      current: headerParaCard,
+      split: true,
+    });
+    expect(system).toMatch(/split this flashcard into multiple/i);
+    expect(system).toMatch(/Return ONLY a JSON array/i);
+  });
+
+  it("adds the no-literal-pipe caveat only for table cards", () => {
+    const table = buildMessages({
+      prompt: "p",
+      current: { type: "table", front: "F", back: "B", notes: "N" },
+    }).system;
+    expect(table).toContain("\\lvert");
+    expect(table).toMatch(/never output a literal \|/i);
+
+    const header = buildMessages({ prompt: "p", current: headerParaCard }).system;
+    expect(header).not.toContain("\\lvert");
   });
 });
 

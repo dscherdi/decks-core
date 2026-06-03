@@ -56,6 +56,8 @@ export interface RefactorRequest {
   sourceContext?: string;
   /** Image attachments to send as context (requires a vision-capable model). */
   images?: RefactorImage[];
+  /** When true, ask the model to split this card into multiple smaller cards. */
+  split?: boolean;
   /** When true, the built messages + raw response are attached to the result/error for debugging. */
   debug?: boolean;
 }
@@ -78,6 +80,8 @@ export interface RefactorResult {
   proposed: RefactorFieldSet;
   /** Only the fields the model actually changed. */
   proposals: RefactorProposal[];
+  /** Present only for split requests: the card broken into multiple new cards. */
+  splitCards?: RefactorFieldSet[];
   /** Present only when the request set `debug: true`. */
   debug?: RefactorDebugInfo;
 }
