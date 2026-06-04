@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --out-dir dist --clean",
+    "check": "tsc --noEmit -p tsconfig.json",
     "build:watch": "tsup src/index.ts --format esm --dts --out-dir dist --watch",
     "test": "jest",
     "test:unit": "jest --testPathIgnorePatterns=integration",

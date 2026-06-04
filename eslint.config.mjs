@@ -79,6 +79,12 @@ export default [
         "error",
         "@typescript-eslint/no-explicit-any",
       ],
+      // Every eslint-disable directive must explain why (matches the Obsidian
+      // plugin validator's stricter check).
+      "@eslint-community/eslint-comments/require-description": [
+        "error",
+        { ignore: [] },
+      ],
     },
   },
 ];
