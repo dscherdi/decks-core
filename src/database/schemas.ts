@@ -1,7 +1,7 @@
 import type { Database } from "sql.js";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 24;
+export const CURRENT_SCHEMA_VERSION = 25;
 
 // SQL Table Creation Schema - Used when database file doesn't exist
 export const CREATE_TABLES_SQL = `
@@ -24,7 +24,6 @@ export const CREATE_TABLES_SQL = `
     fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
     cloze_enabled INTEGER NOT NULL DEFAULT 1,
     cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
-    refactor_prompt TEXT NOT NULL DEFAULT '',
     is_default INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL,
     modified TEXT NOT NULL,
@@ -426,7 +425,6 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
       cloze_enabled INTEGER NOT NULL DEFAULT 1,
       cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
-      refactor_prompt TEXT NOT NULL DEFAULT '',
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -759,9 +757,9 @@ export const SQL_QUERIES = {
       header_level, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
-      cloze_enabled, cloze_show_context, refactor_prompt,
+      cloze_enabled, cloze_show_context,
       is_default, created, modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -770,7 +768,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, refactor_prompt
+      is_default, created, modified
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -780,7 +778,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, refactor_prompt
+      is_default, created, modified
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -790,7 +788,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, refactor_prompt
+      is_default, created, modified
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -802,7 +800,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, refactor_prompt
+      is_default, created, modified
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -814,7 +812,7 @@ export const SQL_QUERIES = {
       header_level = ?, review_order = ?,
       learning_steps = ?, relearning_steps = ?,
       fsrs_request_retention = ?, fsrs_profile = ?,
-      cloze_enabled = ?, cloze_show_context = ?, refactor_prompt = ?,
+      cloze_enabled = ?, cloze_show_context = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,

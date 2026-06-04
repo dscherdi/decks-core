@@ -6,6 +6,9 @@ import type {
 } from "./types";
 import { AiError, REFACTOR_FIELD_KEYS } from "./types";
 
+/** Delimiter the model emits after each card block (shared with generation). */
+const CARD_DELIMITER = "===END===";
+
 const FIELD_LABELS: Record<string, string> = {
   front: "Front",
   back: "Back",
@@ -15,31 +18,58 @@ const FIELD_LABELS: Record<string, string> = {
   hint: "Hint",
 };
 
+/** Field key → uppercase output label used in the markdown response format. */
+const KEY_TO_LABEL: Record<string, string> = {
+  front: "FRONT",
+  back: "BACK",
+  notes: "NOTES",
+  sentence: "SENTENCE",
+  hint: "HINT",
+  listItem: "LIST ITEM",
+};
+const LABEL_TO_KEY: Record<string, string> = {
+  FRONT: "front",
+  BACK: "back",
+  NOTES: "notes",
+  SENTENCE: "sentence",
+  HINT: "hint",
+  "LIST ITEM": "listItem",
+};
+const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SENTENCE|HINT|LIST ITEM)\s*:(.*)$/i;
+
 /**
- * Always-on master prompt: teaches the model how Decks flashcards are built and
- * the spaced-repetition best practices to apply. Prepended to every refactor's
- * system message ahead of the per-profile prompt and per-card instructions.
+ * Always-on master prompt: teaches the model how Decks flashcards are authored
+ * (every supported format) and the spaced-repetition principles to apply.
+ * Shared by the refactor and generation pipelines (it is the system layer; the
+ * user supplies any extra instructions through the composer).
  */
 export const FLASHCARD_DESIGN_GUIDANCE = [
-  "You are an expert in spaced-repetition flashcard design, working inside the Decks plugin for Obsidian.",
+  "You are an expert in spaced-repetition flashcard design, working inside Decks, a flashcard plugin for Obsidian. Cards are authored in Markdown notes (or on an Obsidian Canvas) and parsed into review cards.",
   "",
-  "How Decks flashcards work:",
-  "- Card text is rendered as Markdown. You may use Markdown formatting.",
-  "- Math uses LaTeX with $inline$ delimiters and $$block$$ delimiters.",
-  '- Cloze deletions wrap the hidden text in ==double equals== (e.g. "The capital is ==Paris=="). Each ==span== becomes a separately tested blank; a cloze card needs at least one span. Keep == markers and $ delimiters balanced.',
+  "Card formats Decks understands:",
+  '- Header + paragraph: a heading is the front; the text below it (until the next heading) is the back. An Obsidian "%%comment%%" anywhere in the body, or text after a trailing "---" line, becomes the card\'s optional notes.',
+  "- Table: a Markdown table row — first column is the front, second the back, an optional third column is notes. Each field is one cell of a single-line, pipe-delimited row.",
+  '- Cloze: wrap hidden text in ==double equals== (e.g. "The ==Sun== is a star"). Each ==span== is a separately tested blank; a cloze card needs at least one span.',
+  "- Image occlusion: an image plus a numbered list; each list item is one card.",
+  "- Spatial (Canvas): two connected nodes — the from-node is the front, the to-node is the back, and the edge label is an optional hint.",
   "",
-  "Principles for high-quality flashcards (apply these when rewriting):",
-  "- Keep each card atomic: test one fact or idea (the minimum information principle). Split compound facts rather than cramming them in.",
+  "Formatting:",
+  "- All card text renders as Markdown; you may use Markdown.",
+  "- Math uses LaTeX: $inline$ and $$block$$ (block math is not allowed inside table cells).",
+  "- Notes hold supplementary detail or mnemonics, shown on demand during review.",
+  "",
+  "Principles for high-quality flashcards:",
+  "- Atomic: test one fact or idea per card (the minimum information principle). Split compound facts rather than cramming them in.",
   "- Make the front a specific, unambiguous prompt that elicits a single answer; avoid yes/no questions.",
-  "- Keep answers concise; put elaboration or examples in the Notes field when the card type has one.",
-  "- Preserve the original meaning and language. Never invent facts or add information that isn't supported.",
-  "- Fix grammar, spelling, and formatting; ensure LaTeX delimiters and ==cloze== markers are valid and balanced.",
-  "- Prefer phrasing that demands active recall; avoid long enumerations unless you express them as cloze deletions.",
+  "- Keep answers concise; put elaboration or examples in the notes when the card type has them.",
+  "- Preserve the original meaning and language. Never invent facts or add unsupported information.",
+  "- Fix grammar, spelling, and formatting; keep $…$ delimiters and ==cloze== markers balanced.",
+  "- Prefer phrasing that demands active recall; express long lists as cloze deletions rather than enumerations.",
 ].join("\n");
 
 /**
- * Hardcoded instruction added (on top of the user's prompt) when split mode is
- * on — tells the model to break the card into several smaller atomic cards.
+ * Hardcoded instruction added when split mode is on — tells the model to break
+ * the card into several smaller atomic cards.
  */
 export const SPLIT_INSTRUCTION = [
   "Split this flashcard into multiple smaller, single-idea cards (apply the minimum information principle).",
@@ -89,14 +119,32 @@ export function fieldsToRecord(fields: RefactorFieldSet): Record<string, string>
   return record;
 }
 
+/** The markdown output-format contract for a set of editable field keys. */
+function outputContract(keys: string[], split: boolean): string {
+  const labelList = keys.map((k) => `${KEY_TO_LABEL[k]}:`).join(" / ");
+  return [
+    split
+      ? "Output ONE block per resulting card, each in EXACTLY this labelled format:"
+      : "Output the rewritten card in EXACTLY this labelled format:",
+    ...keys.map((k) => `${KEY_TO_LABEL[k]}: <the new ${FIELD_LABELS[k] ?? k}>`),
+    CARD_DELIMITER,
+    "",
+    "Rules for the output:",
+    `- Start each field on its own line with its label (${labelList}).`,
+    "- A field value may span multiple lines and may contain Markdown and $LaTeX$.",
+    `- End every card block with a line containing only ${CARD_DELIMITER}.`,
+    split
+      ? "- Produce one block per card; do not number them, and add no other prose."
+      : "- Output exactly one card block, including every field shown above; add no JSON, fences, or other prose.",
+  ].join("\n");
+}
+
 /** Build the system + user messages for a refactor request. */
 export function buildMessages(req: RefactorRequest): {
   system: string;
   user: string;
 } {
   const allKeys = REFACTOR_FIELD_KEYS[req.current.type];
-  // Fields the model may change. Default = all. A strict subset means the rest
-  // are context-only.
   const targets =
     req.targetKeys && req.targetKeys.length > 0
       ? allKeys.filter((k) => req.targetKeys!.includes(k))
@@ -105,190 +153,122 @@ export function buildMessages(req: RefactorRequest): {
     .map((k) => `"${k}" (${FIELD_LABELS[k] ?? k})`)
     .join(", ");
 
-  const lines: (string | undefined)[] = [
+  // System role: master prompt → task framing → card-type guidance → contract.
+  const sys: string[] = [
     FLASHCARD_DESIGN_GUIDANCE,
     "",
+    req.split
+      ? "TASK: You are SPLITTING an existing Decks flashcard into multiple smaller, single-idea cards."
+      : "TASK: You are REFACTORING an existing Decks flashcard — rewrite the requested fields to improve clarity, correctness, and concision without changing the meaning.",
+    "",
     cardTypeFieldGuidance(req.current.type),
-    "",
-    req.prompt.trim(),
   ];
-
-  const instructions = req.instructions?.trim();
-  if (instructions) {
-    lines.push("", "Additional instructions for this card:", instructions);
-  }
-
-  lines.push(
-    "",
-    `You may rewrite ONLY these fields: ${targetList}.`,
-  );
+  if (req.split) sys.push("", SPLIT_INSTRUCTION);
+  sys.push("", `You may rewrite ONLY these fields: ${targetList}.`);
   if (targets.length < allKeys.length) {
     const contextOnly = allKeys
       .filter((k) => !targets.includes(k))
       .map((k) => `"${k}" (${FIELD_LABELS[k] ?? k})`)
       .join(", ");
-    lines.push(
+    sys.push(
       `The other fields (${contextOnly}) are provided for context only — do NOT modify them or include them in your output.`,
     );
   }
+  sys.push("", outputContract(targets, !!req.split));
+  const system = sys.join("\n");
 
-  if (req.split) {
-    lines.push("", SPLIT_INSTRUCTION);
-    lines.push(
-      "Return ONLY a JSON array. Each element is an object whose keys are the rewritable field names",
-      "and whose values are that new card's field text as strings; include every field of each card.",
-      "Do not wrap the JSON in markdown fences or add any commentary.",
-    );
-  } else {
-    lines.push(
-      "Return ONLY a JSON object whose keys are a subset of the rewritable field names,",
-      "and whose values are the rewritten field text as strings.",
-      "Include a field only if you are changing it; omit fields you leave unchanged.",
-      "Do not wrap the JSON in markdown fences or add any commentary.",
-    );
-  }
-
-  const system = lines.filter((line) => line !== undefined).join("\n");
-
-  // Always send all current field values so the model has holistic context.
-  let user = JSON.stringify(fieldsToRecord(req.current), null, 2);
+  // User role: current card → context → the user's instructions.
+  const record = fieldsToRecord(req.current);
+  const parts: string[] = ["Current card:"];
+  for (const k of allKeys) parts.push(`${KEY_TO_LABEL[k]}: ${record[k]}`);
   const sourceContext = req.sourceContext?.trim();
   if (sourceContext) {
-    user +=
-      "\n\nSurrounding source-note context (for reference only, do not return it):\n" +
-      sourceContext;
+    parts.push(
+      "",
+      "Surrounding source context (for reference only, do not return it):",
+      sourceContext,
+    );
   }
+  const instructions = req.instructions?.trim();
+  if (instructions) parts.push("", "Instructions:", instructions);
 
-  return { system, user };
+  return { system, user: parts.join("\n") };
 }
 
-/** Strip ```json fences and surrounding prose, returning the JSON substring.
- *  Handles both object (`{…}`) and array (`[…]`) payloads. */
-function extractJson(raw: string): string {
-  let text = raw.trim();
-  const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(text);
-  if (fence) {
-    text = fence[1].trim();
+/** Parse one labelled card block into its allowed field values. */
+function parseLabeledBlock(
+  segment: string,
+  keys: string[],
+): { values: Record<string, string>; sawKnown: boolean } {
+  const allowed = new Set(keys);
+  const buf: Record<string, string[]> = {};
+  let current: string | null = null;
+  let sawKnown = false;
+  for (const line of segment.split("\n")) {
+    const m = LABEL_RE.exec(line);
+    if (m) {
+      const key = LABEL_TO_KEY[m[1].toUpperCase()];
+      current = allowed.has(key) ? key : null;
+      if (current) {
+        (buf[current] ??= []).push(m[2]);
+        sawKnown = true;
+      }
+    } else if (current) {
+      buf[current].push(line);
+    }
   }
-  if (text.startsWith("{") || text.startsWith("[")) return text;
-  // Fall back to the first {...} / [...] block if the model added prose around it.
-  const objStart = text.indexOf("{");
-  const arrStart = text.indexOf("[");
-  const useArray =
-    arrStart !== -1 && (objStart === -1 || arrStart < objStart);
-  const start = useArray ? arrStart : objStart;
-  const end = useArray ? text.lastIndexOf("]") : text.lastIndexOf("}");
-  if (start !== -1 && end > start) {
-    text = text.slice(start, end + 1);
-  }
-  return text;
-}
-
-/**
- * Parse JSON, tolerating the most common model mistake with LaTeX content:
- * lone backslashes that aren't valid JSON escapes (e.g. "$A = \pi r^2$"). We
- * first try strict parsing; only on failure do we escape those backslashes and
- * retry, so well-formed JSON is never altered.
- */
-function parseJsonLoose(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    // Escape any backslash not starting a valid JSON escape (\" \\ \/ \b \f
-    // \n \r \t \uXXXX). Turns LaTeX like \pi, \frac, \underbrace into literal
-    // backslashes the parser accepts.
-    const repaired = text.replace(/\\(?![\\/"bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\");
-    return JSON.parse(repaired);
-  }
+  const values: Record<string, string> = {};
+  for (const k of keys) if (buf[k]) values[k] = buf[k].join("\n").trim();
+  return { values, sawKnown };
 }
 
 /**
- * Parse the model's JSON output, keeping only known string-valued fields for
- * this card type and merging them onto the current values.
+ * Parse the model's markdown output (labelled fields, first block only),
+ * merging the recognized fields onto the current values.
  */
 export function parseProposed(
   raw: string,
   current: RefactorFieldSet,
   targetKeys?: string[],
 ): RefactorFieldSet {
-  let obj: unknown;
-  try {
-    obj = parseJsonLoose(extractJson(raw));
-  } catch {
-    throw new AiError("invalid_output", "Model did not return valid JSON");
-  }
-  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
-    throw new AiError("invalid_output", "Model output was not a JSON object");
-  }
-
   const allKeys = REFACTOR_FIELD_KEYS[current.type];
-  // Only merge fields the caller allowed to change. Keys outside the set (or
-  // unknown keys the model echoed) are silently ignored.
   const keys =
     targetKeys && targetKeys.length > 0
       ? allKeys.filter((k) => targetKeys.includes(k))
       : allKeys;
-  const incoming = obj as Record<string, unknown>;
-  const merged = { ...(current as unknown as Record<string, unknown>) };
-  let sawKnownKey = false;
-  for (const key of keys) {
-    if (key in incoming && typeof incoming[key] === "string") {
-      merged[key] = incoming[key];
-      sawKnownKey = true;
-    }
-  }
-  if (!sawKnownKey) {
+  const segment = raw.split(CARD_DELIMITER)[0] ?? raw;
+  const { values, sawKnown } = parseLabeledBlock(segment, keys);
+  if (!sawKnown) {
     throw new AiError(
       "invalid_output",
       "Model output contained none of the expected fields",
     );
   }
+  const merged = { ...(current as unknown as Record<string, unknown>) };
+  for (const k of keys) if (k in values) merged[k] = values[k];
   return merged as unknown as RefactorFieldSet;
 }
 
 /**
- * Parse a split response: a JSON array of card objects. Each element becomes a
- * full field set for `type` (string values for known keys, missing → ""). Cards
- * with no recognizable field are dropped; throws if none are usable.
+ * Parse a split response: one labelled block per card (separated by the
+ * delimiter). Missing fields default to "". Blocks with no recognizable field
+ * are dropped; throws if none are usable.
  */
 export function parseSplitProposed(
   raw: string,
   type: RefactorCardType,
 ): RefactorFieldSet[] {
-  let arr: unknown;
-  try {
-    arr = parseJsonLoose(extractJson(raw));
-  } catch {
-    throw new AiError("invalid_output", "Model did not return valid JSON");
-  }
-  if (!Array.isArray(arr)) {
-    throw new AiError("invalid_output", "Split output was not a JSON array");
-  }
-
   const keys = REFACTOR_FIELD_KEYS[type];
   const cards: RefactorFieldSet[] = [];
-  for (const item of arr) {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
-    const incoming = item as Record<string, unknown>;
+  for (const segment of raw.split(CARD_DELIMITER)) {
+    const { values, sawKnown } = parseLabeledBlock(segment, keys);
+    if (!sawKnown) continue;
     const card: Record<string, unknown> = { type };
-    let sawKnownKey = false;
-    for (const key of keys) {
-      const value = incoming[key];
-      if (typeof value === "string") {
-        card[key] = value;
-        sawKnownKey = true;
-      } else {
-        card[key] = "";
-      }
-    }
-    if (sawKnownKey) cards.push(card as unknown as RefactorFieldSet);
+    for (const k of keys) card[k] = values[k] ?? "";
+    cards.push(card as unknown as RefactorFieldSet);
   }
-
   if (cards.length === 0) {
-    throw new AiError(
-      "invalid_output",
-      "Split output contained no usable cards",
-    );
+    throw new AiError("invalid_output", "Split output contained no usable cards");
   }
   return cards;
 }

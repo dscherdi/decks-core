@@ -52,7 +52,13 @@ export class AiRefactoringService {
 
     let raw: string;
     try {
-      raw = await provider.complete({ system, user, images: req.images, signal });
+      raw = await provider.complete({
+        system,
+        user,
+        images: req.images,
+        signal,
+        json: false,
+      });
     } catch (e) {
       if (req.debug && e instanceof AiError) {
         e.debug = { system, user, raw: "" };

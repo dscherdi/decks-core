@@ -96,14 +96,6 @@ export function validateFSRSWeights(weights: number[]): boolean {
 }
 
 /**
- * Helper function for UI-only formatting - never use in calculations
- * Preserves full precision in all internal calculations
- */
-export function roundForDisplay(value: number, decimals: number): string {
-  return value.toFixed(decimals);
-}
-
-/**
  * Validate FSRS profile
  */
 export function validateProfile(profile: string): profile is FSRSProfile {

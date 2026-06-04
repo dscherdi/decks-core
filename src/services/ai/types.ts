@@ -41,8 +41,6 @@ export interface RefactorImage {
 }
 
 export interface RefactorRequest {
-  /** Per-DeckProfile prompt template guiding the refactor. */
-  prompt: string;
   /** Current editable values for the card. */
   current: RefactorFieldSet;
   /** Extra user instructions (custom text + selected presets), appended to the prompt. */

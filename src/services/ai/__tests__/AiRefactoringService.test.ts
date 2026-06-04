@@ -272,9 +272,9 @@ describe("error handling", () => {
 });
 
 describe("parseSplitProposed", () => {
-  it("parses a JSON array into full field sets for the type", () => {
+  it("parses labelled blocks into full field sets for the type", () => {
     const cards = parseSplitProposed(
-      '[{"front":"Q1","back":"A1"},{"front":"Q2","back":"A2"}]',
+      "FRONT: Q1\nBACK: A1\n===END===\nFRONT: Q2\nBACK: A2\n===END===",
       "header-paragraph",
     );
     expect(cards).toEqual([
@@ -283,16 +283,16 @@ describe("parseSplitProposed", () => {
     ]);
   });
 
-  it("fills missing fields with empty strings and strips code fences", () => {
-    const cards = parseSplitProposed('```json\n[{"front":"Only front"}]\n```', "table");
+  it("fills missing fields with empty strings", () => {
+    const cards = parseSplitProposed("FRONT: Only front\n===END===", "table");
     expect(cards).toEqual([
       { type: "table", front: "Only front", back: "", notes: "" },
     ]);
   });
 
-  it("repairs unescaped LaTeX backslashes (e.g. \\pi) in array output", () => {
+  it("preserves LaTeX backslashes (e.g. \\pi) in block output", () => {
     const cards = parseSplitProposed(
-      '[{"front":"Area?","back":"$A = \\pi r^2$"}]',
+      "FRONT: Area?\nBACK: $A = \\pi r^2$\n===END===",
       "header-paragraph",
     );
     expect(cards).toEqual([
@@ -300,22 +300,16 @@ describe("parseSplitProposed", () => {
     ]);
   });
 
-  it("throws invalid_output when not an array", () => {
-    expect(() => parseSplitProposed('{"front":"x"}', "header-paragraph")).toThrow(
-      AiError,
-    );
-  });
-
-  it("throws invalid_output when no element has a usable field", () => {
-    expect(() => parseSplitProposed('[{"bogus":"x"}]', "header-paragraph")).toThrow(
+  it("throws invalid_output when no block has a usable field", () => {
+    expect(() => parseSplitProposed("BOGUS: x", "header-paragraph")).toThrow(
       AiError,
     );
   });
 });
 
 describe("parseProposed", () => {
-  it("merges known string fields onto the current values", () => {
-    const out = parseProposed('{"back":"Paris"}', headerParaCard);
+  it("merges labelled fields onto the current values", () => {
+    const out = parseProposed("BACK: Paris\n===END===", headerParaCard);
     expect(out).toEqual({
       type: "header-paragraph",
       front: "What is the capital of France?",
@@ -323,41 +317,25 @@ describe("parseProposed", () => {
     });
   });
 
-  it("strips markdown code fences", () => {
-    const out = parseProposed(
-      '```json\n{"back":"Paris"}\n```',
-      headerParaCard,
-    );
+  it("ignores labels not valid for the card type but keeps known ones", () => {
+    // NOTES isn't a field of header-paragraph cards, so it must be dropped.
+    const out = parseProposed("BACK: Paris\nNOTES: ignored\n===END===", headerParaCard);
+    expect(out as Record<string, unknown>).not.toHaveProperty("notes");
     expect((out as { back: string }).back).toBe("Paris");
   });
 
-  it("ignores unknown keys but keeps known ones", () => {
-    const out = parseProposed(
-      '{"back":"Paris","bogus":"x"}',
-      headerParaCard,
-    );
-    expect(out as Record<string, unknown>).not.toHaveProperty("bogus");
-    expect((out as { back: string }).back).toBe("Paris");
-  });
-
-  it("repairs unescaped LaTeX backslashes (e.g. \\pi) before parsing", () => {
-    const out = parseProposed('{"back":"$A = \\pi r^2$"}', headerParaCard);
+  it("preserves LaTeX backslashes (e.g. \\pi)", () => {
+    const out = parseProposed("BACK: $A = \\pi r^2$\n===END===", headerParaCard);
     expect((out as { back: string }).back).toBe("$A = \\pi r^2$");
   });
 
-  it("throws invalid_output on malformed JSON", () => {
-    expect(() => parseProposed("not json", headerParaCard)).toThrow(AiError);
-  });
-
   it("throws invalid_output when no known field is present", () => {
-    expect(() => parseProposed('{"bogus":"x"}', headerParaCard)).toThrow(
-      AiError,
-    );
+    expect(() => parseProposed("just some prose", headerParaCard)).toThrow(AiError);
   });
 
   it("only merges fields in targetKeys; ignores non-target changes", () => {
     const out = parseProposed(
-      '{"front":"NEW FRONT","back":"Paris"}',
+      "FRONT: NEW FRONT\nBACK: Paris\n===END===",
       headerParaCard,
       ["back"],
     );
@@ -370,20 +348,19 @@ describe("parseProposed", () => {
 });
 
 describe("buildMessages", () => {
-  it("includes custom instructions and source context", () => {
+  it("puts custom instructions and source context in the user message", () => {
     const { system, user } = buildMessages({
-      prompt: "Improve the card",
       current: headerParaCard,
       instructions: "Translate to English.",
       sourceContext: "10: surrounding note text",
     });
-    expect(system).toContain("Translate to English.");
+    expect(user).toContain("Translate to English.");
     expect(user).toContain("surrounding note text");
+    expect(system).toMatch(/REFACTORING/);
   });
 
   it("restricts rewritable fields to targetKeys and marks others context-only", () => {
     const { system } = buildMessages({
-      prompt: "Improve the card",
       current: { type: "table", front: "F", back: "B", notes: "N" },
       targetKeys: ["front", "back"],
     });
@@ -392,36 +369,27 @@ describe("buildMessages", () => {
     expect(system).toMatch(/context only/i);
   });
 
-  it("always prepends the hardcoded master design guidance", () => {
-    const { system } = buildMessages({
-      prompt: "Improve the card",
-      current: headerParaCard,
-    });
+  it("always prepends the master design guidance", () => {
+    const { system } = buildMessages({ current: headerParaCard });
     expect(system).toContain("==double equals==");
     expect(system).toMatch(/minimum information principle/i);
-    // The profile prompt still follows the guidance.
-    expect(system).toContain("Improve the card");
   });
 
-  it("switches to split instruction + array output when split is set", () => {
-    const { system } = buildMessages({
-      prompt: "p",
-      current: headerParaCard,
-      split: true,
-    });
+  it("switches to split framing + per-block output when split is set", () => {
+    const { system } = buildMessages({ current: headerParaCard, split: true });
     expect(system).toMatch(/split this flashcard into multiple/i);
-    expect(system).toMatch(/Return ONLY a JSON array/i);
+    expect(system).toMatch(/ONE block per resulting card/i);
+    expect(system).toContain("===END===");
   });
 
   it("adds the no-literal-pipe caveat only for table cards", () => {
     const table = buildMessages({
-      prompt: "p",
       current: { type: "table", front: "F", back: "B", notes: "N" },
     }).system;
     expect(table).toContain("\\lvert");
     expect(table).toMatch(/never output a literal \|/i);
 
-    const header = buildMessages({ prompt: "p", current: headerParaCard }).system;
+    const header = buildMessages({ current: headerParaCard }).system;
     expect(header).not.toContain("\\lvert");
   });
 });
@@ -445,14 +413,14 @@ describe("AiRefactoringService.refactorCard", () => {
     const http = new MockHttp(() =>
       ok(
         JSON.stringify({
-          choices: [{ message: { content: '{"back":"Paris"}' } }],
+          choices: [{ message: { content: "BACK: Paris\n===END===" } }],
         }),
       ),
     );
     const svc = new AiRefactoringService(http);
     const result = await svc.refactorCard(
       { provider: "openai", model: "gpt-4o-mini", apiKey: "sk" },
-      { prompt: "Capitalize properly", current: headerParaCard },
+      { current: headerParaCard },
     );
     expect((result.proposed as { back: string }).back).toBe("Paris");
     expect(result.proposals).toEqual([
@@ -465,30 +433,33 @@ describe("AiRefactoringService.refactorCard", () => {
     const http = new MockHttp(() =>
       ok(
         JSON.stringify({
-          choices: [{ message: { content: '{"back":"Paris"}' } }],
+          choices: [{ message: { content: "BACK: Paris\n===END===" } }],
         }),
       ),
     );
     const svc = new AiRefactoringService(http);
     const result = await svc.refactorCard(
       { provider: "openai", model: "gpt-4o-mini", apiKey: "sk" },
-      { prompt: "Capitalize properly", current: headerParaCard, debug: true },
+      { current: headerParaCard, debug: true },
     );
-    expect(result.debug?.system).toContain("Capitalize properly");
+    expect(result.debug?.system).toMatch(/REFACTORING/);
     expect(result.debug?.user).toContain("paris");
     expect(result.debug?.raw).toContain("Paris");
   });
 
   it("attaches the exchange to a parse-error AiError when debug is set", async () => {
     const http = new MockHttp(() =>
-      ok(JSON.stringify({ choices: [{ message: { content: "not json" } }] })),
+      ok(JSON.stringify({ choices: [{ message: { content: "no fields here" } }] })),
     );
     const svc = new AiRefactoringService(http);
     await expect(
       svc.refactorCard(
         { provider: "openai", model: "gpt-4o-mini", apiKey: "sk" },
-        { prompt: "p", current: headerParaCard, debug: true },
+        { current: headerParaCard, debug: true },
       ),
-    ).rejects.toMatchObject({ code: "invalid_output", debug: { raw: "not json" } });
+    ).rejects.toMatchObject({
+      code: "invalid_output",
+      debug: { raw: "no fields here" },
+    });
   });
 });

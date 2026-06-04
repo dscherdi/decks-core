@@ -1,38 +1,11 @@
-// Algorithm
-export { FSRS } from "./algorithm/fsrs";
-export type { FSRSParameters, SchedulingInfo, RatingLabel } from "./algorithm/fsrs";
-export {
-  FSRS_WEIGHTS_STANDARD,
-  DEFAULT_FSRS_PARAMETERS,
-  getWeightsForProfile,
-  getMinMinutesForProfile,
-  getMaxIntervalDaysForProfile,
-  validateFSRSWeights,
-} from "./algorithm/fsrs-weights";
-export type { FSRSProfile } from "./algorithm/fsrs-weights";
-export { optimizeWeights } from "./algorithm/fsrs-optimizer";
-export type { OptimizerReviewInput, TrainingResult } from "./algorithm/fsrs-optimizer";
+// Algorithm — single source of truth (the plugin re-exports these).
+export * from "./algorithm/fsrs";
+export * from "./algorithm/fsrs-weights";
+export * from "./algorithm/fsrs-bounds";
+export * from "./algorithm/fsrs-optimizer";
 
-// Database types & SQL
-export type {
-  Flashcard,
-  FlashcardType,
-  FlashcardState,
-  Deck,
-  DeckWithProfile,
-  DeckProfile,
-  DeckGroup,
-  ProfileTagMapping,
-  ReviewLog,
-  ReviewSession,
-  CustomDeck,
-  CustomDeckType,
-  FsrsWeightSet,
-} from "./database/types";
-export {
-  DEFAULT_DECK_PROFILE,
-  DEFAULT_PROFILE_ID,
-} from "./database/types";
+// Database types & SQL — single source of truth (the plugin re-exports these).
+export * from "./database/types";
 export {
   SQL_QUERIES,
   CREATE_TABLES_SQL,
@@ -40,7 +13,7 @@ export {
   BACKUP_TABLES_SQL,
   buildMigrationSQL,
 } from "./database/schemas";
-export type { SqlJsValue, SqlRecord, SqlRow } from "./database/sql-types";
+export * from "./database/sql-types";
 export type {
   IDatabaseService,
   ISyncLog,
@@ -74,8 +47,7 @@ export type {
   RawDatabase,
   RawStatement,
 } from "./services/FlashcardSynchronizer";
-export { hlcSend, hlcReceive, hlcParse } from "./services/HLC";
-export type { HLCValue, HLCState } from "./services/HLC";
+export * from "./services/HLC";
 export type {
   SyncOpV1,
   SyncLogEntry,
