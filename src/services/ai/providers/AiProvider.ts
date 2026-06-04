@@ -6,6 +6,12 @@ export interface ProviderCompleteRequest {
   user: string;
   images?: RefactorImage[];
   signal?: AbortSignal;
+  /**
+   * Whether to ask the provider for strict JSON output. Defaults to the
+   * provider's own default (on for hosted refactoring). Generation sets this to
+   * `false` because its output is delimited text, not JSON.
+   */
+  json?: boolean;
 }
 
 /**
@@ -17,4 +23,13 @@ export interface ProviderCompleteRequest {
 export interface AiProvider {
   readonly id: AiProviderId;
   complete(req: ProviderCompleteRequest): Promise<string>;
+  /**
+   * Optional streaming variant: emits model text deltas via `onDelta` as they
+   * arrive and resolves when the response completes. Absent (or throwing) means
+   * the caller should fall back to `complete()`.
+   */
+  completeStream?(
+    req: ProviderCompleteRequest,
+    onDelta: (text: string) => void,
+  ): Promise<void>;
 }

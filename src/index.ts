@@ -100,6 +100,22 @@ export { applyOp } from "./services/SyncLog.handlers";
 // AI refactoring
 export { AiRefactoringService } from "./services/ai/AiRefactoringService";
 export { createProvider } from "./services/ai/providers";
+// AI generation
+export { AiGenerationService } from "./services/ai/AiGenerationService";
+export type {
+  GenerateHandlers,
+  GenerateResult,
+} from "./services/ai/AiGenerationService";
+export {
+  buildGenerationMessages,
+  parseGeneratedCards,
+  GenerationStreamParser,
+  CARD_DELIMITER,
+} from "./services/ai/generation-prompt";
+export type {
+  GeneratedCard,
+  GenerateRequest,
+} from "./services/ai/generation-prompt";
 export {
   FLASHCARD_DESIGN_GUIDANCE,
   SPLIT_INSTRUCTION,

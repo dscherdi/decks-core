@@ -2,10 +2,14 @@ import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
 import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
-import { parseJsonBody, sendJson } from "./http-util";
+import { parseJsonBody, sendJson, streamSse } from "./http-util";
 
 interface ChatCompletionResponse {
   choices?: Array<{ message?: { content?: unknown } }>;
+}
+
+interface ChatCompletionChunk {
+  choices?: Array<{ delta?: { content?: unknown } }>;
 }
 
 /**
@@ -41,38 +45,36 @@ export class OpenAiProvider implements AiProvider {
     return headers;
   }
 
-  async complete({
-    system,
-    user,
-    images,
-    signal,
-  }: ProviderCompleteRequest): Promise<string> {
-    const userContent = images?.length
+  protected buildBody(req: ProviderCompleteRequest): Record<string, unknown> {
+    const userContent = req.images?.length
       ? [
-          { type: "text", text: user },
-          ...images.map((im) => ({
+          { type: "text", text: req.user },
+          ...req.images.map((im) => ({
             type: "image_url",
             image_url: { url: `data:${im.mimeType};base64,${im.dataBase64}` },
           })),
         ]
-      : user;
+      : req.user;
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: [
-        { role: "system", content: system },
+        { role: "system", content: req.system },
         { role: "user", content: userContent },
       ],
     };
-    if (this.useJsonResponseFormat()) {
+    if (this.useJsonResponseFormat() && req.json !== false) {
       body["response_format"] = { type: "json_object" };
     }
+    return body;
+  }
 
+  async complete(req: ProviderCompleteRequest): Promise<string> {
     const res = await sendJson(this.http, {
       url: this.endpoint(),
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify(body),
-      signal,
+      body: JSON.stringify(this.buildBody(req)),
+      signal: req.signal,
     });
 
     const parsed = parseJsonBody(res.text) as ChatCompletionResponse;
@@ -81,5 +83,33 @@ export class OpenAiProvider implements AiProvider {
       throw new AiError("invalid_output", "Response had no message content");
     }
     return content;
+  }
+
+  async completeStream(
+    req: ProviderCompleteRequest,
+    onDelta: (text: string) => void,
+  ): Promise<void> {
+    const body = { ...this.buildBody(req), stream: true };
+    await streamSse(
+      this.http,
+      {
+        url: this.endpoint(),
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+        signal: req.signal,
+      },
+      (data) => {
+        if (data === "[DONE]") return;
+        let chunk: ChatCompletionChunk;
+        try {
+          chunk = JSON.parse(data) as ChatCompletionChunk;
+        } catch {
+          return;
+        }
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta) onDelta(delta);
+      },
+    );
   }
 }
