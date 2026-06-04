@@ -144,7 +144,7 @@ async function handleRate(
   } catch (error) {
     logger.debug(
       `SyncLog rate: insertReviewLog failed for ${reviewLog.id}; likely duplicate, continuing`,
-      error as object
+      error
     );
   }
 

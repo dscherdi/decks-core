@@ -241,6 +241,8 @@ export interface IDatabaseService {
 
   createBackupDatabase(backupPath: string): Promise<void>;
   restoreFromBackupDatabase(backupPath: string): Promise<void>;
+  /** Restore directly from raw SQLite bytes (e.g. a user-supplied backup file). */
+  restoreFromBackupData(backupData: Uint8Array): Promise<void>;
   exportDatabaseToBuffer(): Promise<Uint8Array>;
   createBackupDatabaseInstance(backupData: Uint8Array): Promise<string | object>;
   queryBackupDatabase(backupDb: string | object, sql: string): Promise<SqlJsValue[][]>;

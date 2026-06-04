@@ -54,6 +54,43 @@ export class FlashcardParser {
   }
 
   /**
+   * Extract a header-paragraph card's notes from its body. Notes come from
+   * Obsidian comments (`%%…%%`, anywhere, multi-line) and/or content after a
+   * trailing thematic-break delimiter (`---` / `***` / `___` on its own line,
+   * only when non-empty content follows it). Returns the cleaned back text plus
+   * the combined notes (empty string when there are none).
+   */
+  static extractHeaderParagraphNotes(back: string): {
+    back: string;
+    notes: string;
+  } {
+    const noteParts: string[] = [];
+
+    // 1. Obsidian comments anywhere in the body become notes.
+    let body = back.replace(/%%([\s\S]*?)%%/g, (_m, inner: string) => {
+      const trimmed = inner.trim();
+      if (trimmed) noteParts.push(trimmed);
+      return "";
+    });
+
+    // 2. A trailing thematic break with content after it splits body / notes.
+    const lines = body.split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i])) {
+        const after = lines.slice(i + 1).join("\n").trim();
+        if (after) {
+          noteParts.push(after);
+          body = lines.slice(0, i).join("\n");
+        }
+        // Only the last thematic break can act as the delimiter.
+        break;
+      }
+    }
+
+    return { back: body.trim(), notes: noteParts.join("\n\n").trim() };
+  }
+
+  /**
    * Flatten and dedupe tags across every header in the stack so descendant cards
    * inherit tags from each ancestor header (and their own header).
    */
@@ -459,15 +496,19 @@ export class FlashcardParser {
           return;
         }
 
+        const { back: clozeBack, notes: clozeNotes } =
+          FlashcardParser.extractHeaderParagraphNotes(back);
         const expanded = FlashcardParser.expandClozes(
-          front, back, "", "header-paragraph", breadcrumb, tags
+          front, clozeBack, clozeNotes, "header-paragraph", breadcrumb, tags
         );
         flashcards.push(...expanded);
       } else {
+        const { back: cleanBack, notes } =
+          FlashcardParser.extractHeaderParagraphNotes(back);
         flashcards.push({
           front,
-          back,
-          notes: "",
+          back: cleanBack,
+          notes,
           type: "header-paragraph",
           breadcrumb,
           tags,
