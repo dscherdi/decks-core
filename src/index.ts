@@ -129,15 +129,56 @@ export {
   generateFlashcardId,
   generateDeckId,
   generateContentHash,
+  generateDeckGroupId,
   generateClozeFlashcardId,
   generateReverseFlashcardId,
+  generateCustomDeckId,
+  generateCustomDeckCardId,
+  generateSpatialFlashcardId,
+  generateSpatialClozeFlashcardId,
 } from "./utils/hash";
-export { toLocalDateString, toLocalDateTimeString } from "./utils/date-utils";
-export { parseSteps } from "./utils/step-parser";
-export { yieldToUI, yieldEvery } from "./utils/ui";
+export {
+  toLocalDateString,
+  toLocalDateTimeString,
+  getLocalDateSQL,
+  getLocalHourSQL,
+} from "./utils/date-utils";
+export {
+  parseSteps,
+  validateLearningSteps,
+  validateRelearningSteps,
+  getDefaultLearningSteps,
+  getDefaultRelearningSteps,
+  formatStepInterval,
+} from "./utils/step-parser";
+export { yieldToUI, yieldEvery, processWithYielding } from "./utils/ui";
 export { levenshteinSimilarity } from "./utils/string";
-export { sortDeckList } from "./utils/deck-sort";
+export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
 export { MinHeap } from "./utils/min-heap";
+export { formatTime, formatPace } from "./utils/formatting";
+export {
+  splitTableLine,
+  escapeTableCell,
+  unescapeTableCell,
+} from "./utils/markdown-table";
+export { cardFieldDefs, fieldSetValue } from "./utils/card-fields";
+export type { CardFieldDef } from "./utils/card-fields";
+export {
+  SPLITTABLE,
+  isSplittable,
+  effectiveSplit,
+  cardResultPatch,
+  acceptAllStates,
+  discardAllStates,
+  setCardStatus,
+  applyBatch,
+} from "./utils/batch-refactor";
+export type {
+  BatchStatus,
+  BatchCardState,
+  ApplyCallbacks,
+  ApplyResult,
+} from "./utils/batch-refactor";
 
 // Settings & i18n
 export type { DecksSettings } from "./settings";
