@@ -3,7 +3,21 @@ import type { AiProviderId, RefactorImage } from "../types";
 /** Transport-level request: the built messages plus optional image attachments. */
 export interface ProviderCompleteRequest {
   system: string;
+  /**
+   * First user message. For caching this should be the static block (e.g. the
+   * source notes) so the system+user prefix stays byte-identical across calls.
+   */
   user: string;
+  /**
+   * Optional assistant turn carrying dynamic context (e.g. the cards generated
+   * so far). Inserted AFTER the static prefix so it never invalidates the cache.
+   */
+  priorAssistant?: string;
+  /**
+   * Optional trailing user turn (e.g. the instruction + "continue" trigger).
+   * Kept separate from `user` so the cacheable prefix excludes it.
+   */
+  followupUser?: string;
   images?: RefactorImage[];
   signal?: AbortSignal;
   /**

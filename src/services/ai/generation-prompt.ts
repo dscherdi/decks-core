@@ -15,6 +15,11 @@ export interface GenerateRequest {
   sourceContext?: string;
   /** Image attachments to use as source (requires a vision-capable model). */
   images?: RefactorImage[];
+  /**
+   * Cards already produced for this source, fed back as an assistant turn so an
+   * iterative batch continues without duplicates. Omit/empty on the first batch.
+   */
+  generatedSoFar?: GeneratedCard[];
   /** When true, the built messages + raw response are attached for debugging. */
   debug?: boolean;
 }
@@ -42,17 +47,59 @@ const GENERATION_FORMAT = [
   "- Do not output JSON, numbering, surrounding prose, or code fences — only the card blocks.",
 ].join("\n");
 
-/** Build the system/user messages for a generation request. */
+/** Appended to the system prompt to discourage repeats across batches. */
+const DEDUP_RULE =
+  "Never produce a card for a concept that already appears earlier in this conversation.";
+
+/** Static trigger that closes each request; the instruction is prepended to it. */
+const CONTINUE_TRIGGER =
+  "Continue generating the next batch of atomic cards based on the source notes. Do not repeat any concept already listed.";
+
+/** Render prior cards back into the model's own output grammar. */
+export function serializeCards(cards: GeneratedCard[]): string {
+  return cards
+    .map((c) => {
+      const lines = [`FRONT: ${c.front}`, `BACK: ${c.back}`];
+      if (c.notes) lines.push(`NOTES: ${c.notes}`);
+      lines.push(CARD_DELIMITER);
+      return lines.join("\n");
+    })
+    .join("\n\n");
+}
+
+/**
+ * Build the message parts for a generation request as a cache-friendly sequence:
+ * a static system prompt, a static first user message (the source notes), an
+ * optional dynamic assistant turn (cards generated so far), and a trailing user
+ * message carrying the instruction + continue trigger. Keeping the source notes
+ * in their own static block lets the system+user prefix be cached across batches.
+ *
+ * When there is no source material the structure degrades to a single user
+ * message (the instruction), matching the original prompt-only behaviour.
+ */
 export function buildGenerationMessages(req: GenerateRequest): {
   system: string;
   user: string;
+  priorAssistant?: string;
+  followupUser?: string;
 } {
-  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}`;
-  let user = req.prompt.trim();
-  if (req.sourceContext && req.sourceContext.trim()) {
-    user += `\n\nUse the following source material:\n\n${req.sourceContext.trim()}`;
+  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
+  const source = req.sourceContext?.trim();
+  const instruction = req.prompt.trim();
+  const priorAssistant = req.generatedSoFar?.length
+    ? `Here are the cards generated so far:\n\n${serializeCards(req.generatedSoFar)}`
+    : undefined;
+
+  if (!source) {
+    // No source notes: keep the single-message shape (prompt only).
+    return { system, user: instruction, priorAssistant };
   }
-  return { system, user };
+
+  const user = `Here are the source notes:\n\n${source}`;
+  const followupUser = instruction
+    ? `${instruction}\n\n${CONTINUE_TRIGGER}`
+    : CONTINUE_TRIGGER;
+  return { system, user, priorAssistant, followupUser };
 }
 
 interface SegmentFields {

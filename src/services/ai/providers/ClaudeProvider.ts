@@ -3,6 +3,7 @@ import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
 import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
+import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
 interface ClaudeResponse {
   content?: Array<{ type?: string; text?: unknown }>;
@@ -34,24 +35,31 @@ export class ClaudeProvider implements AiProvider {
   }
 
   private buildBody(req: ProviderCompleteRequest): Record<string, unknown> {
-    const userContent = req.images?.length
-      ? [
-          { type: "text", text: req.user },
-          ...req.images.map((im) => ({
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: im.mimeType,
-              data: im.dataBase64,
-            },
-          })),
-        ]
-      : req.user;
+    // Claude rejects consecutive same-role turns, so coalesce them. Images
+    // attach to the first user turn (turns always start with a user turn).
+    const turns = coalesceAdjacentRoles(buildTurns(req));
+    const messages = turns.map((turn, i) => {
+      const content =
+        i === 0 && req.images?.length
+          ? [
+              { type: "text", text: turn.text },
+              ...req.images.map((im) => ({
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: im.mimeType,
+                  data: im.dataBase64,
+                },
+              })),
+            ]
+          : turn.text;
+      return { role: turn.role, content };
+    });
     return {
       model: this.config.model,
       max_tokens: MAX_TOKENS,
       system: req.system,
-      messages: [{ role: "user", content: userContent }],
+      messages,
     };
   }
 

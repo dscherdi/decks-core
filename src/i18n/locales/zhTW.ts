@@ -1131,6 +1131,12 @@ export const zhTW: Translations = {
       providerOpenai: "OpenAI",
       providerClaude: "Anthropic Claude",
       providerLocal: "Local (OpenAI-compatible)",
+      providerDecksCloud: "Decks Cloud",
+      licenseKey: "License key",
+      licenseKeyDesc: "Your Decks Cloud subscription key. Stored locally and never synced.",
+      licenseKeyPlaceholder: "Paste license key",
+      serverUrl: "Server URL",
+      serverUrlDesc: "Decks Cloud backend URL. Leave blank to use the default.",
     },
     language: {
       heading: "語言",

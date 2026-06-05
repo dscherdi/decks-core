@@ -3,6 +3,7 @@ import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
 import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
+import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -28,15 +29,24 @@ export class GeminiProvider implements AiProvider {
   }
 
   private buildBody(req: ProviderCompleteRequest): Record<string, unknown> {
-    const parts = [
-      { text: req.user },
-      ...(req.images ?? []).map((im) => ({
-        inlineData: { mimeType: im.mimeType, data: im.dataBase64 },
-      })),
-    ];
+    // Gemini wants alternating roles (user/model), so coalesce same-role turns.
+    // Images attach to the first user turn (turns always start with a user turn).
+    const turns = coalesceAdjacentRoles(buildTurns(req));
+    const contents = turns.map((turn, i) => ({
+      role: turn.role === "assistant" ? "model" : "user",
+      parts:
+        i === 0 && req.images?.length
+          ? [
+              { text: turn.text },
+              ...req.images.map((im) => ({
+                inlineData: { mimeType: im.mimeType, data: im.dataBase64 },
+              })),
+            ]
+          : [{ text: turn.text }],
+    }));
     return {
       system_instruction: { parts: [{ text: req.system }] },
-      contents: [{ role: "user", parts }],
+      contents,
       generationConfig: {
         responseMimeType: req.json === false ? "text/plain" : "application/json",
       },

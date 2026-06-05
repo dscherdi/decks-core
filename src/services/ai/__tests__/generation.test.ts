@@ -78,15 +78,134 @@ describe("GenerationStreamParser", () => {
 });
 
 describe("buildGenerationMessages", () => {
-  it("includes the delimiter contract and appends source context", () => {
-    const { system, user } = buildGenerationMessages({
-      prompt: "Make cards about France",
-      sourceContext: "Paris is the capital.",
-    });
+  it("puts source notes in the static user message and the instruction in the trigger", () => {
+    const { system, user, followupUser, priorAssistant } =
+      buildGenerationMessages({
+        prompt: "Make cards about France",
+        sourceContext: "Paris is the capital.",
+      });
     expect(system).toContain(CARD_DELIMITER);
     expect(system).toContain("FRONT:");
-    expect(user).toContain("Make cards about France");
+    // Source notes live in the (static) first user message...
     expect(user).toContain("Paris is the capital.");
+    expect(user).not.toContain("Make cards about France");
+    // ...and the instruction rides the trailing trigger message.
+    expect(followupUser).toContain("Make cards about France");
+    // No prior cards on the first batch.
+    expect(priorAssistant).toBeUndefined();
+  });
+
+  it("keeps the system + source-notes prefix byte-identical across batches (cache invariant)", () => {
+    const base = {
+      prompt: "Make cards about France",
+      sourceContext: "Paris is the capital.",
+    };
+    const first = buildGenerationMessages({ ...base, generatedSoFar: [] });
+    const next = buildGenerationMessages({
+      ...base,
+      generatedSoFar: [card("Q1", "A1", "n1")],
+    });
+    // The cached prefix must not change between batch 1 and batch N.
+    expect(next.system).toBe(first.system);
+    expect(next.user).toBe(first.user);
+    expect(next.followupUser).toBe(first.followupUser);
+    // The only dynamic content is the assistant turn, and it holds the cards.
+    expect(first.priorAssistant).toBeUndefined();
+    expect(next.priorAssistant).toContain("Q1");
+    expect(next.priorAssistant).toContain(CARD_DELIMITER);
+  });
+
+  it("degrades to a single user message when there is no source material", () => {
+    const { user, followupUser } = buildGenerationMessages({ prompt: "go" });
+    expect(user).toBe("go");
+    expect(followupUser).toBeUndefined();
+  });
+});
+
+describe("generation message wire shape", () => {
+  const notesReq = {
+    prompt: "Make cards about France",
+    sourceContext: "Paris is the capital.",
+  };
+
+  it("OpenAI emits separate messages and never coalesces (preserves cache prefix)", async () => {
+    const withCards = new StreamHttp([]);
+    const withoutCards = new StreamHttp([]);
+    const provider = (http: StreamHttp) => createProvider(config, http);
+
+    await provider(withoutCards).completeStream!(
+      { ...buildGenerationMessages(notesReq), json: false },
+      () => {},
+    );
+    await provider(withCards).completeStream!(
+      {
+        ...buildGenerationMessages({
+          ...notesReq,
+          generatedSoFar: [card("Q1", "A1")],
+        }),
+        json: false,
+      },
+      () => {},
+    );
+
+    const noCards = JSON.parse(withoutCards.requests[0].body ?? "{}");
+    const cards = JSON.parse(withCards.requests[0].body ?? "{}");
+    // Batch 1: system, user(notes), user(trigger). Batch N inserts the assistant.
+    expect(noCards.messages.map((m: { role: string }) => m.role)).toEqual([
+      "system",
+      "user",
+      "user",
+    ]);
+    expect(cards.messages.map((m: { role: string }) => m.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    // The cached prefix (messages 0 and 1) is byte-identical across batches.
+    expect(cards.messages[0]).toEqual(noCards.messages[0]);
+    expect(cards.messages[1]).toEqual(noCards.messages[1]);
+  });
+
+  it("Claude coalesces adjacent user turns (no consecutive same-role messages)", async () => {
+    const batch1 = new StreamHttp([]);
+    const batchN = new StreamHttp([]);
+    const claude = (http: StreamHttp) =>
+      createProvider(
+        { provider: "claude", model: "claude-3-5-haiku-latest", apiKey: "k" },
+        http,
+      );
+
+    await claude(batch1).completeStream!(
+      { ...buildGenerationMessages(notesReq), json: false },
+      () => {},
+    );
+    await claude(batchN).completeStream!(
+      {
+        ...buildGenerationMessages({
+          ...notesReq,
+          generatedSoFar: [card("Q1", "A1")],
+        }),
+        json: false,
+      },
+      () => {},
+    );
+
+    const b1 = JSON.parse(batch1.requests[0].body ?? "{}");
+    const bn = JSON.parse(batchN.requests[0].body ?? "{}");
+    // Batch 1: the two user turns merge into one.
+    expect(b1.messages.map((m: { role: string }) => m.role)).toEqual(["user"]);
+    expect(b1.messages[0].content).toContain("Paris is the capital.");
+    expect(b1.messages[0].content).toContain("Make cards about France");
+    // Batch N: valid alternation, the assistant separating the two user turns.
+    expect(bn.messages.map((m: { role: string }) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+    // No two consecutive same-role messages.
+    const roles = bn.messages.map((m: { role: string }) => m.role);
+    expect(roles.some((r: string, i: number) => r === roles[i + 1])).toBe(false);
   });
 });
 

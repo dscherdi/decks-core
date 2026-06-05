@@ -4,6 +4,11 @@ import { AiError } from "../types";
 import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: unknown;
+}
+
 interface ChatCompletionResponse {
   choices?: Array<{ message?: { content?: unknown } }>;
 }
@@ -46,7 +51,7 @@ export class OpenAiProvider implements AiProvider {
   }
 
   protected buildBody(req: ProviderCompleteRequest): Record<string, unknown> {
-    const userContent = req.images?.length
+    const firstUserContent = req.images?.length
       ? [
           { type: "text", text: req.user },
           ...req.images.map((im) => ({
@@ -55,12 +60,21 @@ export class OpenAiProvider implements AiProvider {
           })),
         ]
       : req.user;
+    // Emit messages separately (no coalescing): keeping the source-notes user
+    // message on its own preserves a byte-identical system+user cache prefix.
+    const messages: ChatMessage[] = [
+      { role: "system", content: req.system },
+      { role: "user", content: firstUserContent },
+    ];
+    if (req.priorAssistant) {
+      messages.push({ role: "assistant", content: req.priorAssistant });
+    }
+    if (req.followupUser) {
+      messages.push({ role: "user", content: req.followupUser });
+    }
     const body: Record<string, unknown> = {
       model: this.config.model,
-      messages: [
-        { role: "system", content: req.system },
-        { role: "user", content: userContent },
-      ],
+      messages,
     };
     if (this.useJsonResponseFormat() && req.json !== false) {
       body["response_format"] = { type: "json_object" };

@@ -200,6 +200,46 @@ describe("OpenAiCompatibleProvider", () => {
   });
 });
 
+describe("DecksCloudProvider", () => {
+  it("posts to /api/generate with the license key and no response_format", async () => {
+    const http = new MockHttp(() =>
+      ok(
+        JSON.stringify({
+          choices: [{ message: { content: '{"back":"Paris"}' } }],
+        }),
+      ),
+    );
+    const provider = createProvider(
+      { provider: "decks-cloud", model: "deepseek/deepseek-r1", apiKey: "DECKS-abc" },
+      http,
+    );
+    await provider.complete({ system: "system", user: "user" });
+    const req = http.requests[0];
+    expect(req.url).toBe("https://api.decks.app/api/generate");
+    expect(req.headers["Authorization"]).toBe("Bearer DECKS-abc");
+    const body = JSON.parse(req.body ?? "{}");
+    expect(body.model).toBe("deepseek/deepseek-r1");
+    expect(body.response_format).toBeUndefined();
+  });
+
+  it("honours a configured baseUrl override", async () => {
+    const http = new MockHttp(() =>
+      ok(JSON.stringify({ choices: [{ message: { content: "x" } }] })),
+    );
+    const provider = createProvider(
+      {
+        provider: "decks-cloud",
+        model: "deepseek/deepseek-r1",
+        apiKey: "DECKS-abc",
+        baseUrl: "http://localhost:8787",
+      },
+      http,
+    );
+    await provider.complete({ system: "system", user: "user" });
+    expect(http.requests[0].url).toBe("http://localhost:8787/api/generate");
+  });
+});
+
 describe("error handling", () => {
   const okResponder = () =>
     ok(JSON.stringify({ choices: [{ message: { content: "{}" } }] }));

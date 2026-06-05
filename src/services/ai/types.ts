@@ -3,7 +3,12 @@
  * union deliberately mirrors the plugin's `FlashcardEdits` field-for-field so
  * converting an accepted proposal into a FlashcardWriter edit is an identity map.
  */
-export type AiProviderId = "gemini" | "openai" | "claude" | "openai-compatible";
+export type AiProviderId =
+  | "gemini"
+  | "openai"
+  | "claude"
+  | "openai-compatible"
+  | "decks-cloud";
 
 export interface AiProviderConfig {
   provider: AiProviderId;

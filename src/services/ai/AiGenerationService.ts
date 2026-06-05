@@ -49,13 +49,20 @@ export class AiGenerationService {
     }
 
     const provider = createProvider(config, this.http);
-    const { system, user } = buildGenerationMessages(req);
+    const { system, user, priorAssistant, followupUser } =
+      buildGenerationMessages(req);
 
     this.logger?.debug(
       `AI generation via ${config.provider} (${config.model})`,
     );
     this.logger?.debug(`AI generation system:\n${system}`);
     this.logger?.debug(`AI generation user:\n${user}`);
+    if (priorAssistant) {
+      this.logger?.debug(`AI generation prior assistant:\n${priorAssistant}`);
+    }
+    if (followupUser) {
+      this.logger?.debug(`AI generation followup user:\n${followupUser}`);
+    }
     if (req.images?.length) {
       this.logger?.debug(
         `AI generation images: ${req.images.length} (${req.images
@@ -75,7 +82,15 @@ export class AiGenerationService {
         const parser = new GenerationStreamParser();
         let raw = "";
         await provider.completeStream(
-          { system, user, images: req.images, signal, json: false },
+          {
+            system,
+            user,
+            priorAssistant,
+            followupUser,
+            images: req.images,
+            signal,
+            json: false,
+          },
           (delta) => {
             raw += delta;
             const { completed, partial } = parser.push(delta);
@@ -106,6 +121,8 @@ export class AiGenerationService {
       raw = await provider.complete({
         system,
         user,
+        priorAssistant,
+        followupUser,
         images: req.images,
         signal,
         json: false,

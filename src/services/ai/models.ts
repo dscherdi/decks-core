@@ -5,6 +5,10 @@ export interface AiModelOption {
   name: string;
 }
 
+// Default origin of the hosted Decks Cloud proxy. Replace with the deployed
+// Worker origin before release; an empty baseUrl in settings falls back to this.
+export const DECKS_CLOUD_DEFAULT_BASE_URL = "https://api.decks.app";
+
 // Curated model lists offered in the settings model picker. Hosted providers
 // surface these as a dropdown; the local (openai-compatible) provider uses a
 // free-text field since its model ids depend on the running server.
@@ -26,4 +30,10 @@ export const PROVIDER_MODELS: Record<AiProviderId, AiModelOption[]> = {
     { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite" },
   ],
   "openai-compatible": [],
+  "decks-cloud": [
+    { id: "deepseek/deepseek-r1", name: "DeepSeek R1" },
+    { id: "qwen/qwen-3.7-plus", name: "Qwen 3.7 Plus" },
+    { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B" },
+    { id: "google/gemma-4-31b-it", name: "Gemma 4 31B" },
+  ],
 };
