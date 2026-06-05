@@ -72,6 +72,8 @@ export { applyOp } from "./services/SyncLog.handlers";
 // AI refactoring
 export { AiRefactoringService } from "./services/ai/AiRefactoringService";
 export { createProvider } from "./services/ai/providers";
+export { PROVIDER_MODELS } from "./services/ai/models";
+export type { AiModelOption } from "./services/ai/models";
 // AI generation
 export { AiGenerationService } from "./services/ai/AiGenerationService";
 export type {

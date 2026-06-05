@@ -1183,6 +1183,8 @@ export const fr: Translations = {
       providerDesc: "Which AI provider to use for refactoring.",
       model: "Model",
       modelDesc: "Model name for the selected provider.",
+      modelCustom: "Custom…",
+      modelCustomLabel: "Custom model",
       localBaseUrl: "Local server URL",
       localBaseUrlDesc: "Base URL for an OpenAI-compatible local server such as Ollama or LM Studio.",
       apiKey: "API key",
