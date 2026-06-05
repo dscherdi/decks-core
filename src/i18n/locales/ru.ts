@@ -1097,6 +1097,12 @@ export const ru: Translations = {
       noKept: "Оставьте хотя бы одну карточку для сохранения",
       close: "Закрыть",
       cancel: "Отмена",
+      includeGenerated: "Включить созданные карточки как контекст",
+      existingCardsHeading: "Карточки, уже созданные в этой сессии:",
+      avoidDuplicatesInstruction: "Не дублируй ни одну из карточек выше.",
+      savedBadge: "Сохранено",
+      savedNotice: "Сохранено {count} карточек",
+      generateFailed: "Не удалось сгенерировать карточки",
     },
     editFlashcard: {
       aiRefactor: "Доработать с ИИ",
@@ -1233,6 +1239,9 @@ export const ru: Translations = {
       flashcardManagerDisplayMode: "Режим показа менеджера карточек",
       flashcardManagerDisplayModeDesc:
         "Где открывается менеджер карточек. Вкладки можно перетаскивать в боковые панели, нижние панели или отдельные окна.",
+      aiGeneratorDisplayMode: "Режим отображения ИИ-генератора",
+      aiGeneratorDisplayModeDesc:
+        "Где открывается ИИ-генератор карточек. Вкладки можно перетаскивать в боковые панели, нижние панели или отдельные окна.",
       displayModeModal: "Модальное окно",
       displayModeTab: "Новая вкладка",
       minDeckCardCount: "Скрывать колоды с менее чем",

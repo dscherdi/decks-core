@@ -1125,6 +1125,12 @@ export const sq: Translations = {
       noKept: "Mbaj të paktën një kartë për të ruajtur",
       close: "Mbyll",
       cancel: "Anulo",
+      includeGenerated: "Përfshi kartat e gjeneruara si kontekst",
+      existingCardsHeading: "Kartat e gjeneruara tashmë në këtë sesion:",
+      avoidDuplicatesInstruction: "Mos përsërit asnjë nga kartat e mësipërme.",
+      savedBadge: "E ruajtur",
+      savedNotice: "{count} karta të ruajtura deri tani",
+      generateFailed: "Kartat nuk u gjeneruan dot",
     },
     editFlashcard: {
       aiRefactor: "Ripërpuno me IA",
@@ -1265,6 +1271,9 @@ export const sq: Translations = {
       flashcardManagerDisplayMode: "Mënyra e shfaqjes së menaxherit",
       flashcardManagerDisplayModeDesc:
         "Ku hapet menaxheri i kartave. Skedat mund të tërhiqen në panelet anësore ose dritare të veçanta.",
+      aiGeneratorDisplayMode: "Mënyra e shfaqjes së gjeneruesit me IA",
+      aiGeneratorDisplayModeDesc:
+        "Ku hapet gjeneruesi i fishave me IA. Skedat mund të tërhiqen në panelet anësore ose dritare të veçanta.",
       displayModeModal: "Dritare e mbivendosur (Modal)",
       displayModeTab: "Skedë e re (Tab)",
       minDeckCardCount: "Fshih pakot me më pak se",

@@ -1106,6 +1106,12 @@ export const it: Translations = {
       noKept: "Mantieni almeno una carta da salvare",
       close: "Chiudi",
       cancel: "Annulla",
+      includeGenerated: "Includi le carte generate come contesto",
+      existingCardsHeading: "Carte già generate in questa sessione:",
+      avoidDuplicatesInstruction: "Non duplicare nessuna delle carte sopra.",
+      savedBadge: "Salvata",
+      savedNotice: "{count} carte salvate finora",
+      generateFailed: "Impossibile generare le carte",
     },
     editFlashcard: {
       aiRefactor: "Rielabora con l'IA",
@@ -1244,6 +1250,9 @@ export const it: Translations = {
       flashcardManagerDisplayMode: "Modalità del gestore schede",
       flashcardManagerDisplayModeDesc:
         "Dove si apre il gestore schede. Le schede possono essere trascinate in barre laterali, pannelli inferiori o finestre separate.",
+      aiGeneratorDisplayMode: "Modalità di visualizzazione del generatore IA",
+      aiGeneratorDisplayModeDesc:
+        "Dove si apre il generatore di flashcard IA. Le schede possono essere trascinate in barre laterali, pannelli inferiori o finestre separate.",
       displayModeModal: "Modale sovrapposto",
       displayModeTab: "Nuova scheda",
       minDeckCardCount: "Nascondi mazzi con meno di",

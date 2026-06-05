@@ -202,7 +202,7 @@ export const zh: Translations = {
     review: "复习",
     browse: "浏览",
     browseAllCards: "浏览所有卡片",
-    configureProfile: "配置配置文件",
+    configureProfile: "设置配置文件",
     rename: "重命名",
     delete: "删除",
     editFilter: "编辑筛选器",
@@ -1038,6 +1038,12 @@ export const zh: Translations = {
       noKept: "请至少保留一张卡片以保存",
       close: "关闭",
       cancel: "取消",
+      includeGenerated: "将已生成的卡片作为上下文",
+      existingCardsHeading: "本次会话已生成的卡片：",
+      avoidDuplicatesInstruction: "请勿重复上述任何卡片。",
+      savedBadge: "已保存",
+      savedNotice: "已保存 {count} 张卡片",
+      generateFailed: "无法生成卡片",
     },
     editFlashcard: {
       aiRefactor: "用 AI 重构",
@@ -1170,6 +1176,9 @@ export const zh: Translations = {
       flashcardManagerDisplayMode: "卡片管理器显示模式",
       flashcardManagerDisplayModeDesc:
         "卡片管理器的打开位置。标签页可拖动到侧栏、底部面板或独立窗口。",
+      aiGeneratorDisplayMode: "AI 生成器显示模式",
+      aiGeneratorDisplayModeDesc:
+        "AI 卡片生成器的打开位置。标签页可拖动到侧栏、底部面板或独立窗口。",
       displayModeModal: "模态窗口",
       displayModeTab: "新标签页",
       minDeckCardCount: "隐藏少于以下数量的牌组",

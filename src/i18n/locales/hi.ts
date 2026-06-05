@@ -1111,6 +1111,12 @@ export const hi: Translations = {
       noKept: "सहेजने के लिए कम से कम एक कार्ड रखें",
       close: "बंद करें",
       cancel: "रद्द करें",
+      includeGenerated: "जनरेट किए गए कार्ड को संदर्भ के रूप में शामिल करें",
+      existingCardsHeading: "इस सत्र में पहले से जनरेट किए गए कार्ड:",
+      avoidDuplicatesInstruction: "ऊपर दिए गए किसी भी कार्ड को दोहराएं नहीं।",
+      savedBadge: "सहेजा गया",
+      savedNotice: "अब तक {count} कार्ड सहेजे गए",
+      generateFailed: "कार्ड जनरेट नहीं किए जा सके",
     },
     editFlashcard: {
       aiRefactor: "AI से रीफ़ैक्टर करें",
@@ -1251,6 +1257,9 @@ export const hi: Translations = {
       flashcardManagerDisplayMode: "फ़्लैशकार्ड प्रबंधक प्रदर्शन मोड",
       flashcardManagerDisplayModeDesc:
         "फ़्लैशकार्ड प्रबंधक कहां खुलता है। टैब को साइडबार, निचले पैनल या अलग विंडो में खींचा जा सकता है।",
+      aiGeneratorDisplayMode: "AI जनरेटर प्रदर्शन मोड",
+      aiGeneratorDisplayModeDesc:
+        "AI फ़्लैशकार्ड जनरेटर कहां खुलता है। टैब को साइडबार, निचले पैनल या अलग विंडो में खींचा जा सकता है।",
       displayModeModal: "मोडल ओवरले (Modal)",
       displayModeTab: "नया टैब (Tab)",
       minDeckCardCount: "इससे कम कार्ड वाले डेक छिपाएं",

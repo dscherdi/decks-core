@@ -1132,6 +1132,12 @@ export const de: Translations = {
       noKept: "Behalte mindestens eine Karte zum Speichern",
       close: "Schließen",
       cancel: "Abbrechen",
+      includeGenerated: "Generierte Karten als Kontext einbeziehen",
+      existingCardsHeading: "In dieser Sitzung bereits generierte Karten:",
+      avoidDuplicatesInstruction: "Wiederhole keine der oben genannten Karten.",
+      savedBadge: "Gespeichert",
+      savedNotice: "Bisher {count} Karten gespeichert",
+      generateFailed: "Karten konnten nicht generiert werden",
     },
     editFlashcard: {
       aiRefactor: "Mit KI überarbeiten",
@@ -1272,6 +1278,9 @@ export const de: Translations = {
       flashcardManagerDisplayMode: "Anzeigemodus für Karteikarten-Manager",
       flashcardManagerDisplayModeDesc:
         "Wo der Karteikarten-Manager geöffnet wird. Tabs können in Seitenleisten, untere Panels oder separate Fenster gezogen werden.",
+      aiGeneratorDisplayMode: "Anzeigemodus des KI-Generators",
+      aiGeneratorDisplayModeDesc:
+        "Wo der KI-Karteikartengenerator geöffnet wird. Tabs können in Seitenleisten, untere Panels oder separate Fenster gezogen werden.",
       displayModeModal: "Modal-Overlay",
       displayModeTab: "Neuer Tab",
       minDeckCardCount: "Stapel ausblenden mit weniger als",

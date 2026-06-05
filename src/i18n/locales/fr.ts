@@ -1121,6 +1121,12 @@ export const fr: Translations = {
       noKept: "Conservez au moins une carte à enregistrer",
       close: "Fermer",
       cancel: "Annuler",
+      includeGenerated: "Inclure les cartes générées comme contexte",
+      existingCardsHeading: "Cartes déjà générées dans cette session :",
+      avoidDuplicatesInstruction: "Ne reproduis aucune des cartes ci-dessus.",
+      savedBadge: "Enregistrée",
+      savedNotice: "{count} cartes enregistrées jusqu'ici",
+      generateFailed: "Impossible de générer les cartes",
     },
     editFlashcard: {
       aiRefactor: "Refactoriser avec l'IA",
@@ -1259,6 +1265,9 @@ export const fr: Translations = {
       flashcardManagerDisplayMode: "Mode d'affichage du gestionnaire",
       flashcardManagerDisplayModeDesc:
         "Où le gestionnaire s'ouvre. Les onglets peuvent être glissés vers les barres latérales, panneaux inférieurs ou fenêtres séparées.",
+      aiGeneratorDisplayMode: "Mode d'affichage du générateur IA",
+      aiGeneratorDisplayModeDesc:
+        "Où le générateur de cartes IA s'ouvre. Les onglets peuvent être glissés vers les barres latérales, panneaux inférieurs ou fenêtres séparées.",
       displayModeModal: "Fenêtre modale",
       displayModeTab: "Nouvel onglet",
       minDeckCardCount: "Masquer les paquets avec moins de",

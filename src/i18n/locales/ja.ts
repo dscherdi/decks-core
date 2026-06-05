@@ -1082,6 +1082,12 @@ export const ja: Translations = {
       noKept: "保存するカードを少なくとも1枚残してください",
       close: "閉じる",
       cancel: "キャンセル",
+      includeGenerated: "生成済みのカードをコンテキストに含める",
+      existingCardsHeading: "このセッションで生成済みのカード：",
+      avoidDuplicatesInstruction: "上記のカードを重複させないでください。",
+      savedBadge: "保存済み",
+      savedNotice: "これまでに {count} 枚のカードを保存しました",
+      generateFailed: "カードを生成できませんでした",
     },
     editFlashcard: {
       aiRefactor: "AI でリファクタリング",
@@ -1215,6 +1221,9 @@ export const ja: Translations = {
       flashcardManagerDisplayMode: "カード管理の表示モード",
       flashcardManagerDisplayModeDesc:
         "カード管理を開く場所。タブはサイドバー、下部パネル、別ウィンドウにドラッグできます。",
+      aiGeneratorDisplayMode: "AI ジェネレーターの表示モード",
+      aiGeneratorDisplayModeDesc:
+        "AI フラッシュカードジェネレーターを開く場所。タブはサイドバー、下部パネル、別ウィンドウにドラッグできます。",
       displayModeModal: "モーダル",
       displayModeTab: "新規タブ",
       minDeckCardCount: "次より少ないデッキを非表示",

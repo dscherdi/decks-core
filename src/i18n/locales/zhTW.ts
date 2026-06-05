@@ -1058,6 +1058,12 @@ export const zhTW: Translations = {
       noKept: "請至少保留一張卡片以儲存",
       close: "關閉",
       cancel: "取消",
+      includeGenerated: "將已生成的卡片作為上下文",
+      existingCardsHeading: "本次工作階段已生成的卡片：",
+      avoidDuplicatesInstruction: "請勿重複上述任何卡片。",
+      savedBadge: "已儲存",
+      savedNotice: "目前已儲存 {count} 張卡片",
+      generateFailed: "無法生成卡片",
     },
     editFlashcard: {
       aiRefactor: "用 AI 重構",
@@ -1193,6 +1199,9 @@ export const zhTW: Translations = {
       flashcardManagerDisplayMode: "閃卡管理器顯示模式",
       flashcardManagerDisplayModeDesc:
         "閃卡管理器開啟的位置。分頁可以拖曳至側邊欄、底部面板或獨立視窗中。",
+      aiGeneratorDisplayMode: "AI 產生器顯示模式",
+      aiGeneratorDisplayModeDesc:
+        "AI 卡片產生器開啟的位置。分頁可以拖曳至側邊欄、底部面板或獨立視窗中。",
       displayModeModal: "彈出視窗 (Modal)",
       displayModeTab: "新分頁 (Tab)",
       minDeckCardCount: "隱藏卡片少於此數量的牌組",

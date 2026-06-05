@@ -1124,6 +1124,12 @@ export const es: Translations = {
       noKept: "Conserva al menos una tarjeta para guardar",
       close: "Cerrar",
       cancel: "Cancelar",
+      includeGenerated: "Incluir las tarjetas generadas como contexto",
+      existingCardsHeading: "Tarjetas ya generadas en esta sesión:",
+      avoidDuplicatesInstruction: "No dupliques ninguna de las tarjetas anteriores.",
+      savedBadge: "Guardada",
+      savedNotice: "{count} tarjetas guardadas hasta ahora",
+      generateFailed: "No se pudieron generar las tarjetas",
     },
     editFlashcard: {
       aiRefactor: "Refactorizar con IA",
@@ -1264,6 +1270,9 @@ export const es: Translations = {
       flashcardManagerDisplayMode: "Modo del gestor de tarjetas",
       flashcardManagerDisplayModeDesc:
         "Dónde se abre el gestor de tarjetas. Las pestañas pueden arrastrarse a barras laterales, paneles inferiores o ventanas separadas.",
+      aiGeneratorDisplayMode: "Modo de visualización del generador con IA",
+      aiGeneratorDisplayModeDesc:
+        "Dónde se abre el generador de tarjetas con IA. Las pestañas pueden arrastrarse a barras laterales, paneles inferiores o ventanas separadas.",
       displayModeModal: "Modal superpuesto",
       displayModeTab: "Pestaña nueva",
       minDeckCardCount: "Ocultar mazos con menos de",

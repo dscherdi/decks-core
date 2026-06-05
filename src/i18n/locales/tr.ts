@@ -1111,6 +1111,12 @@ export const tr: Translations = {
       noKept: "Kaydetmek için en az bir kart tut",
       close: "Kapat",
       cancel: "İptal",
+      includeGenerated: "Oluşturulan kartları bağlam olarak ekle",
+      existingCardsHeading: "Bu oturumda zaten oluşturulan kartlar:",
+      avoidDuplicatesInstruction: "Yukarıdaki kartlardan hiçbirini tekrarlama.",
+      savedBadge: "Kaydedildi",
+      savedNotice: "Şimdiye kadar {count} kart kaydedildi",
+      generateFailed: "Kartlar oluşturulamadı",
     },
     editFlashcard: {
       aiRefactor: "Yapay zekâ ile düzenle",
@@ -1251,6 +1257,9 @@ export const tr: Translations = {
       flashcardManagerDisplayMode: "Bilgi kartı yöneticisi görünüm modu",
       flashcardManagerDisplayModeDesc:
         "Bilgi kartı yöneticisinin nerede açılacağı. Sekmeler yan çubuklara, alt panellere veya ayrı pencerelere sürüklenebilir.",
+      aiGeneratorDisplayMode: "Yapay zekâ oluşturucu görüntüleme modu",
+      aiGeneratorDisplayModeDesc:
+        "Yapay zekâ kart oluşturucunun nerede açılacağı. Sekmeler yan çubuklara, alt panellere veya ayrı pencerelere sürüklenebilir.",
       displayModeModal: "Üst üste binen pencere (Modal)",
       displayModeTab: "Yeni sekme",
       minDeckCardCount: "Şundan daha az kartı olan desteleri gizle:",
