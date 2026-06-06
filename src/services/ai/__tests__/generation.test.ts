@@ -86,6 +86,11 @@ describe("buildGenerationMessages", () => {
       });
     expect(system).toContain(CARD_DELIMITER);
     expect(system).toContain("FRONT:");
+    // The per-response card cap is part of the static system prompt.
+    expect(system).toContain("at most 30 cards");
+    // Style rules: no conversational fillers, fronts not all-caps.
+    expect(system).toContain("no conversational fillers");
+    expect(system).toContain("normal sentence case");
     // Source notes live in the (static) first user message...
     expect(user).toContain("Paris is the capital.");
     expect(user).not.toContain("Make cards about France");

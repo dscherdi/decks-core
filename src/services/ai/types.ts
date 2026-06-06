@@ -8,7 +8,7 @@ export type AiProviderId =
   | "openai"
   | "claude"
   | "openai-compatible"
-  | "decks-cloud";
+  | "decks-pro";
 
 export interface AiProviderConfig {
   provider: AiProviderId;

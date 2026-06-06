@@ -45,11 +45,16 @@ const GENERATION_FORMAT = [
   "- A field value may span multiple lines and may contain Markdown and $LaTeX$.",
   '- "NOTES:" is optional; include it empty or omit it when there is nothing to add.',
   "- Do not output JSON, numbering, surrounding prose, or code fences — only the card blocks.",
+  "- Output only the card blocks — no conversational fillers, preambles, acknowledgements, or closing remarks.",
+  "- Write the FRONT in normal sentence case — do not put the entire FRONT in capital letters or Title-Case every word.",
 ].join("\n");
 
 /** Appended to the system prompt to discourage repeats across batches. */
 const DEDUP_RULE =
   "Never produce a card for a concept that already appears earlier in this conversation.";
+
+/** Caps how many cards the model emits in one response; the batch loop continues for more. */
+const BATCH_LIMIT_RULE = "Generate at most 30 cards in a single response.";
 
 /** Static trigger that closes each request; the instruction is prepended to it. */
 const CONTINUE_TRIGGER =
@@ -83,7 +88,7 @@ export function buildGenerationMessages(req: GenerateRequest): {
   priorAssistant?: string;
   followupUser?: string;
 } {
-  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
+  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}\n\n${BATCH_LIMIT_RULE}`;
   const source = req.sourceContext?.trim();
   const instruction = req.prompt.trim();
   const priorAssistant = req.generatedSoFar?.length
