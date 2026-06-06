@@ -138,6 +138,7 @@ export const it: Translations = {
     restoringFromFileProgress: "Ripristino da {filename}: {progress}%",
     restoreProgress: "Ripristino backup: {progress}% ({current}/{total})",
     restoreFailed: "❌ Ripristino fallito: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ Ripristino backup fallito: {message}",
     dropdownNotFound: "Menu a tendina non trovato",
     noBackupsFound: "Nessun backup trovato",
@@ -1281,6 +1282,9 @@ export const it: Translations = {
       restoreButton: "Ripristina",
       restoreFromFile: "Ripristina da file",
       restoreFromFileTooltip: "Scegli un file .db da qualsiasi punto del disco",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
     fsrs: {
       heading: "Regolazione dell'algoritmo",
