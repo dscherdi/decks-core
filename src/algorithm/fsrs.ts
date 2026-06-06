@@ -4,6 +4,7 @@ import {
   getWeightsForProfile,
   getMinMinutesForProfile,
   getMaxIntervalDaysForProfile,
+  normalizeProfile,
   validateFSRSWeights,
   validateProfile,
   validateRequestRetention,
@@ -71,6 +72,9 @@ export class FSRS {
       profile: "STANDARD",
       ...params,
     };
+    // Coerce legacy/unknown profiles (e.g. the removed INTENSIVE) to STANDARD so a
+    // stray value degrades gracefully instead of crashing scheduling.
+    this.params.profile = normalizeProfile(this.params.profile);
     this.validateParameters();
   }
 
@@ -79,6 +83,7 @@ export class FSRS {
    */
   updateParameters(params: Partial<FSRSParameters>) {
     this.params = { ...this.params, ...params };
+    this.params.profile = normalizeProfile(this.params.profile);
     this.validateParameters();
   }
 

@@ -132,6 +132,7 @@ export const zhTW: Translations = {
     restoringFromFileProgress: "正在從 {filename} 還原：{progress}%",
     restoreProgress: "正在還原備份：{progress}% ({current}/{total})",
     restoreFailed: "❌ 還原失敗：{message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ 備份還原失敗：{message}",
     dropdownNotFound: "找不到下拉式選單",
     noBackupsFound: "找不到任何備份",
@@ -1231,6 +1232,9 @@ export const zhTW: Translations = {
       restoreButton: "還原",
       restoreFromFile: "從檔案還原",
       restoreFromFileTooltip: "從磁碟中的任何位置選擇 .db 備份檔",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {

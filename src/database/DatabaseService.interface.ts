@@ -217,6 +217,7 @@ export interface IDatabaseService {
   purgeDatabase(): Promise<void>;
   resetDeckProgress(deckId: string): Promise<void>;
   resetCustomDeckProgress(customDeckId: string): Promise<void>;
+  rebuildCardStateFromReviewLogs(): Promise<number>;
 
   suspendCard(cardId: string): Promise<void>;
   unsuspendCard(cardId: string): Promise<void>;

@@ -130,6 +130,7 @@ export const zh: Translations = {
     restoringFromFileProgress: "正在从 {filename} 恢复：{progress}%",
     restoreProgress: "恢复进度：{progress}%（{current}/{total}）",
     restoreFailed: "❌ 恢复失败：{message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ 备份恢复失败：{message}",
     dropdownNotFound: "未找到下拉框",
     noBackupsFound: "未找到备份",
@@ -1207,6 +1208,9 @@ export const zh: Translations = {
       restoreButton: "恢复",
       restoreFromFile: "从文件恢复",
       restoreFromFileTooltip: "从磁盘任意位置选择 .db 备份",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
     fsrs: {
       heading: "算法调优",

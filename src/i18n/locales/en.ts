@@ -119,6 +119,7 @@ export const en = {
     restoringFromFileProgress: "Restoring from {filename}: {progress}%",
     restoreProgress: "Restoring backup: {progress}% ({current}/{total})",
     restoreFailed: "❌ Restore failed: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ Backup restoration failed: {message}",
     dropdownNotFound: "Dropdown not found",
     noBackupsFound: "No backups found",
@@ -1186,6 +1187,9 @@ export const en = {
       restoreButton: "Restore",
       restoreFromFile: "Restore from file",
       restoreFromFileTooltip: "Pick a .db backup from anywhere on disk",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {
