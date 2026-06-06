@@ -215,7 +215,7 @@ describe("DecksCloudProvider", () => {
     );
     await provider.complete({ system: "system", user: "user" });
     const req = http.requests[0];
-    expect(req.url).toBe("https://api.decks.app/api/generate");
+    expect(req.url).toBe("https://decks-backend.dscherdil.workers.dev/api/generate");
     expect(req.headers["Authorization"]).toBe("Bearer DECKS-abc");
     const body = JSON.parse(req.body ?? "{}");
     expect(body.model).toBe("deepseek/deepseek-r1");

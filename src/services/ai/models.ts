@@ -5,9 +5,10 @@ export interface AiModelOption {
   name: string;
 }
 
-// Default origin of the hosted Decks Cloud proxy. Replace with the deployed
-// Worker origin before release; an empty baseUrl in settings falls back to this.
-export const DECKS_CLOUD_DEFAULT_BASE_URL = "https://api.decks.app";
+// Default origin of the hosted Decks Cloud proxy; an empty baseUrl in settings
+// falls back to this.
+export const DECKS_CLOUD_DEFAULT_BASE_URL =
+  "https://decks-backend.dscherdil.workers.dev";
 
 // Curated model lists offered in the settings model picker. Hosted providers
 // surface these as a dropdown; the local (openai-compatible) provider uses a
