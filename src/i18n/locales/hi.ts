@@ -143,6 +143,7 @@ export const hi: Translations = {
     restoreProgress:
       "बैकअप पुनर्स्थापित किया जा रहा है: {progress}% ({current}/{total})",
     restoreFailed: "❌ पुनर्स्थापना विफल: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ बैकअप पुनर्स्थापना विफल: {message}",
     dropdownNotFound: "ड्रॉपडाउन नहीं मिला",
     noBackupsFound: "कोई बैकअप नहीं मिला",
@@ -1296,6 +1297,9 @@ export const hi: Translations = {
       restoreButton: "पुनर्स्थापित करें",
       restoreFromFile: "फ़ाइल से पुनर्स्थापित करें",
       restoreFromFileTooltip: "डिस्क पर कहीं से भी एक .db बैकअप चुनें",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {

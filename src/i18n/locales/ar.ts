@@ -135,6 +135,7 @@ export const ar: Translations = {
     restoreProgress:
       "جاري استعادة النسخة الاحتياطية: {progress}% ({current}/{total})",
     restoreFailed: "❌ فشلت الاستعادة: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ فشلت استعادة النسخة الاحتياطية: {message}",
     dropdownNotFound: "لم يتم العثور على القائمة المنسدلة",
     noBackupsFound: "لم يتم العثور على نسخ احتياطية",
@@ -1249,6 +1250,9 @@ export const ar: Translations = {
       restoreButton: "استعادة",
       restoreFromFile: "الاستعادة من ملف",
       restoreFromFileTooltip: "اختر ملف .db من الجهاز",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {

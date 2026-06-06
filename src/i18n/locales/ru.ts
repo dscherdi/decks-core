@@ -138,6 +138,7 @@ export const ru: Translations = {
     restoringFromFileProgress: "Восстановление из {filename}: {progress}%",
     restoreProgress: "Восстановление: {progress}% ({current}/{total})",
     restoreFailed: "❌ Восстановление не удалось: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ Не удалось восстановить копию: {message}",
     dropdownNotFound: "Выпадающий список не найден",
     noBackupsFound: "Резервные копии не найдены",
@@ -1277,6 +1278,9 @@ export const ru: Translations = {
       restoreButton: "Восстановить",
       restoreFromFile: "Восстановить из файла",
       restoreFromFileTooltip: "Выберите файл .db из любого места на диске",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
     fsrs: {
       heading: "Настройка алгоритма",

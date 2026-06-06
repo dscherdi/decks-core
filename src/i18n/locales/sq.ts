@@ -141,6 +141,7 @@ export const sq: Translations = {
     restoreProgress:
       "Po rikthehet kopja rezervë: {progress}% ({current}/{total})",
     restoreFailed: "❌ Rikthimi dështoi: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ Rikthimi i kopjes rezervë dështoi: {message}",
     dropdownNotFound: "Menyja rënëse nuk u gjet",
     noBackupsFound: "Nuk u gjet asnjë kopje rezervë",
@@ -1311,6 +1312,9 @@ export const sq: Translations = {
       restoreButton: "Rikthe",
       restoreFromFile: "Rikthe nga skedari",
       restoreFromFileTooltip: "Zgjidh një .db kopje rezervë nga pajisja jote",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {

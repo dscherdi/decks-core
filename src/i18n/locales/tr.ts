@@ -139,6 +139,7 @@ export const tr: Translations = {
       "{filename} dosyasından geri yükleniyor: %{progress}",
     restoreProgress: "Yedek geri yükleniyor: %{progress} ({current}/{total})",
     restoreFailed: "❌ Geri yükleme başarısız: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ Yedek geri yüklemesi başarısız: {message}",
     dropdownNotFound: "Açılır menü bulunamadı",
     noBackupsFound: "Yedek bulunamadı",
@@ -1298,6 +1299,9 @@ export const tr: Translations = {
       restoreFromFile: "Dosyadan geri yükle",
       restoreFromFileTooltip:
         "Diskin herhangi bir yerinden bir .db yedeği seçin",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {

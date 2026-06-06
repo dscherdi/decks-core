@@ -1,7 +1,7 @@
 import type { Database } from "sql.js";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 25;
+export const CURRENT_SCHEMA_VERSION = 26;
 
 // SQL Table Creation Schema - Used when database file doesn't exist
 export const CREATE_TABLES_SQL = `
@@ -298,40 +298,89 @@ export function buildMigrationSQL(db: Database): string {
     return `${fallback} as ${currentName}`;
   };
 
+  // Resolve the source column name (current, renamed, or null when absent).
+  const pick = (
+    columns: string[],
+    currentName: string,
+    oldName: string | null
+  ): string | null => {
+    if (columns.includes(currentName)) return currentName;
+    if (oldName && columns.includes(oldName)) return oldName;
+    return null;
+  };
+
+  // NOT NULL-safe passthrough: COALESCE the existing column with its default so a
+  // legacy NULL is coerced rather than silently dropped by the rebuilt table's
+  // NOT NULL constraint. Falls back to the default literal when the column is absent.
+  const reqCol = (
+    columns: string[],
+    currentName: string,
+    oldName: string | null,
+    fallback: string
+  ): string => {
+    const s = pick(columns, currentName, oldName);
+    return `${s ? `COALESCE(${s}, ${fallback})` : fallback} as ${currentName}`;
+  };
+
+  // CHECK-constrained passthrough: map the existing value through a CASE so legacy
+  // values that the rebuilt table's CHECK would reject (capitalized rating labels,
+  // the removed INTENSIVE profile, NULLs) are coerced to a valid value instead of
+  // dropping the whole row.
+  const enumCol = (
+    columns: string[],
+    currentName: string,
+    expr: (sqlCol: string) => string,
+    fallback: string
+  ): string => {
+    const s = pick(columns, currentName, null);
+    return `${s ? expr(s) : fallback} as ${currentName}`;
+  };
+
   // Build review_logs migration (with fallbacks for renamed columns)
   const rl = reviewLogsColumns;
   const reviewLogsSelect = [
     "id",
     "flashcard_id",
     col(rl, "session_id", null, "NULL"),
-    col(rl, "last_reviewed_at", null, "datetime('now')"),
+    reqCol(rl, "last_reviewed_at", null, "datetime('now')"),
     col(rl, "shown_at", null, "NULL"),
-    col(rl, "reviewed_at", null, "datetime('now')"),
-    col(rl, "rating", null, "3"),
-    col(rl, "rating_label", null, "'good'"),
+    reqCol(rl, "reviewed_at", null, "datetime('now')"),
+    enumCol(rl, "rating", (c) => `CASE WHEN ${c} IN (1, 2, 3, 4) THEN ${c} ELSE 3 END`, "3"),
+    enumCol(
+      rl,
+      "rating_label",
+      (c) => `CASE WHEN LOWER(${c}) IN ('again', 'hard', 'good', 'easy') THEN LOWER(${c}) ELSE 'good' END`,
+      "'good'"
+    ),
     col(rl, "time_elapsed_ms", "time_elapsed", "NULL"),
-    col(rl, "old_state", null, "'new'"),
-    col(rl, "old_repetitions", null, "0"),
-    col(rl, "old_lapses", null, "0"),
-    col(rl, "old_stability", null, "0"),
-    col(rl, "old_difficulty", null, "5.0"),
-    col(rl, "new_state", null, "'review'"),
-    col(rl, "new_repetitions", null, "1"),
-    col(rl, "new_lapses", null, "0"),
-    col(rl, "new_stability", null, "2.5"),
-    col(rl, "new_difficulty", null, "5.0"),
-    col(rl, "old_interval_minutes", "old_interval", "0"),
-    col(rl, "new_interval_minutes", "new_interval", "1440"),
-    col(rl, "old_due_at", "old_due_date", "datetime('now')"),
-    col(rl, "new_due_at", "new_due_date", "datetime('now', '+1 day')"),
-    col(rl, "elapsed_days", null, "1.0"),
-    col(rl, "retrievability", null, "0.9"),
-    col(rl, "request_retention", null, "0.9"),
-    col(rl, "profile", null, "'STANDARD'"),
-    col(rl, "maximum_interval_days", null, "36500"),
-    col(rl, "min_minutes", null, "1"),
-    col(rl, "fsrs_weights_version", "weights_version", "'1.0'"),
-    col(rl, "scheduler_version", null, "'1.0'"),
+    enumCol(rl, "old_state", (c) => `CASE WHEN ${c} IN ('new', 'review') THEN ${c} ELSE 'new' END`, "'new'"),
+    reqCol(rl, "old_repetitions", null, "0"),
+    reqCol(rl, "old_lapses", null, "0"),
+    reqCol(rl, "old_stability", null, "0"),
+    reqCol(rl, "old_difficulty", null, "5.0"),
+    enumCol(rl, "new_state", (c) => `CASE WHEN ${c} IN ('new', 'review') THEN ${c} ELSE 'review' END`, "'review'"),
+    reqCol(rl, "new_repetitions", null, "1"),
+    reqCol(rl, "new_lapses", null, "0"),
+    reqCol(rl, "new_stability", null, "2.5"),
+    reqCol(rl, "new_difficulty", null, "5.0"),
+    reqCol(rl, "old_interval_minutes", "old_interval", "0"),
+    reqCol(rl, "new_interval_minutes", "new_interval", "1440"),
+    reqCol(rl, "old_due_at", "old_due_date", "datetime('now')"),
+    reqCol(rl, "new_due_at", "new_due_date", "datetime('now', '+1 day')"),
+    reqCol(rl, "elapsed_days", null, "1.0"),
+    reqCol(rl, "retrievability", null, "0.9"),
+    reqCol(rl, "request_retention", null, "0.9"),
+    // Legacy INTENSIVE is collapsed to STANDARD; anything unknown defaults to STANDARD.
+    enumCol(
+      rl,
+      "profile",
+      (c) => `CASE WHEN ${c} = 'INTENSIVE' THEN 'STANDARD' WHEN ${c} IN ('STANDARD', 'TRAINED') THEN ${c} ELSE 'STANDARD' END`,
+      "'STANDARD'"
+    ),
+    reqCol(rl, "maximum_interval_days", null, "36500"),
+    reqCol(rl, "min_minutes", null, "1"),
+    reqCol(rl, "fsrs_weights_version", "weights_version", "'1.0'"),
+    reqCol(rl, "scheduler_version", null, "'1.0'"),
     col(rl, "note_model_id", null, "NULL"),
     col(rl, "card_template_id", null, "NULL"),
     col(rl, "content_hash", null, "NULL"),
@@ -495,7 +544,11 @@ export function buildMigrationSQL(db: Database): string {
       done_unique INTEGER NOT NULL DEFAULT 0
     );
 
-    -- Migrate review_logs (column renames handled, JS-level table existence guard)
+    -- Migrate review_logs. reviewLogsSelect normalizes every CHECK-constrained and
+    -- NOT NULL column (rating, rating_label, old/new_state, profile, numerics) so legacy
+    -- rows are coerced into valid values instead of being silently skipped. OR IGNORE is
+    -- kept only as a last-resort guard against an unforeseen bad row aborting the whole
+    -- migration; callers compare row counts before/after and warn if anything is dropped.
     CREATE TABLE review_logs_new (
       id TEXT PRIMARY KEY,
       flashcard_id TEXT NOT NULL,

@@ -137,6 +137,7 @@ export const ja: Translations = {
     restoringFromFileProgress: "{filename} から復元中: {progress}%",
     restoreProgress: "バックアップを復元中: {progress}% ({current}/{total})",
     restoreFailed: "❌ 復元に失敗: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed: "❌ バックアップの復元に失敗: {message}",
     dropdownNotFound: "ドロップダウンが見つかりません",
     noBackupsFound: "バックアップが見つかりません",
@@ -1258,6 +1259,9 @@ export const ja: Translations = {
       restoreButton: "復元",
       restoreFromFile: "ファイルから復元",
       restoreFromFileTooltip: "ディスク上の任意の場所から .db ファイルを選択",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
     fsrs: {
       heading: "アルゴリズムの調整",

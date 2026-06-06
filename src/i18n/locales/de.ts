@@ -144,6 +144,7 @@ export const de: Translations = {
     restoreProgress:
       "Sicherung wird wiederhergestellt: {progress}% ({current}/{total})",
     restoreFailed: "❌ Wiederherstellung fehlgeschlagen: {message}",
+    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
     backupRestoreFailed:
       "❌ Wiederherstellung der Sicherung fehlgeschlagen: {message}",
     dropdownNotFound: "Dropdown nicht gefunden",
@@ -1319,6 +1320,9 @@ export const de: Translations = {
       restoreFromFile: "Aus Datei wiederherstellen",
       restoreFromFileTooltip:
         "Eine .db-Sicherung von beliebiger Stelle auf der Festplatte wählen",
+      rebuildState: "Rebuild card scheduling",
+      rebuildStateDesc: "Restore scheduling for cards that show as new but still have review history. Creates a backup first.",
+      rebuildStateButton: "Rebuild from history",
     },
 
     fsrs: {
