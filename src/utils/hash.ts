@@ -7,16 +7,16 @@
  * Uses a basic hash algorithm for deterministic ID generation
  */
 function simpleHash(text: string): number {
-  if (!text) {
-    return 0;
-  }
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    const char = text.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash);
+    if (!text) {
+        return 0;
+    }
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+        const char = text.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
 }
 
 /**
@@ -28,12 +28,21 @@ function simpleHash(text: string): number {
  * pre-canvas version so existing markdown card IDs stay stable.
  */
 export function generateFlashcardId(
-  frontText: string,
-  deckId: string,
-  sourceNodeId?: string
+    frontText: string,
+    deckId: string,
+    sourceNodeId?: string,
 ): string {
-  const suffix = sourceNodeId ? "::node:" + sourceNodeId : "";
-  return `card_${simpleHash(deckId + "::" + frontText + suffix).toString(36)}`;
+    const suffix = sourceNodeId ? "::node:" + sourceNodeId : "";
+    return `card_${simpleHash(deckId + "::" + frontText + suffix).toString(36)}`;
+}
+
+/**
+ * Generate unique flashcard ID using hash of front text (Legacy)
+ *
+ * Used to restore orphaned review logs
+ */
+export function generateOldFlashcardId(frontText: string): string {
+    return `card_${simpleHash(frontText).toString(36)}`;
 }
 
 /**
@@ -42,7 +51,7 @@ export function generateFlashcardId(
  * @returns A hex string hash
  */
 export function generateContentHash(backText: string): string {
-  return simpleHash(backText).toString(16);
+    return simpleHash(backText).toString(16);
 }
 
 /**
@@ -51,7 +60,7 @@ export function generateContentHash(backText: string): string {
  * @returns A deterministic ID in format "deck_HASH"
  */
 export function generateDeckId(filepath: string): string {
-  return `deck_${simpleHash(filepath).toString(36)}`;
+    return `deck_${simpleHash(filepath).toString(36)}`;
 }
 
 /**
@@ -60,7 +69,7 @@ export function generateDeckId(filepath: string): string {
  * @returns A deterministic ID in format "deckgroup_HASH"
  */
 export function generateDeckGroupId(tag: string): string {
-  return `deckgroup_${simpleHash(tag).toString(36)}`;
+    return `deckgroup_${simpleHash(tag).toString(36)}`;
 }
 
 /**
@@ -72,12 +81,12 @@ export function generateDeckGroupId(tag: string): string {
  * identical content. Markdown cards omit it for byte-stable hashes.
  */
 export function generateReverseFlashcardId(
-  originalFrontText: string,
-  deckId: string,
-  sourceNodeId?: string
+    originalFrontText: string,
+    deckId: string,
+    sourceNodeId?: string,
 ): string {
-  const suffix = sourceNodeId ? "::node:" + sourceNodeId : "";
-  return `rcard_${simpleHash("reverse:" + deckId + "::" + originalFrontText + suffix).toString(36)}`;
+    const suffix = sourceNodeId ? "::node:" + sourceNodeId : "";
+    return `rcard_${simpleHash("reverse:" + deckId + "::" + originalFrontText + suffix).toString(36)}`;
 }
 
 /**
@@ -86,7 +95,7 @@ export function generateReverseFlashcardId(
  * @returns A deterministic ID in format "cdeck_HASH"
  */
 export function generateCustomDeckId(name: string): string {
-  return `cdeck_${simpleHash(name).toString(36)}`;
+    return `cdeck_${simpleHash(name).toString(36)}`;
 }
 
 /**
@@ -95,8 +104,11 @@ export function generateCustomDeckId(name: string): string {
  * @param flashcardId The ID of the flashcard
  * @returns A deterministic ID in format "cdc_HASH"
  */
-export function generateCustomDeckCardId(customDeckId: string, flashcardId: string): string {
-  return `cdc_${simpleHash(customDeckId + "::" + flashcardId).toString(36)}`;
+export function generateCustomDeckCardId(
+    customDeckId: string,
+    flashcardId: string,
+): string {
+    return `cdc_${simpleHash(customDeckId + "::" + flashcardId).toString(36)}`;
 }
 
 /**
@@ -106,22 +118,25 @@ export function generateCustomDeckCardId(customDeckId: string, flashcardId: stri
  * identical content. Markdown cards omit it for byte-stable hashes.
  */
 export function generateClozeFlashcardId(
-  frontText: string,
-  clozeText: string,
-  clozeOrder: number,
-  deckId: string,
-  sourceNodeId?: string
+    frontText: string,
+    clozeText: string,
+    clozeOrder: number,
+    deckId: string,
+    sourceNodeId?: string,
 ): string {
-  const suffix = sourceNodeId ? "::node:" + sourceNodeId : "";
-  return `ccard_${simpleHash("cloze:" + deckId + "::" + frontText + "::" + clozeOrder + "::" + clozeText + suffix).toString(36)}`;
+    const suffix = sourceNodeId ? "::node:" + sourceNodeId : "";
+    return `ccard_${simpleHash("cloze:" + deckId + "::" + frontText + "::" + clozeOrder + "::" + clozeText + suffix).toString(36)}`;
 }
 
 /**
  * Generate ID for a spatial canvas card derived from a single canvas edge.
  * Deck-scoped so edge ids reused across canvases don't collide.
  */
-export function generateSpatialFlashcardId(deckId: string, edgeId: string): string {
-  return `scard_${simpleHash(deckId + "::edge:" + edgeId).toString(36)}`;
+export function generateSpatialFlashcardId(
+    deckId: string,
+    edgeId: string,
+): string {
+    return `scard_${simpleHash(deckId + "::edge:" + edgeId).toString(36)}`;
 }
 
 /**
@@ -129,10 +144,10 @@ export function generateSpatialFlashcardId(deckId: string, edgeId: string): stri
  * One card per cloze in the back, distinguished by clozeOrder + clozeText.
  */
 export function generateSpatialClozeFlashcardId(
-  deckId: string,
-  edgeId: string,
-  clozeText: string,
-  clozeOrder: number,
+    deckId: string,
+    edgeId: string,
+    clozeText: string,
+    clozeOrder: number,
 ): string {
-  return `sccard_${simpleHash("spatial-cloze:" + deckId + "::edge:" + edgeId + "::" + clozeOrder + "::" + clozeText).toString(36)}`;
+    return `sccard_${simpleHash("spatial-cloze:" + deckId + "::edge:" + edgeId + "::" + clozeOrder + "::" + clozeText).toString(36)}`;
 }

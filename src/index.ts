@@ -117,6 +117,7 @@ export type {
 // Utils
 export {
   generateFlashcardId,
+  generateOldFlashcardId,
   generateDeckId,
   generateContentHash,
   generateDeckGroupId,
