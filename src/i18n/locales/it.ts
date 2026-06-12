@@ -1068,6 +1068,8 @@ export const it: Translations = {
       selectPrompt: "Seleziona una carta da rivedere",
     },
     aiGenerator: {
+      destination: "Destinazione",
+      deckSearchPlaceholder: "Cerca mazzi esistenti nel forziere…",
       title: "Genera flashcard con l'IA",
       intro: "Descrivi cosa generare. Le carte compaiono qui sotto: tieni quelle che vuoi e poi salva.",
       promptPlaceholder: "Descrivi le flashcard da generare…",

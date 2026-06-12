@@ -1083,6 +1083,8 @@ export const fr: Translations = {
       selectPrompt: "Sélectionnez une carte à réviser",
     },
     aiGenerator: {
+      destination: "Destination",
+      deckSearchPlaceholder: "Rechercher des paquets existants dans le coffre…",
       title: "Générer des cartes avec l'IA",
       intro: "Décrivez ce qu'il faut générer. Les cartes apparaissent ci-dessous : conservez celles que vous voulez, puis enregistrez.",
       promptPlaceholder: "Décrivez les cartes à générer…",

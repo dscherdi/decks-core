@@ -1087,6 +1087,8 @@ export const sq: Translations = {
       selectPrompt: "Zgjidh një kartë për ta rishikuar",
     },
     aiGenerator: {
+      destination: "Destinacioni",
+      deckSearchPlaceholder: "Kërko stiva ekzistuese në kasafortë…",
       title: "Krijo karta me IA",
       intro: "Përshkruaj çfarë të krijohet. Kartat shfaqen më poshtë — mbaj ato që do, pastaj ruaji.",
       promptPlaceholder: "Përshkruaj kartat që do të krijohen…",

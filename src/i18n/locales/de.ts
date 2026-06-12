@@ -1094,6 +1094,8 @@ export const de: Translations = {
       selectPrompt: "Wähle eine Karte zur Überprüfung",
     },
     aiGenerator: {
+      destination: "Ziel",
+      deckSearchPlaceholder: "Vorhandene Stapel im Tresor suchen…",
       title: "Karteikarten mit KI generieren",
       intro: "Beschreibe, was generiert werden soll. Karten erscheinen unten — behalte die gewünschten und speichere sie dann.",
       promptPlaceholder: "Beschreibe die zu generierenden Karteikarten…",

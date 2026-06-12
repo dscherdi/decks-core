@@ -1044,6 +1044,8 @@ export const ja: Translations = {
       selectPrompt: "確認するカードを選択",
     },
     aiGenerator: {
+      destination: "保存先",
+      deckSearchPlaceholder: "保管庫内の既存デッキを検索…",
       title: "AIでフラッシュカードを生成",
       intro: "生成内容を記述してください。カードが下に表示されます。必要なものを残して保存します。",
       promptPlaceholder: "生成するフラッシュカードを記述…",

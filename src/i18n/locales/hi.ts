@@ -1073,6 +1073,8 @@ export const hi: Translations = {
       selectPrompt: "समीक्षा के लिए एक कार्ड चुनें",
     },
     aiGenerator: {
+      destination: "गंतव्य",
+      deckSearchPlaceholder: "वॉल्ट में मौजूदा डेक खोजें…",
       title: "AI से फ़्लैशकार्ड बनाएँ",
       intro: "बताएँ कि क्या बनाना है। कार्ड नीचे आते जाएँगे — जो चाहिए उन्हें रखें, फिर सहेजें।",
       promptPlaceholder: "बनाए जाने वाले फ़्लैशकार्ड का वर्णन करें…",

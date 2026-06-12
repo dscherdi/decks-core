@@ -1000,6 +1000,8 @@ export const zh: Translations = {
       selectPrompt: "选择一张卡片审阅",
     },
     aiGenerator: {
+      destination: "目标",
+      deckSearchPlaceholder: "在仓库中搜索现有牌组…",
       title: "用 AI 生成卡片",
       intro: "描述要生成的内容。卡片会在下方逐张出现——保留需要的，然后保存。",
       promptPlaceholder: "描述要生成的卡片…",

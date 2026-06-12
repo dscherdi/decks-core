@@ -1020,6 +1020,8 @@ export const zhTW: Translations = {
       selectPrompt: "選擇一張卡片審閱",
     },
     aiGenerator: {
+      destination: "目標",
+      deckSearchPlaceholder: "在保管庫中搜尋現有牌組…",
       title: "用 AI 生成卡片",
       intro: "描述要生成的內容。卡片會在下方逐張出現——保留需要的，然後儲存。",
       promptPlaceholder: "描述要生成的卡片…",

@@ -1034,6 +1034,8 @@ export const ar: Translations = {
       selectPrompt: "اختر بطاقة للمراجعة",
     },
     aiGenerator: {
+      destination: "الوجهة",
+      deckSearchPlaceholder: "ابحث عن مجموعات موجودة في القبو…",
       title: "إنشاء بطاقات بالذكاء الاصطناعي",
       intro: "صِف ما تريد إنشاءه. تظهر البطاقات أدناه — احتفظ بما تريد ثم احفظ.",
       promptPlaceholder: "صِف البطاقات المراد إنشاؤها…",

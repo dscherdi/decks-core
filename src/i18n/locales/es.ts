@@ -1086,6 +1086,8 @@ export const es: Translations = {
       selectPrompt: "Selecciona una tarjeta para revisar",
     },
     aiGenerator: {
+      destination: "Destino",
+      deckSearchPlaceholder: "Buscar mazos existentes en la bóveda…",
       title: "Generar tarjetas con IA",
       intro: "Describe qué generar. Las tarjetas aparecen abajo: conserva las que quieras y guárdalas.",
       promptPlaceholder: "Describe las tarjetas que se generarán…",

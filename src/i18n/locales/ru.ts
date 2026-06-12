@@ -1059,6 +1059,8 @@ export const ru: Translations = {
       selectPrompt: "Выберите карточку для просмотра",
     },
     aiGenerator: {
+      destination: "Назначение",
+      deckSearchPlaceholder: "Поиск существующих колод в хранилище…",
       title: "Создать карточки с ИИ",
       intro: "Опишите, что сгенерировать. Карточки появятся ниже — оставьте нужные и сохраните.",
       promptPlaceholder: "Опишите карточки для генерации…",

@@ -987,6 +987,8 @@ export const en = {
       selectPrompt: "Select a card to review",
     },
     aiGenerator: {
+      destination: "Destination",
+      deckSearchPlaceholder: "Search existing decks in vault…",
       title: "AI generate flashcards",
       intro: "Describe what to generate. Cards stream in below — keep the ones you want, then save.",
       promptPlaceholder: "Describe the flashcards to generate…",

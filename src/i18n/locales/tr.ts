@@ -1073,6 +1073,8 @@ export const tr: Translations = {
       selectPrompt: "İncelemek için bir kart seç",
     },
     aiGenerator: {
+      destination: "Hedef",
+      deckSearchPlaceholder: "Kasadaki mevcut desteleri ara…",
       title: "Yapay zekâ ile kart oluştur",
       intro: "Ne üretileceğini açıkla. Kartlar aşağıda akar — istediklerini tut, sonra kaydet.",
       promptPlaceholder: "Oluşturulacak kartları açıkla…",
