@@ -358,4 +358,33 @@ describe("AiGenerationService", () => {
       ),
     ).rejects.toMatchObject({ code: "missing_key" });
   });
+
+  it("returns the partial cards + debug when the stream is aborted (Stop)", async () => {
+    const controller = new AbortController();
+    const cardSse =
+      'data: {"choices":[{"delta":{"content":"FRONT: Q1\\nBACK: A1\\n===END===\\n"}}]}\n\n';
+    const http: HttpClient = {
+      async request() {
+        return { status: 200, text: "{}" };
+      },
+      async stream(_req, onChunk) {
+        onChunk(cardSse); // one card streams in...
+        controller.abort(); // ...then the user clicks Stop
+        throw new Error("aborted");
+      },
+    };
+    const service = new AiGenerationService(http);
+    const emitted: GeneratedCard[] = [];
+    const result = await service.generateStream(
+      config,
+      { prompt: "go", debug: true },
+      { onCard: (c) => emitted.push(c) },
+      controller.signal,
+    );
+    expect(result.cards).toEqual([card("Q1", "A1")]);
+    expect(emitted).toEqual([card("Q1", "A1")]);
+    expect(result.debug).toBeTruthy();
+    expect(result.debug?.provider).toBe("openai");
+    expect(result.debug?.raw).toContain("FRONT: Q1");
+  });
 });

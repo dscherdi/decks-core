@@ -77,6 +77,7 @@ export type { AiModelOption } from "./services/ai/models";
 // AI generation
 export { AiGenerationService } from "./services/ai/AiGenerationService";
 export type {
+  GenerateDebugInfo,
   GenerateHandlers,
   GenerateResult,
 } from "./services/ai/AiGenerationService";

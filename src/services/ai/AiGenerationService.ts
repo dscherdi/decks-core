@@ -19,10 +19,22 @@ export interface GenerateHandlers {
   onPartial?: (card: GeneratedCard | null) => void;
 }
 
+/** Structured request payload + raw response, attached only when `debug` was set. */
+export interface GenerateDebugInfo {
+  provider: string;
+  model: string;
+  system: string;
+  user: string;
+  priorAssistant?: string;
+  followupUser?: string;
+  imageCount: number;
+  raw: string;
+}
+
 export interface GenerateResult {
   cards: GeneratedCard[];
   /** The exact prompt sent and raw text received — only when `debug` was set. */
-  debug?: { system: string; user: string; raw: string };
+  debug?: GenerateDebugInfo;
 }
 
 /**
@@ -77,10 +89,22 @@ export class AiGenerationService {
       handlers.onCard(card);
     };
 
+    const makeDebug = (raw: string): GenerateDebugInfo => ({
+      provider: config.provider,
+      model: config.model,
+      system,
+      user,
+      priorAssistant,
+      followupUser,
+      imageCount: req.images?.length ?? 0,
+      raw,
+    });
+
     if (provider.completeStream) {
+      // Declared outside the try so the catch can surface what streamed so far.
+      let streamedRaw = "";
       try {
         const parser = new GenerationStreamParser();
-        let raw = "";
         await provider.completeStream(
           {
             system,
@@ -92,7 +116,7 @@ export class AiGenerationService {
             json: false,
           },
           (delta) => {
-            raw += delta;
+            streamedRaw += delta;
             const { completed, partial } = parser.push(delta);
             for (const c of completed) emit(c);
             handlers.onPartial?.(partial);
@@ -101,13 +125,21 @@ export class AiGenerationService {
         const tail = parser.finish();
         if (tail) emit(tail);
         handlers.onPartial?.(null);
-        return { cards, debug: req.debug ? { system, user, raw } : undefined };
+        return { cards, debug: req.debug ? makeDebug(streamedRaw) : undefined };
       } catch (e) {
-        // Re-throw cancellations and any partial-progress failures; otherwise
-        // (e.g. browser streaming blocked by CORS before any card) fall back to
-        // the non-streaming path below.
-        if (e instanceof AiError && e.code === "aborted") throw e;
-        if (signal?.aborted || cards.length > 0) throw e;
+        // User pressed Stop: surface what streamed so far (incl. debug) rather
+        // than failing, so the debug panel can show the partial exchange.
+        if (signal?.aborted || (e instanceof AiError && e.code === "aborted")) {
+          handlers.onPartial?.(null);
+          return {
+            cards,
+            debug: req.debug ? makeDebug(streamedRaw) : undefined,
+          };
+        }
+        // A mid-stream failure that already produced cards is a real error;
+        // otherwise (e.g. browser streaming blocked by CORS before any card)
+        // fall back to the non-streaming path below.
+        if (cards.length > 0) throw e;
         this.logger?.debug(
           `AI generation streaming failed, falling back to non-streaming: ${
             e instanceof Error ? e.message : String(e)
@@ -135,6 +167,6 @@ export class AiGenerationService {
     }
     for (const c of parseGeneratedCards(raw)) emit(c);
     handlers.onPartial?.(null);
-    return { cards, debug: req.debug ? { system, user, raw } : undefined };
+    return { cards, debug: req.debug ? makeDebug(raw) : undefined };
   }
 }
