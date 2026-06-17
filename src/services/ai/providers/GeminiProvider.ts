@@ -1,13 +1,14 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest, StreamResult } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
 interface GeminiResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: unknown }> };
+    finishReason?: string;
   }>;
 }
 
@@ -73,7 +74,8 @@ export class GeminiProvider implements AiProvider {
   async completeStream(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
-  ): Promise<void> {
+  ): Promise<StreamResult> {
+    let finishReason: string | undefined;
     await streamSse(
       this.http,
       {
@@ -90,9 +92,18 @@ export class GeminiProvider implements AiProvider {
         } catch {
           return;
         }
-        const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+        const candidate = chunk.candidates?.[0];
+        const text = candidate?.content?.parts?.[0]?.text;
         if (typeof text === "string" && text) onDelta(text);
+        // Normalize Gemini's "MAX_TOKENS" to "length".
+        if (candidate?.finishReason) {
+          finishReason =
+            candidate.finishReason === "MAX_TOKENS"
+              ? "length"
+              : candidate.finishReason;
+        }
       },
     );
+    return { finishReason };
   }
 }

@@ -35,6 +35,8 @@ export interface GenerateResult {
   cards: GeneratedCard[];
   /** The exact prompt sent and raw text received — only when `debug` was set. */
   debug?: GenerateDebugInfo;
+  /** True when the model hit its output-token limit (finish_reason "length"). */
+  truncated?: boolean;
 }
 
 /**
@@ -105,7 +107,7 @@ export class AiGenerationService {
       let streamedRaw = "";
       try {
         const parser = new GenerationStreamParser();
-        await provider.completeStream(
+        const streamRes = await provider.completeStream(
           {
             system,
             user,
@@ -122,10 +124,18 @@ export class AiGenerationService {
             handlers.onPartial?.(partial);
           },
         );
+        const truncated = streamRes?.finishReason === "length";
+        // When the response was cut off by the output-token limit, the trailing
+        // card (no closing ===END===) is incomplete — drop it; the next batch
+        // re-generates it cleanly.
         const tail = parser.finish();
-        if (tail) emit(tail);
+        if (tail && !truncated) emit(tail);
         handlers.onPartial?.(null);
-        return { cards, debug: req.debug ? makeDebug(streamedRaw) : undefined };
+        return {
+          cards,
+          truncated,
+          debug: req.debug ? makeDebug(streamedRaw) : undefined,
+        };
       } catch (e) {
         // User pressed Stop: surface what streamed so far (incl. debug) rather
         // than failing, so the debug panel can show the partial exchange.

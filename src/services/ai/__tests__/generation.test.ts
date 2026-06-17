@@ -86,8 +86,6 @@ describe("buildGenerationMessages", () => {
       });
     expect(system).toContain(CARD_DELIMITER);
     expect(system).toContain("FRONT:");
-    // The per-response card cap is part of the static system prompt.
-    expect(system).toContain("at most 30 cards");
     // Style rules: no conversational fillers, fronts not all-caps.
     expect(system).toContain("no conversational fillers");
     expect(system).toContain("normal sentence case");
@@ -296,6 +294,35 @@ describe("provider completeStream (SSE parsing)", () => {
     );
     expect(out).toBe("FRONT: Q\nBACK: A");
   });
+
+  it("reports finish_reason 'length', normalized across providers", async () => {
+    const openaiSse =
+      'data: {"choices":[{"delta":{"content":"x"},"finish_reason":null}]}\n\n' +
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n' +
+      "data: [DONE]\n\n";
+    const oa = await createProvider(
+      config,
+      new StreamHttp([openaiSse]),
+    ).completeStream!({ system: "s", user: "u", json: false }, () => {});
+    expect(oa.finishReason).toBe("length");
+
+    const claudeSse =
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"x"}}\n\n' +
+      'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\n';
+    const cl = await createProvider(
+      { provider: "claude", model: "m", apiKey: "k" },
+      new StreamHttp([claudeSse]),
+    ).completeStream!({ system: "s", user: "u", json: false }, () => {});
+    expect(cl.finishReason).toBe("length");
+
+    const geminiSse =
+      'data: {"candidates":[{"content":{"parts":[{"text":"x"}]},"finishReason":"MAX_TOKENS"}]}\n\n';
+    const gm = await createProvider(
+      { provider: "gemini", model: "m", apiKey: "k" },
+      new StreamHttp([geminiSse]),
+    ).completeStream!({ system: "s", user: "u", json: false }, () => {});
+    expect(gm.finishReason).toBe("length");
+  });
 });
 
 describe("AiGenerationService", () => {
@@ -314,6 +341,22 @@ describe("AiGenerationService", () => {
     );
     expect(result.cards).toEqual([card("Q1", "A1"), card("Q2", "A2")]);
     expect(emitted).toEqual(result.cards);
+  });
+
+  it("flags truncated and drops the cut-off trailing card on finish_reason length", async () => {
+    const sse =
+      'data: {"choices":[{"delta":{"content":"FRONT: Q1\\nBACK: A1\\n===END===\\nFRONT: Q2\\nBACK: A2 (cut"},"finish_reason":null}]}\n\n' +
+      'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n' +
+      "data: [DONE]\n\n";
+    const service = new AiGenerationService(new StreamHttp([sse]));
+    const result = await service.generateStream(
+      config,
+      { prompt: "go" },
+      { onCard: () => {} },
+    );
+    expect(result.truncated).toBe(true);
+    // The completed card is kept; the truncated Q2 (no ===END===) is dropped.
+    expect(result.cards).toEqual([card("Q1", "A1")]);
   });
 
   it("falls back to non-streaming complete() when streaming fails before any card", async () => {

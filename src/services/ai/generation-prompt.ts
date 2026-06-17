@@ -53,9 +53,6 @@ const GENERATION_FORMAT = [
 const DEDUP_RULE =
   "Never produce a card for a concept that already appears earlier in this conversation.";
 
-/** Caps how many cards the model emits in one response; the batch loop continues for more. */
-const BATCH_LIMIT_RULE = "Generate at most 30 cards in a single response.";
-
 /** Static trigger that closes each request; the instruction is prepended to it. */
 const CONTINUE_TRIGGER =
   "Continue generating the next batch of atomic cards based on the source notes. Do not repeat any concept already listed.";
@@ -88,7 +85,7 @@ export function buildGenerationMessages(req: GenerateRequest): {
   priorAssistant?: string;
   followupUser?: string;
 } {
-  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}\n\n${BATCH_LIMIT_RULE}`;
+  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
   const source = req.sourceContext?.trim();
   const instruction = req.prompt.trim();
   const priorAssistant = req.generatedSoFar?.length

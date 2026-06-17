@@ -1,7 +1,7 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest, StreamResult } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 
 interface ChatMessage {
@@ -14,7 +14,10 @@ interface ChatCompletionResponse {
 }
 
 interface ChatCompletionChunk {
-  choices?: Array<{ delta?: { content?: unknown } }>;
+  choices?: Array<{
+    delta?: { content?: unknown };
+    finish_reason?: string | null;
+  }>;
 }
 
 /**
@@ -102,8 +105,9 @@ export class OpenAiProvider implements AiProvider {
   async completeStream(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
-  ): Promise<void> {
+  ): Promise<StreamResult> {
     const body = { ...this.buildBody(req), stream: true };
+    let finishReason: string | undefined;
     await streamSse(
       this.http,
       {
@@ -121,9 +125,12 @@ export class OpenAiProvider implements AiProvider {
         } catch {
           return;
         }
-        const delta = chunk.choices?.[0]?.delta?.content;
+        const choice = chunk.choices?.[0];
+        const delta = choice?.delta?.content;
         if (typeof delta === "string" && delta) onDelta(delta);
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
       },
     );
+    return { finishReason };
   }
 }

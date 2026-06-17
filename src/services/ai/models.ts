@@ -10,6 +10,10 @@ export interface AiModelOption {
 export const DECKS_PRO_DEFAULT_BASE_URL =
   "https://decks-backend.dscherdil.workers.dev";
 
+/** Decks Pro generation tier sentinels (resolved to real models server-side). */
+export const DECKS_TIER_FAST = "decks-tier-fast";
+export const DECKS_TIER_QUALITY = "decks-tier-quality";
+
 // Curated model lists offered in the settings model picker. Hosted providers
 // surface these as a dropdown; the local (openai-compatible) provider uses a
 // free-text field since its model ids depend on the running server.
@@ -31,10 +35,18 @@ export const PROVIDER_MODELS: Record<AiProviderId, AiModelOption[]> = {
     { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite" },
   ],
   "openai-compatible": [],
+  // Decks Pro exposes generation *tiers*, not raw models. The client stores/sends
+  // a tier sentinel; the Decks Pro worker maps it to the real generation model.
   "decks-pro": [
-    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (Fastest)" },
-    { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro (Deep Logic)" },
-    { id: "qwen/qwen3.7-plus", name: "Qwen 3.7 Plus (Powerful & Multilingual)" },
-    { id: "google/gemma-4-31b-it", name: "Gemma 4 31B (Precise Formatting)" },
+    { id: DECKS_TIER_FAST, name: "Fast & general" },
+    { id: DECKS_TIER_QUALITY, name: "High quality & thinking" },
   ],
 };
+
+/**
+ * OCR sentinel for a Decks Pro tier. Sent by the client for PDF page OCR; the
+ * worker maps it to the real OCR model. The model id never lives in the frontend.
+ */
+export function ocrSentinelForTier(tier: string): string {
+  return tier === DECKS_TIER_QUALITY ? "decks-ocr-quality" : "decks-ocr-fast";
+}

@@ -28,6 +28,15 @@ export interface ProviderCompleteRequest {
   json?: boolean;
 }
 
+/** Metadata a streaming completion reports when it finishes. */
+export interface StreamResult {
+  /**
+   * The provider's stop reason, normalized so truncation by the output-token
+   * limit is reported as `"length"` (OpenAI's value) across providers.
+   */
+  finishReason?: string;
+}
+
 /**
  * A provider is responsible only for transport + wire format: take the built
  * system/user messages (and any image attachments), return the raw model text.
@@ -39,11 +48,11 @@ export interface AiProvider {
   complete(req: ProviderCompleteRequest): Promise<string>;
   /**
    * Optional streaming variant: emits model text deltas via `onDelta` as they
-   * arrive and resolves when the response completes. Absent (or throwing) means
-   * the caller should fall back to `complete()`.
+   * arrive and resolves (with the finish reason) when the response completes.
+   * Absent (or throwing) means the caller should fall back to `complete()`.
    */
   completeStream?(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
-  ): Promise<void>;
+  ): Promise<StreamResult>;
 }
