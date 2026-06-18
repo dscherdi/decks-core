@@ -34,7 +34,11 @@ export class AiRefactoringService {
     }
 
     const provider = createProvider(config, this.http);
-    const { system, user } = buildMessages(req);
+    // Some providers assemble the refactor prompt server-side from the raw request.
+    const serverSide = provider.buildsPromptServerSide?.() === true;
+    const { system, user } = serverSide
+      ? { system: "(built server-side)", user: "(built server-side)" }
+      : buildMessages(req);
 
     // Debug logging (gated by the injected logger — never logs headers/keys, only
     // the message text and raw response).
@@ -55,6 +59,7 @@ export class AiRefactoringService {
       raw = await provider.complete({
         system,
         user,
+        rawRefactor: serverSide ? req : undefined,
         images: req.images,
         signal,
         json: false,

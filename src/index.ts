@@ -97,11 +97,8 @@ export type {
   GeneratedCard,
   GenerateRequest,
 } from "./services/ai/generation-prompt";
-export {
-  FLASHCARD_DESIGN_GUIDANCE,
-  SPLIT_INSTRUCTION,
-  cardTypeFieldGuidance,
-} from "./services/ai/refactor-prompt";
+export { DECKS_OVERVIEW, SPLIT_INSTRUCTION } from "./services/ai/prompts";
+export { cardTypeFieldGuidance } from "./services/ai/refactor-prompt";
 export { AiError, REFACTOR_FIELD_KEYS } from "./services/ai/types";
 export type {
   AiProviderId,
@@ -150,6 +147,28 @@ export {
   formatStepInterval,
 } from "./utils/step-parser";
 export { yieldToUI, yieldEvery, processWithYielding } from "./utils/ui";
+export {
+  hashPdf,
+  hashImage,
+  extractOutline,
+  extractPageText,
+  buildSectionContent,
+  pagesForSelection,
+} from "./services/pdf/pdf";
+export type {
+  ChapterNode,
+  PdfDoc,
+  PdfPage,
+  PdfParseMode,
+  OcrRunner,
+} from "./services/pdf/pdf";
+export { PdfOcrCache } from "./services/pdf/PdfOcrCache";
+export type {
+  FileStore,
+  PageRenderer,
+  OcrProgress,
+  OcrDebugEntry,
+} from "./services/pdf/PdfOcrCache";
 export { levenshteinSimilarity } from "./utils/string";
 export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
 export { MinHeap } from "./utils/min-heap";

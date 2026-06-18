@@ -1,5 +1,13 @@
 import type { RefactorImage } from "./types";
-import { FLASHCARD_DESIGN_GUIDANCE } from "./refactor-prompt";
+import {
+  CARD_DELIMITER,
+  CONTINUE_TRIGGER,
+  DECKS_OVERVIEW,
+  DEDUP_RULE,
+  GENERATION_FORMAT,
+} from "./prompts";
+
+export { CARD_DELIMITER };
 
 /** A single AI-generated flashcard (front/back, with optional notes). */
 export interface GeneratedCard {
@@ -25,39 +33,6 @@ export interface GenerateRequest {
   /** Optional routing-category hint forwarded to the backend (Decks Pro). */
   category?: string;
 }
-
-/** Delimiter the model emits after each complete card. */
-export const CARD_DELIMITER = "===END===";
-
-/**
- * Hardcoded output-format contract appended to the generation system prompt.
- * The model must emit each card as labelled lines terminated by the delimiter,
- * NOT JSON — so the stream can be parsed card-by-card as `===END===` arrives.
- */
-const GENERATION_FORMAT = [
-  "Output flashcards as plain text in EXACTLY this format, one block per card:",
-  "FRONT: <the prompt/question>",
-  "BACK: <the answer>",
-  "NOTES: <optional extra detail, or leave empty>",
-  CARD_DELIMITER,
-  "",
-  "Rules for the output:",
-  `- End every card with a line containing only ${CARD_DELIMITER}.`,
-  '- Start each field on its own line with the label "FRONT:", "BACK:", or "NOTES:".',
-  "- A field value may span multiple lines and may contain Markdown and $LaTeX$.",
-  '- "NOTES:" is optional; include it empty or omit it when there is nothing to add.',
-  "- Do not output JSON, numbering, surrounding prose, or code fences — only the card blocks.",
-  "- Output only the card blocks — no conversational fillers, preambles, acknowledgements, or closing remarks.",
-  "- Write the FRONT in normal sentence case — do not put the entire FRONT in capital letters or Title-Case every word.",
-].join("\n");
-
-/** Appended to the system prompt to discourage repeats across batches. */
-const DEDUP_RULE =
-  "Never produce a card for a concept that already appears earlier in this conversation.";
-
-/** Static trigger that closes each request; the instruction is prepended to it. */
-const CONTINUE_TRIGGER =
-  "Continue generating the next batch of atomic cards based on the source notes. Do not repeat any concept already listed.";
 
 /** Render prior cards back into the model's own output grammar. */
 export function serializeCards(cards: GeneratedCard[]): string {
@@ -87,7 +62,7 @@ export function buildGenerationMessages(req: GenerateRequest): {
   priorAssistant?: string;
   followupUser?: string;
 } {
-  const system = `${FLASHCARD_DESIGN_GUIDANCE}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
+  const system = `${DECKS_OVERVIEW}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
   const source = req.sourceContext?.trim();
   const instruction = req.prompt.trim();
   const priorAssistant = req.generatedSoFar?.length

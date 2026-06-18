@@ -86,8 +86,8 @@ describe("buildGenerationMessages", () => {
       });
     expect(system).toContain(CARD_DELIMITER);
     expect(system).toContain("FRONT:");
-    // Style rules: no conversational fillers, fronts not all-caps.
-    expect(system).toContain("no conversational fillers");
+    // Output contract: card blocks + sentence-case fronts.
+    expect(system).toContain("FRONT:");
     expect(system).toContain("normal sentence case");
     // Source notes live in the (static) first user message...
     expect(user).toContain("Paris is the capital.");

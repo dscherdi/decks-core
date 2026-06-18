@@ -5,9 +5,7 @@ import type {
   RefactorRequest,
 } from "./types";
 import { AiError, REFACTOR_FIELD_KEYS } from "./types";
-
-/** Delimiter the model emits after each card block (shared with generation). */
-const CARD_DELIMITER = "===END===";
+import { CARD_DELIMITER, DECKS_OVERVIEW, SPLIT_INSTRUCTION } from "./prompts";
 
 const FIELD_LABELS: Record<string, string> = {
   front: "Front",
@@ -36,46 +34,6 @@ const LABEL_TO_KEY: Record<string, string> = {
   "LIST ITEM": "listItem",
 };
 const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SENTENCE|HINT|LIST ITEM)\s*:(.*)$/i;
-
-/**
- * Always-on master prompt: teaches the model how Decks flashcards are authored
- * (every supported format) and the spaced-repetition principles to apply.
- * Shared by the refactor and generation pipelines (it is the system layer; the
- * user supplies any extra instructions through the composer).
- */
-export const FLASHCARD_DESIGN_GUIDANCE = [
-  "You are an expert in spaced-repetition flashcard design, working inside Decks, a flashcard plugin for Obsidian. Cards are authored in Markdown notes (or on an Obsidian Canvas) and parsed into review cards.",
-  "",
-  "Card formats Decks understands:",
-  '- Header + paragraph: a heading is the front; the text below it (until the next heading) is the back. An Obsidian "%%comment%%" anywhere in the body, or text after a trailing "---" line, becomes the card\'s optional notes.',
-  "- Table: a Markdown table row — first column is the front, second the back, an optional third column is notes. Each field is one cell of a single-line, pipe-delimited row.",
-  '- Cloze: wrap hidden text in ==double equals== (e.g. "The ==Sun== is a star"). Each ==span== is a separately tested blank; a cloze card needs at least one span.',
-  "- Image occlusion: an image plus a numbered list; each list item is one card.",
-  "- Spatial (Canvas): two connected nodes — the from-node is the front, the to-node is the back, and the edge label is an optional hint.",
-  "",
-  "Formatting:",
-  "- All card text renders as Markdown; you may use Markdown.",
-  "- Math uses LaTeX: $inline$ and $$block$$ (block math is not allowed inside table cells).",
-  "- Notes hold supplementary detail or mnemonics, shown on demand during review.",
-  "",
-  "Principles for high-quality flashcards:",
-  "- Atomic: test one fact or idea per card (the minimum information principle). Split compound facts rather than cramming them in.",
-  "- Make the front a specific, unambiguous prompt that elicits a single answer; avoid yes/no questions.",
-  "- Keep answers concise; put elaboration or examples in the notes when the card type has them.",
-  "- Preserve the original meaning and language. Never invent facts or add unsupported information.",
-  "- Fix grammar, spelling, and formatting; keep $…$ delimiters and ==cloze== markers balanced.",
-  "- Prefer phrasing that demands active recall; express long lists as cloze deletions rather than enumerations.",
-].join("\n");
-
-/**
- * Hardcoded instruction added when split mode is on — tells the model to break
- * the card into several smaller atomic cards.
- */
-export const SPLIT_INSTRUCTION = [
-  "Split this flashcard into multiple smaller, single-idea cards (apply the minimum information principle).",
-  "Each resulting card must keep the same field structure as the original card.",
-  "Produce as many cards as the content naturally warrants (usually 2–5); do not pad with redundant cards.",
-].join("\n");
 
 const CARD_TYPE_FIELD_GUIDANCE: Record<RefactorCardType, string> = {
   "header-paragraph":
@@ -155,7 +113,7 @@ export function buildMessages(req: RefactorRequest): {
 
   // System role: master prompt → task framing → card-type guidance → contract.
   const sys: string[] = [
-    FLASHCARD_DESIGN_GUIDANCE,
+    DECKS_OVERVIEW,
     "",
     req.split
       ? "TASK: You are SPLITTING an existing Decks flashcard into multiple smaller, single-idea cards."

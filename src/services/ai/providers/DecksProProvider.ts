@@ -28,8 +28,35 @@ export class DecksProProvider extends OpenAiProvider {
   }
 
   protected buildBody(req: ProviderCompleteRequest): Record<string, unknown> {
+    // OCR: send only the image(s); the server builds the OCR messages.
+    if (this.config.model.startsWith("decks-ocr-")) {
+      return {
+        model: this.config.model,
+        images: req.images?.map((im) => ({
+          mimeType: im.mimeType,
+          dataBase64: im.dataBase64,
+        })),
+      };
+    }
+    // Refactor: send the raw request; the server builds the messages.
+    if (req.rawRefactor) {
+      const r = req.rawRefactor;
+      return {
+        model: this.config.model,
+        refactor: {
+          current: r.current,
+          instructions: r.instructions,
+          targetKeys: r.targetKeys,
+          sourceContext: r.sourceContext,
+          split: !!r.split,
+        },
+        images: req.images?.map((im) => ({
+          mimeType: im.mimeType,
+          dataBase64: im.dataBase64,
+        })),
+      };
+    }
     // Raw mode (generation): send raw materials; the server builds the messages.
-    // OCR and other non-raw calls fall through to the normal OpenAI body.
     if (req.rawSource !== undefined || req.rawPrompt !== undefined) {
       return {
         model: this.config.model,

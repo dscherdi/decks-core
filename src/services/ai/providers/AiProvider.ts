@@ -1,4 +1,4 @@
-import type { AiProviderId, RefactorImage } from "../types";
+import type { AiProviderId, RefactorImage, RefactorRequest } from "../types";
 import type { GeneratedCard } from "../generation-prompt";
 
 /** Transport-level request: the built messages plus optional image attachments. */
@@ -35,6 +35,8 @@ export interface ProviderCompleteRequest {
   rawSource?: string;
   rawPrompt?: string;
   rawGeneratedSoFar?: GeneratedCard[];
+  /** Raw refactor request sent when the server assembles the refactor prompt. */
+  rawRefactor?: RefactorRequest;
   /** Optional routing-category hint passed through with the request. */
   category?: string;
 }

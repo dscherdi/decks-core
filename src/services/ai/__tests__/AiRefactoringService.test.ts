@@ -409,10 +409,10 @@ describe("buildMessages", () => {
     expect(system).toMatch(/context only/i);
   });
 
-  it("always prepends the master design guidance", () => {
+  it("always prepends the Decks overview", () => {
     const { system } = buildMessages({ current: headerParaCard });
     expect(system).toContain("==double equals==");
-    expect(system).toMatch(/minimum information principle/i);
+    expect(system).toContain("spaced-repetition flashcards");
   });
 
   it("switches to split framing + per-block output when split is set", () => {
@@ -501,5 +501,22 @@ describe("AiRefactoringService.refactorCard", () => {
       code: "invalid_output",
       debug: { raw: "no fields here" },
     });
+  });
+
+  it("Decks Pro sends a raw refactor payload (no messages) for server-side prompt", async () => {
+    const http = new MockHttp(() =>
+      ok(JSON.stringify({ choices: [{ message: { content: "FRONT: Q\nBACK: Paris" } }] })),
+    );
+    const svc = new AiRefactoringService(http);
+    await svc.refactorCard(
+      { provider: "decks-pro", model: "decks-tier-quality", apiKey: "k" },
+      { current: headerParaCard, instructions: "shorten" },
+    );
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    // The assembled prompt is not sent — the server builds it from the raw request.
+    expect(body.messages).toBeUndefined();
+    expect(body.system).toBeUndefined();
+    expect(body.refactor.current).toMatchObject({ type: "header-paragraph" });
+    expect(body.refactor.instructions).toBe("shorten");
   });
 });
