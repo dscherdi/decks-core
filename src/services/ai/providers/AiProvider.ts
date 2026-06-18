@@ -1,4 +1,5 @@
 import type { AiProviderId, RefactorImage } from "../types";
+import type { GeneratedCard } from "../generation-prompt";
 
 /** Transport-level request: the built messages plus optional image attachments. */
 export interface ProviderCompleteRequest {
@@ -26,6 +27,16 @@ export interface ProviderCompleteRequest {
    * `false` because its output is delimited text, not JSON.
    */
   json?: boolean;
+  /**
+   * Raw materials sent when the provider assembles the request server-side
+   * (instead of an assembled system/user). Set by AiGenerationService when the
+   * provider reports `buildsPromptServerSide()`.
+   */
+  rawSource?: string;
+  rawPrompt?: string;
+  rawGeneratedSoFar?: GeneratedCard[];
+  /** Optional routing-category hint passed through with the request. */
+  category?: string;
 }
 
 /** Metadata a streaming completion reports when it finishes. */
@@ -46,6 +57,12 @@ export interface StreamResult {
 export interface AiProvider {
   readonly id: AiProviderId;
   complete(req: ProviderCompleteRequest): Promise<string>;
+  /**
+   * Whether this provider assembles the request server-side. When true the
+   * orchestrator skips client-side message building and sends the raw materials
+   * (`rawSource`/`rawPrompt`/`rawGeneratedSoFar`) for the server to assemble.
+   */
+  buildsPromptServerSide?(): boolean;
   /**
    * Optional streaming variant: emits model text deltas via `onDelta` as they
    * arrive and resolves (with the finish reason) when the response completes.

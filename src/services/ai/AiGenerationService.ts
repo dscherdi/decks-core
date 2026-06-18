@@ -1,6 +1,7 @@
 import type { ILogger } from "../../database/DatabaseService.interface";
 import type { HttpClient } from "./HttpClient";
 import { createProvider } from "./providers";
+import type { ProviderCompleteRequest } from "./providers/AiProvider";
 import {
   buildGenerationMessages,
   GenerationStreamParser,
@@ -63,8 +64,24 @@ export class AiGenerationService {
     }
 
     const provider = createProvider(config, this.http);
-    const { system, user, priorAssistant, followupUser } =
-      buildGenerationMessages(req);
+    // Some providers assemble the request server-side: send raw materials instead
+    // of an assembled system/user.
+    const serverSide = provider.buildsPromptServerSide?.() === true;
+    const { system, user, priorAssistant, followupUser } = serverSide
+      ? { system: "", user: "", priorAssistant: undefined, followupUser: undefined }
+      : buildGenerationMessages(req);
+    const baseReq: Omit<ProviderCompleteRequest, "signal"> = serverSide
+      ? {
+          system: "",
+          user: "",
+          rawSource: req.sourceContext,
+          rawPrompt: req.prompt,
+          rawGeneratedSoFar: req.generatedSoFar,
+          category: req.category,
+          images: req.images,
+          json: false,
+        }
+      : { system, user, priorAssistant, followupUser, images: req.images, json: false };
 
     this.logger?.debug(
       `AI generation via ${config.provider} (${config.model})`,
@@ -94,10 +111,15 @@ export class AiGenerationService {
     const makeDebug = (raw: string): GenerateDebugInfo => ({
       provider: config.provider,
       model: config.model,
-      system,
-      user,
-      priorAssistant,
-      followupUser,
+      // When the request is assembled server-side, show the raw materials instead.
+      system: serverSide ? "(built server-side)" : system,
+      user: serverSide ? req.sourceContext ?? req.prompt : user,
+      priorAssistant: serverSide
+        ? req.generatedSoFar?.length
+          ? `${req.generatedSoFar.length} prior card(s)`
+          : undefined
+        : priorAssistant,
+      followupUser: serverSide ? req.prompt : followupUser,
       imageCount: req.images?.length ?? 0,
       raw,
     });
@@ -108,15 +130,7 @@ export class AiGenerationService {
       try {
         const parser = new GenerationStreamParser();
         const streamRes = await provider.completeStream(
-          {
-            system,
-            user,
-            priorAssistant,
-            followupUser,
-            images: req.images,
-            signal,
-            json: false,
-          },
+          { ...baseReq, signal },
           (delta) => {
             streamedRaw += delta;
             const { completed, partial } = parser.push(delta);
@@ -160,15 +174,7 @@ export class AiGenerationService {
 
     let raw: string;
     try {
-      raw = await provider.complete({
-        system,
-        user,
-        priorAssistant,
-        followupUser,
-        images: req.images,
-        signal,
-        json: false,
-      });
+      raw = await provider.complete({ ...baseReq, signal });
     } catch (e) {
       if (req.debug && e instanceof AiError) {
         e.debug = { system, user, raw: "" };

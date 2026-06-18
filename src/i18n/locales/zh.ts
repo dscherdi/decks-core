@@ -1075,6 +1075,8 @@ export const zh: Translations = {
       pdfFromVault: "From vault",
       pdfFromComputer: "From computer",
       pdfTooLarge: "PDF is too large (max {max} MB).",
+      tooManyNotes: "You can attach at most {max} notes.",
+      tooManyImages: "You can attach at most {max} images.",
     },
     editFlashcard: {
       aiRefactor: "用 AI 重构",

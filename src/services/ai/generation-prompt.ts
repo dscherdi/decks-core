@@ -22,6 +22,8 @@ export interface GenerateRequest {
   generatedSoFar?: GeneratedCard[];
   /** When true, the built messages + raw response are attached for debugging. */
   debug?: boolean;
+  /** Optional routing-category hint forwarded to the backend (Decks Pro). */
+  category?: string;
 }
 
 /** Delimiter the model emits after each complete card. */

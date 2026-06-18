@@ -10,7 +10,7 @@ export interface AiModelOption {
 export const DECKS_PRO_DEFAULT_BASE_URL =
   "https://decks-backend.dscherdil.workers.dev";
 
-/** Decks Pro generation tier sentinels (resolved to real models server-side). */
+/** Decks Pro generation tier sentinels (resolved by the backend). */
 export const DECKS_TIER_FAST = "decks-tier-fast";
 export const DECKS_TIER_QUALITY = "decks-tier-quality";
 
@@ -36,7 +36,7 @@ export const PROVIDER_MODELS: Record<AiProviderId, AiModelOption[]> = {
   ],
   "openai-compatible": [],
   // Decks Pro exposes generation *tiers*, not raw models. The client stores/sends
-  // a tier sentinel; the Decks Pro worker maps it to the real generation model.
+  // a tier sentinel that the backend resolves.
   "decks-pro": [
     { id: DECKS_TIER_FAST, name: "Fast & general" },
     { id: DECKS_TIER_QUALITY, name: "High quality & thinking" },
@@ -45,7 +45,7 @@ export const PROVIDER_MODELS: Record<AiProviderId, AiModelOption[]> = {
 
 /**
  * OCR sentinel for a Decks Pro tier. Sent by the client for PDF page OCR; the
- * worker maps it to the real OCR model. The model id never lives in the frontend.
+ * backend resolves it.
  */
 export function ocrSentinelForTier(tier: string): string {
   return tier === DECKS_TIER_QUALITY ? "decks-ocr-quality" : "decks-ocr-fast";

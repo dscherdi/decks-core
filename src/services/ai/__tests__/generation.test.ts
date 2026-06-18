@@ -232,6 +232,45 @@ const config: AiProviderConfig = {
   apiKey: "sk-test",
 };
 
+describe("Decks Pro server-side prompt", () => {
+  it("sends a raw payload (source/prompt/generatedSoFar) with no messages", async () => {
+    const http = new StreamHttp([]);
+    const service = new AiGenerationService(http);
+    await service.generateStream(
+      { provider: "decks-pro", model: "decks-tier-fast", apiKey: "k" },
+      {
+        prompt: "go",
+        sourceContext: "Paris is the capital.",
+        generatedSoFar: [card("Q1", "A1")],
+        category: "stem",
+      },
+      { onCard: () => {} },
+    );
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    // No assembled prompt is sent — the server builds it.
+    expect(body.messages).toBeUndefined();
+    expect(body.system).toBeUndefined();
+    expect(body.source).toBe("Paris is the capital.");
+    expect(body.prompt).toBe("go");
+    expect(body.generatedSoFar).toEqual([{ front: "Q1", back: "A1", notes: "" }]);
+    expect(body.category).toBe("stem");
+    expect(body.stream).toBe(true);
+  });
+
+  it("BYO providers still send an assembled messages array", async () => {
+    const http = new StreamHttp([]);
+    const service = new AiGenerationService(http);
+    await service.generateStream(
+      { provider: "openai", model: "gpt-4o-mini", apiKey: "sk" },
+      { prompt: "go", sourceContext: "Paris is the capital." },
+      { onCard: () => {} },
+    );
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    expect(Array.isArray(body.messages)).toBe(true);
+    expect(body.source).toBeUndefined();
+  });
+});
+
 describe("provider completeStream (SSE parsing)", () => {
   it("OpenAI: extracts choices[].delta.content across chunks", async () => {
     const sse =
