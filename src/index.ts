@@ -47,6 +47,22 @@ export type {
   RawDatabase,
   RawStatement,
 } from "./services/FlashcardSynchronizer";
+export { LegacySrMigrator } from "./services/migration/LegacySrMigrator";
+export type {
+  FsrsState,
+  MigratedCard,
+  MigrationFormat,
+  ProcessOptions,
+  ProcessResult,
+  RenderOptions,
+  RenderedFile,
+} from "./services/migration/LegacySrMigrator";
+export { SrHistoryImporter } from "./services/migration/SrHistoryImporter";
+export type {
+  MigrationProfileFsrs,
+  MigrationDeckItem,
+  HistoryDb,
+} from "./services/migration/SrHistoryImporter";
 export * from "./services/HLC";
 export type {
   SyncOpV1,

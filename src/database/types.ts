@@ -37,6 +37,18 @@ export interface DeckProfile {
 export const DEFAULT_PROFILE_ID = 'profile_default';
 export const HEADER_LEVEL_TITLE = 0;
 
+// Preinstalled profiles shipped with the database (seeded in schemas.ts):
+// one per header level plus a title-mode profile for whole-note reviews.
+export const REVIEW_PROFILE_ID = 'profile_sr_review';
+export const REVIEW_PROFILE_NAME = 'Review notes';
+export const PRESET_HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+export function headingProfileId(level: number): string {
+  return `profile_heading_${level}`;
+}
+export function headingProfileName(level: number): string {
+  return `Heading ${level}`;
+}
+
 export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modified'> = {
   name: 'DEFAULT',
   hasNewCardsLimitEnabled: false,

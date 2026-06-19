@@ -1,7 +1,51 @@
 import type { Database } from "sql.js";
+import {
+  PRESET_HEADING_LEVELS,
+  REVIEW_PROFILE_ID,
+  REVIEW_PROFILE_NAME,
+  headingProfileId,
+  headingProfileName,
+} from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 26;
+export const CURRENT_SCHEMA_VERSION = 27;
+
+// Preinstalled, selectable profiles: one per header level (H1–H6) plus a
+// title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
+// Idempotent (INSERT OR IGNORE) so it is safe in both fresh-DB creation and
+// migrations. No tag mappings are seeded — those depend on the user's
+// configured base tag and are applied at migration time.
+const presetProfileRow = (
+  id: string,
+  name: string,
+  headerLevel: number,
+  clozeEnabled: number
+): string => `
+  INSERT OR IGNORE INTO deckprofiles (
+    id, name,
+    has_new_cards_limit_enabled, new_cards_per_day,
+    has_review_cards_limit_enabled, review_cards_per_day,
+    header_level, review_order,
+    learning_steps, relearning_steps,
+    fsrs_request_retention, fsrs_profile,
+    cloze_enabled, cloze_show_context,
+    is_default, created, modified
+  ) VALUES (
+    '${id}', '${name}',
+    0, 20, 0, 100,
+    ${headerLevel}, 'due-date',
+    '1m', '10m',
+    0.9, 'STANDARD',
+    ${clozeEnabled}, 'hidden',
+    0, datetime('now'), datetime('now')
+  );`;
+
+export const SEED_PRESET_PROFILES_SQL = [
+  ...PRESET_HEADING_LEVELS.map((level) =>
+    presetProfileRow(headingProfileId(level), headingProfileName(level), level, 1)
+  ),
+  presetProfileRow(REVIEW_PROFILE_ID, REVIEW_PROFILE_NAME, 0, 0),
+].join("\n");
 
 // SQL Table Creation Schema - Used when database file doesn't exist
 export const CREATE_TABLES_SQL = `
@@ -217,6 +261,9 @@ export const CREATE_TABLES_SQL = `
     datetime('now'),
     datetime('now')
   );
+
+  -- Insert preinstalled per-header-level + review profiles
+  ${SEED_PRESET_PROFILES_SQL}
 
   -- Create indexes
   CREATE INDEX IF NOT EXISTS idx_deckprofiles_name ON deckprofiles(name);
@@ -508,6 +555,10 @@ export function buildMigrationSQL(db: Database): string {
 
     DROP TABLE deckprofiles;
     ALTER TABLE deckprofiles_new RENAME TO deckprofiles;
+
+    -- Seed preinstalled per-header-level + review profiles (after the rebuild so
+    -- they land in the final table; idempotent for already-migrated databases).
+    ${SEED_PRESET_PROFILES_SQL}
 
     -- Preserve profile_tag_mappings (recreate with UNIQUE(tag) constraint)
     CREATE TABLE IF NOT EXISTS profile_tag_mappings (

@@ -90,6 +90,60 @@ export const en = {
     fullResync: "Force full resync (re-parse every deck)",
     openReview: "Open review modal",
     openAiGenerator: "Generate flashcards with AI",
+    migrateFromSr: "Migrate from Spaced Repetition plugin",
+  },
+
+  srMigration: {
+    title: "Migrate from Spaced Repetition",
+    description:
+      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
+    sourceFolderName: "Source folder",
+    sourceFolderDesc:
+      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
+    targetFolderName: "Target folder",
+    targetFolderDesc: "Where the new Decks files will be created.",
+    srTagName: "Spaced Repetition tag",
+    srTagDesc:
+      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
+    profileName: "Profile",
+    profileDesc:
+      "Profile applied to the migrated decks (sets the header level and scheduling).",
+    reviewTagName: "Whole-note review tag",
+    reviewTagDesc:
+      "Notes with this tag are migrated as a single whole-note card (filename = front).",
+    inlineSepName: "Inline separator",
+    inlineSepDesc:
+      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
+    multiSepName: "Multi-line separator",
+    multiSepDesc:
+      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
+    formatName: "Migration format",
+    formatDesc:
+      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
+    formatSmart: "Smart auto-detect (recommended)",
+    formatHeaders: "All headers",
+    formatTables: "All tables",
+    formatTablesWarning:
+      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
+    deleteForcesHeaders:
+      "Replace-with-links uses header format so each card has a linkable anchor.",
+    deleteModeName: "Replace originals with links",
+    deleteModeDesc:
+      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+    deleteWarning:
+      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
+    scanButton: "Scan",
+    scanning: "Scanning…",
+    scanSummary:
+      "Found {files} file(s), {cards} card(s), {history} with review history.",
+    scanFailed: "Scan failed. See console for details.",
+    migrateButton: "Migrate",
+    migrating: "Migrating…",
+    migrateFailed: "Migration failed. See console for details.",
+    successNotice:
+      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
+    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
+    cancel: "Cancel",
   },
 
   notices: {
@@ -170,6 +224,7 @@ export const en = {
   deckList: {
     moreActions: "More actions",
     exportToAnki: "Export to Anki",
+    srMigration: "Migrate from Spaced Repetition",
     title: "Decks",
     emptyNoDecks: "No decks found.",
     emptyNoFilterMatch: "No decks match your filter.",
