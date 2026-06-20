@@ -50,6 +50,7 @@ export type {
 export { LegacySrMigrator } from "./services/migration/LegacySrMigrator";
 export type {
   FsrsState,
+  ClozeEntry,
   MigratedCard,
   MigrationFormat,
   ProcessOptions,

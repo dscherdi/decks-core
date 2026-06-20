@@ -117,6 +117,13 @@ export const hi: Translations = {
     reviewTagName: "Whole-note review tag",
     reviewTagDesc:
       "Notes with this tag are migrated as a single whole-note card (filename = front).",
+    hintLabel: "hint",
+    clozeSepName: "Cloze separator",
+    clozeSepDesc:
+      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
+    progressWriting: "Migrating {file}…",
+    progressSyncing: "Syncing decks…",
+    progressRestoring: "Restoring review history…",
     inlineSepName: "Inline separator",
     inlineSepDesc:
       "Single-line card separator (default \"::\"). The reversed form repeats the last character.",

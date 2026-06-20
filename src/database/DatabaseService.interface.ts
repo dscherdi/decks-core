@@ -51,6 +51,9 @@ export interface IDatabaseService {
   getDeckLastSyncedMtime(deckId: string): Promise<number>;
   setDeckLastSyncedMtime(deckId: string, mtime: number): Promise<void>;
   clearLastSyncedMtimeForProfile(profileId: string): Promise<void>;
+  getAllDeckSyncMeta(): Promise<
+    { id: string; filepath: string; lastSyncedMtime: number }[]
+  >;
 
   createDeck(
     deck: Omit<Deck, "created" | "modified" | "profileId"> & { id?: string; profileId?: string }
@@ -197,6 +200,7 @@ export interface IDatabaseService {
   countNewCards(deckId: string): Promise<number>;
   countDueCards(deckId: string): Promise<number>;
   countTotalCards(deckId: string): Promise<number>;
+  countAllCards(): Promise<number>;
 
   getScheduledDueByDay(
     deckId: string,

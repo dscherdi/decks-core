@@ -46,6 +46,29 @@ describe("LegacySrMigrator.processFile", () => {
     expect(cards[0].isReverse).toBe(true);
   });
 
+  it("captures a bulleted-list answer as the multi-line back", () => {
+    const content = [
+      "Why are comments considered a code smell?",
+      "?",
+      "- They tend to compensate for bad code",
+      "- They deteriorate over time and can lie",
+      "- Most of the time are useless",
+      "",
+      "These are the comments that should be allowed:",
+      "?",
+      "- Legal / Copyright comments",
+      "- Hard to understand lines like regex query",
+    ].join("\n");
+    const cards = process(content);
+    expect(cards).toHaveLength(2);
+    expect(cards[0].front).toBe("Why are comments considered a code smell?");
+    expect(cards[0].back).toBe(
+      "- They tend to compensate for bad code\n- They deteriorate over time and can lie\n- Most of the time are useless"
+    );
+    expect(cards[1].front).toBe("These are the comments that should be allowed:");
+    expect(cards[1].back).toContain("- Legal / Copyright comments");
+  });
+
   it("preserves and translates inline tags to the target base tag", () => {
     const cards = process("Photosynthesis :: Plants make energy #flashcards/biology");
     expect(cards[0].tags).toEqual(["decks/biology"]);
@@ -80,6 +103,13 @@ describe("LegacySrMigrator.processFile", () => {
       expect(s.stability).toBeCloseTo(12.2);
       expect(s.reps).toBe(3);
       expect(s.lapses).toBe(1);
+    });
+
+    it("carries the SR interval into intervalDays (SM-2 and FSRS)", () => {
+      const sm2 = process("a :: b <!--SR:!2024-06-18,12,250-->")[0].fsrsData!;
+      expect(sm2.intervalDays).toBe(12);
+      const fsrs = process("a :: b <!--SR:!2024-06-18,12,250!4.5,12.2,3,1-->")[0].fsrsData!;
+      expect(fsrs.intervalDays).toBe(12);
     });
 
     it("parses two independent states for a reversed card (SM-2)", () => {
@@ -264,6 +294,211 @@ describe("pipe guardrail (smart routing)", () => {
   });
 });
 
+describe("cloze migration", () => {
+  const clozeOpts = { srBaseTag: "#flashcards", decksBaseTag: "#decks", noteTitle: "MyNote" };
+  const cloze = (content: string) =>
+    LegacySrMigrator.processFile(content, clozeOpts).dbRecords;
+
+  it("converts {{x}}, {{c1::x}}, and ==x== to highlights with ordered clozes", () => {
+    const card = cloze("The capital of {{c1::France}} is ==Paris== and {{the Louvre}}.")[0];
+    expect(card.clozes).toBeDefined();
+    expect(card.back).toContain("==France==");
+    expect(card.back).toContain("==Paris==");
+    expect(card.back).toContain("==the Louvre==");
+    expect(card.clozes!.map((c) => [c.clozeText, c.clozeOrder])).toEqual([
+      ["France", 0],
+      ["Paris", 1],
+      ["the Louvre", 2],
+    ]);
+  });
+
+  it("relocates an Anki hint outside the highlight with a translated label", () => {
+    const card = cloze("The capital is {{c1::Paris::capital city}}.")[0];
+    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.clozes![0].clozeText).toBe("Paris"); // hint not part of clozeText
+  });
+
+  it("relocates a footnote hint", () => {
+    const card = cloze("The capital is ==Paris==^[capital city].")[0];
+    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.clozes![0].clozeText).toBe("Paris");
+  });
+
+  it("parses the SR `;;` separator inside == highlights, dropping the number", () => {
+    const card = cloze("The capital is ==1;;Paris;;capital city==.")[0];
+    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.clozes![0].clozeText).toBe("Paris");
+  });
+
+  it("accepts `::` inside == highlights too", () => {
+    const card = cloze("The capital is ==Paris::capital city==.")[0];
+    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.clozes![0].clozeText).toBe("Paris");
+  });
+
+  it("parses the `;;` separator inside curly clozes", () => {
+    const card = cloze("The capital is {{Paris;;capital city}}.")[0];
+    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.clozes![0].clozeText).toBe("Paris");
+  });
+
+  it("respects a custom clozeSep option", () => {
+    const card = LegacySrMigrator.processFile("X is ==Paris@@capital==.", {
+      ...clozeOpts,
+      clozeSep: "@@",
+    }).dbRecords[0];
+    expect(card.back).toContain("==Paris== (hint: capital)");
+    expect(card.clozes![0].clozeText).toBe("Paris");
+  });
+
+  it("maps the packed states to highlights in document order", () => {
+    const card = cloze(
+      "{{c1::A}} then ==B== then {{C}}.\n<!--SR:!2024-06-18,4,250!2024-06-19,9,250!2024-06-20,16,250-->"
+    )[0];
+    expect(card.clozes!.map((c) => c.fsrsData?.stability)).toEqual([4, 9, 16]);
+  });
+
+  it("uses breadcrumb as front, else the note title", () => {
+    expect(cloze("The capital is ==Paris==.")[0].front).toBe("MyNote");
+    expect(cloze("## Geography\nThe capital is ==Paris==.")[0].front).toBe("Geography");
+  });
+
+  it("migrates a list-item cloze (front = breadcrumb header)", () => {
+    const cards = cloze("### Photosynthesis\n- Plants convert ==sunlight== into energy.");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].front).toBe("Photosynthesis");
+    expect(cards[0].clozes!.map((c) => c.clozeText)).toEqual(["sunlight"]);
+  });
+
+  it("binds a loose numbered list under one bullet into a single 4-cloze card", () => {
+    const content = [
+      "- **3 rules of TDD**",
+      "\t1. You are not allowed to write any ==production code== unless it is to make a failing unit test pass.",
+      "",
+      "\t2. You are not allowed to write any more of a ==unit test== than is sufficient to fail.",
+      "",
+      "\t3. You are not allowed to write any more ==production code== than is sufficient to pass.",
+      "",
+      "\t4. Repeat the ==cycle==.",
+      "<!--SR:!2022-11-26,3,250!2022-11-26,3,250!2022-11-26,3,250!2022-11-27,4,270-->",
+    ].join("\n");
+    const cards = cloze(content);
+    expect(cards).toHaveLength(1);
+    const card = cards[0];
+    expect(card.clozes).toHaveLength(4);
+    expect(card.clozes!.map((c) => c.clozeText)).toEqual([
+      "production code",
+      "unit test",
+      "production code",
+      "cycle",
+    ]);
+    // 4 SR states bind 1:1 to the 4 highlights in document order.
+    expect(card.clozes!.map((c) => c.fsrsData?.stability)).toEqual([3, 3, 3, 4]);
+    expect(card.front).toContain("3 rules of TDD");
+    expect(card.back).toContain("==production code==");
+    expect(card.back).toContain("==cycle==");
+  });
+
+  it("merges a blank-separated multi-paragraph cloze block bound by one comment", () => {
+    const content = [
+      "First paragraph mentions ==alpha==.",
+      "",
+      "Second paragraph mentions ==beta==.",
+      "<!--SR:!2022-11-26,3,250!2022-11-27,4,270-->",
+    ].join("\n");
+    const cards = cloze(content);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].clozes!.map((c) => c.clozeText)).toEqual(["alpha", "beta"]);
+    expect(cards[0].clozes!.map((c) => c.fsrsData?.stability)).toEqual([3, 4]);
+  });
+
+  it("keeps separate cloze bullets with their own inline comments distinct", () => {
+    const content = [
+      "- First ==alpha== fact. <!--SR:!2022-11-26,3,250-->",
+      "- Second ==beta== fact. <!--SR:!2022-11-27,7,270-->",
+    ].join("\n");
+    const cards = cloze(content);
+    expect(cards).toHaveLength(2);
+    expect(cards[0].clozes!.map((c) => c.clozeText)).toEqual(["alpha"]);
+    expect(cards[0].clozes![0].fsrsData?.stability).toBe(3);
+    expect(cards[1].clozes!.map((c) => c.clozeText)).toEqual(["beta"]);
+    expect(cards[1].clozes![0].fsrsData?.stability).toBe(7);
+  });
+
+  it("does not mis-parse {{c1::x}} as a :: Q/A card", () => {
+    const card = cloze("Term {{c1::France}} fact.")[0];
+    expect(card.clozes).toBeDefined();
+    expect(card.isReverse).toBe(false);
+  });
+
+  it("suspends a cloze block carrying #sr-skip", () => {
+    const card = cloze("The capital is ==Paris==. #sr-skip")[0];
+    expect(card.suspended).toBe(true);
+    expect(card.back).not.toContain("sr-skip");
+  });
+
+  it("always renders cloze blocks as headers, never tables", () => {
+    const cards = cloze("The capital is ==Paris==.");
+    const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "tables" });
+    expect(main.content).toContain("## MyNote");
+    expect(main.content).toContain("==Paris==");
+    expect(main.content).not.toContain("| Front | Back | Notes |");
+  });
+});
+
+describe("single deck tag derivation", () => {
+  it("picks the deepest SR base subtag, translated to the decks base", () => {
+    const tag = LegacySrMigrator.deriveDeckTag(
+      ["development/clean-code", "conspect", "flashcards/cleancode/tdd"],
+      OPTS
+    );
+    expect(tag).toBe("decks/cleancode/tdd");
+  });
+
+  it("prefers the most-specific flashcards subtag among several", () => {
+    const tag = LegacySrMigrator.deriveDeckTag(
+      ["flashcards/a", "flashcards/b/c"],
+      OPTS
+    );
+    expect(tag).toBe("decks/b/c");
+  });
+
+  it("falls back to the bare decks base when only the base tag (or none) is present", () => {
+    expect(LegacySrMigrator.deriveDeckTag(["flashcards"], OPTS)).toBe("decks");
+    expect(LegacySrMigrator.deriveDeckTag(["unrelated"], OPTS)).toBe("decks");
+    expect(LegacySrMigrator.deriveDeckTag([], OPTS)).toBe("decks");
+  });
+
+  it("tolerates a leading # on the input tags", () => {
+    expect(
+      LegacySrMigrator.deriveDeckTag(["#flashcards/cleancode/tdd"], OPTS)
+    ).toBe("decks/cleancode/tdd");
+  });
+
+  it("renders exactly one deck tag in the output frontmatter", () => {
+    const cards = process("Capital of France :: Paris");
+    const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, {
+      deckTag: "decks/cleancode/tdd",
+    });
+    expect(main.content).toContain("  - decks/cleancode/tdd");
+    // The bare base tag must NOT also appear.
+    expect(main.content).not.toMatch(/^ {2}- decks$/m);
+    expect(main.content).not.toContain("development/clean-code");
+  });
+
+  it("derives a review deck tag preserving the subpath", () => {
+    expect(
+      LegacySrMigrator.deriveReviewTag(["review/spanish"], "#review", "#decks")
+    ).toBe("decks/review/spanish");
+    expect(
+      LegacySrMigrator.deriveReviewTag(["review"], "#review", "#decks")
+    ).toBe("decks/review");
+    expect(LegacySrMigrator.deriveReviewTag([], "#review", "#decks")).toBe(
+      "decks/review"
+    );
+  });
+});
+
 describe("multiline flag", () => {
   it("marks single-line cards non-multiline and ?/?? cards multiline", () => {
     expect(process("Cat :: Gato")[0].multiline).toBe(false);
@@ -433,18 +668,47 @@ describe("LegacySrMigrator whole-note reviews", () => {
     expect(card.back).not.toContain("<!--SR:");
   });
 
-  it("renders a title-mode file with the review tag and no heading", () => {
-    const card = wholeNote("---\nsr-due: 2024-06-18\nsr-interval: 5\nsr-ease: 250\n---\nBody text");
-    const content = LegacySrMigrator.renderTitleModeFile(card, "#decks/review");
-    expect(content).toContain("tags:\n  - decks/review");
-    expect(content).toContain("Body text");
-    expect(content).not.toContain("## ");
+});
+
+describe("LegacySrMigrator.rewriteReviewNote (in place)", () => {
+  it("adds decks/review, keeps the original #review tag, strips sr-* keys + EOF comment, keeps the body", () => {
+    const content = [
+      "---",
+      "sr-due: 2024-06-18",
+      "sr-interval: 5",
+      "sr-ease: 250",
+      "tags:",
+      "  - review",
+      "  - flashcards/cleancode/comments",
+      "---",
+      "",
+      "## A section",
+      "Body content.",
+      "<!--SR:!2024-06-18,5,250-->",
+    ].join("\n");
+    const out = LegacySrMigrator.rewriteReviewNote(content, "decks/review");
+    expect(out).toContain("- decks/review");
+    // Original tags are preserved (don't rename #review; keep others as-is).
+    expect(out).toContain("- review");
+    expect(out).toContain("- flashcards/cleancode/comments");
+    // Exactly one tag in the decks/ namespace.
+    expect(out.match(/- decks\//g)).toHaveLength(1);
+    expect(out).not.toContain("sr-due");
+    expect(out).not.toContain("<!--SR:");
+    expect(out).toContain("## A section");
+    expect(out).toContain("Body content.");
   });
 
-  it("appends a block-ref anchor in delete mode", () => {
-    const card = wholeNote("Body text");
-    const content = LegacySrMigrator.renderTitleModeFile(card, "#decks/review", { withBlockRefs: true });
-    expect(content).toMatch(/\^[a-z0-9]{6}/);
-    expect(card.blockId).toMatch(/^[a-z0-9]{6}$/);
+  it("creates frontmatter when the note has none", () => {
+    const out = LegacySrMigrator.rewriteReviewNote("Just a body.\n", "decks/review");
+    expect(out.startsWith("---\n")).toBe(true);
+    expect(out).toContain("tags:\n  - decks/review");
+    expect(out).toContain("Just a body.");
+  });
+
+  it("keeps an inline #review tag in the body", () => {
+    const out = LegacySrMigrator.rewriteReviewNote("Body #review here.\n", "decks/review");
+    expect(out).toContain("#review");
+    expect(out).toContain("tags:\n  - decks/review");
   });
 });

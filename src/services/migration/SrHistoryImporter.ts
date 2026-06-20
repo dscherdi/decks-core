@@ -7,6 +7,7 @@ import {
   normalizeProfile,
 } from "../../algorithm/fsrs-weights";
 import {
+  generateClozeFlashcardId,
   generateContentHash,
   generateFlashcardId,
   generateReverseFlashcardId,
@@ -41,6 +42,15 @@ function intervalMinutes(stabilityDays: number): number {
   return Math.max(1, Math.round(stabilityDays * MINUTES_PER_DAY));
 }
 
+const MS_PER_DAY = 86_400_000;
+
+// The implied last-review date is `due − interval` (SR stores due + interval but
+// not the review timestamp). Clamp so it never lands in the future.
+function reviewedTimestamp(fsrs: FsrsState, now: Date): string {
+  const reviewedMs = Math.min(fsrs.due - fsrs.intervalDays * MS_PER_DAY, now.getTime());
+  return new Date(reviewedMs).toISOString();
+}
+
 /**
  * Builds the durable FSRS state + a synthetic review log so a migrated card
  * resumes where the legacy plugin left it. Pure: takes the injected database
@@ -56,7 +66,7 @@ export class SrHistoryImporter {
       difficulty: clampDifficulty(fsrs.difficulty),
       stability: Math.max(fsrs.stability, 0),
       lapses: Math.max(fsrs.lapses, 0),
-      lastReviewed: now.toISOString(),
+      lastReviewed: reviewedTimestamp(fsrs, now),
     };
   }
 
@@ -68,13 +78,13 @@ export class SrHistoryImporter {
     now: Date
   ): Omit<ReviewLog, "id"> {
     const profile = normalizeProfile(profileFsrs.profile);
-    const nowIso = now.toISOString();
+    const reviewedIso = reviewedTimestamp(fsrs, now);
     return {
       flashcardId: cardId,
       sessionId: undefined,
-      lastReviewedAt: nowIso,
-      shownAt: nowIso,
-      reviewedAt: nowIso,
+      lastReviewedAt: reviewedIso,
+      shownAt: reviewedIso,
+      reviewedAt: reviewedIso,
       rating: 3,
       ratingLabel: "good",
       timeElapsedMs: 0,
@@ -93,7 +103,7 @@ export class SrHistoryImporter {
 
       oldIntervalMinutes: 0,
       newIntervalMinutes: intervalMinutes(fsrs.stability),
-      oldDueAt: nowIso,
+      oldDueAt: reviewedIso,
       newDueAt: new Date(fsrs.due).toISOString(),
 
       elapsedDays: 0,
@@ -125,6 +135,31 @@ export class SrHistoryImporter {
       const updates: Array<{ id: string; updates: Partial<Flashcard> }> = [];
 
       for (const card of item.cards) {
+        if (card.clozes) {
+          // One Decks cloze card per highlight; state[i] → clozeOrder i.
+          for (const cloze of card.clozes) {
+            const id = generateClozeFlashcardId(
+              card.front,
+              cloze.clozeText,
+              cloze.clozeOrder,
+              item.deckId
+            );
+            const res = await SrHistoryImporter.injectDirection(
+              db,
+              id,
+              cloze.fsrsData,
+              generateContentHash(card.back),
+              card.suspended,
+              item.profileFsrs,
+              now,
+              updates
+            );
+            injected += res.injected;
+            suspended += res.suspended;
+          }
+          continue;
+        }
+
         const cardId = generateFlashcardId(card.front, item.deckId);
         const fwd = await SrHistoryImporter.injectDirection(
           db,

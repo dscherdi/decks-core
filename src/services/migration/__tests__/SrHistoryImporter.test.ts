@@ -3,6 +3,7 @@ import type { HistoryDb, MigrationDeckItem } from "../SrHistoryImporter";
 import type { MigratedCard, FsrsState } from "../LegacySrMigrator";
 import type { Flashcard, ReviewLog } from "../../../database/types";
 import {
+  generateClozeFlashcardId,
   generateFlashcardId,
   generateReverseFlashcardId,
 } from "../../../utils/hash";
@@ -35,6 +36,7 @@ const fsrs = (over: Partial<FsrsState> = {}): FsrsState => ({
   difficulty: 5,
   reps: 1,
   lapses: 0,
+  intervalDays: 10,
   ...over,
 });
 
@@ -66,6 +68,26 @@ describe("SrHistoryImporter.buildFlashcardUpdate", () => {
     );
     expect(update.difficulty).toBe(10);
     expect(update.repetitions).toBe(1);
+  });
+
+  it("backdates lastReviewed to due − interval for a past review", () => {
+    const update = SrHistoryImporter.buildFlashcardUpdate(
+      fsrs({ due: Date.parse("2024-06-18"), intervalDays: 12 }),
+      NOW
+    );
+    // 2024-06-18 minus 12 days = 2024-06-06, well before NOW.
+    expect(update.lastReviewed).toBe(new Date(Date.parse("2024-06-06")).toISOString());
+    // The due date itself is preserved as the parsed SR due.
+    expect(update.dueDate).toBe(new Date(Date.parse("2024-06-18")).toISOString());
+  });
+
+  it("clamps the backdated review so it never lands in the future", () => {
+    // A future due with a small interval would imply a future review date.
+    const update = SrHistoryImporter.buildFlashcardUpdate(
+      fsrs({ due: Date.parse("2026-07-01"), intervalDays: 2 }),
+      NOW
+    );
+    expect(update.lastReviewed).toBe(NOW.toISOString());
   });
 });
 
@@ -166,6 +188,54 @@ describe("SrHistoryImporter.importHistory", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].updates.suspendedAt).toBe(NOW.toISOString());
     expect(updates[0].updates.state).toBeUndefined();
+  });
+
+  it("injects each cloze under its generateClozeFlashcardId", async () => {
+    const { db, logs, updates } = makeDb();
+    const clozeCard: MigratedCard = {
+      front: "Geo",
+      back: "The capital is ==Paris== in ==France==.",
+      tags: [],
+      isReverse: false,
+      multiline: true,
+      suspended: false,
+      sourceMatch: "",
+      clozes: [
+        { clozeText: "Paris", clozeOrder: 0, fsrsData: fsrs({ stability: 4 }) },
+        { clozeText: "France", clozeOrder: 1, fsrsData: fsrs({ stability: 9 }) },
+      ],
+    };
+    const items: MigrationDeckItem[] = [
+      { deckId: "deck_1", profileFsrs: PROFILE, cards: [clozeCard] },
+    ];
+    const { injected } = await SrHistoryImporter.importHistory(db, items, NOW);
+    expect(injected).toBe(2);
+    const id0 = generateClozeFlashcardId("Geo", "Paris", 0, "deck_1");
+    const id1 = generateClozeFlashcardId("Geo", "France", 1, "deck_1");
+    expect(logs.map((l) => l.flashcardId).sort()).toEqual([id0, id1].sort());
+    expect(updates.find((u) => u.id === id0)!.updates.stability).toBe(4);
+    expect(updates.find((u) => u.id === id1)!.updates.stability).toBe(9);
+  });
+
+  it("suspends every cloze of a suspended cloze block", async () => {
+    const { db, updates } = makeDb();
+    const clozeCard: MigratedCard = {
+      front: "Geo",
+      back: "==Paris==",
+      tags: [],
+      isReverse: false,
+      multiline: true,
+      suspended: true,
+      sourceMatch: "",
+      clozes: [{ clozeText: "Paris", clozeOrder: 0, fsrsData: fsrs() }],
+    };
+    await SrHistoryImporter.importHistory(
+      db,
+      [{ deckId: "deck_1", profileFsrs: PROFILE, cards: [clozeCard] }],
+      NOW
+    );
+    const id = generateClozeFlashcardId("Geo", "Paris", 0, "deck_1");
+    expect(updates.find((u) => u.id === id)!.updates.suspendedAt).toBe(NOW.toISOString());
   });
 
   it("uses deterministic log ids so re-runs are idempotent", async () => {
