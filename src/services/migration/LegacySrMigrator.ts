@@ -96,6 +96,18 @@ const CALLOUT_HEADER = /^\s*>\s*\[!sr(\|[^\]]*)?\]/i;
 const HEADER_LINE = /^(#{1,6})\s+(.*)$/;
 const LIST_ITEM = /^(\s*)(?:[*+-]|\d+\.)\s+(.*)$/;
 const LIST_MARKER = /^\s*(?:#{1,6}\s+|[*+-]\s+|\d+\.\s+)/;
+// A fenced code-block delimiter (``` or ~~~, optionally indented / with a language).
+const CODE_FENCE = /^\s*(?:```|~~~)/;
+// Inert spans for `::`/`?` separator detection: inline code, $…$/$$…$$ math, and
+// ==highlights==. Blanked to equal-length spaces so a separator inside them is
+// never chosen, while indices still map back to the original text.
+const INERT_SPAN_G = /`[^`]*`|\$\$[^$]*\$\$|\$[^$\n]+\$|==(?:(?!==).)+==/g;
+function maskInertSpans(text: string): string {
+  return text.replace(INERT_SPAN_G, (m) => " ".repeat(m.length));
+}
+// Trailing Obsidian block reference (e.g. ` ^abc-123`). Distinct from footnote
+// hints `^[...]` (which have a bracket) so those are unaffected.
+const BLOCK_REF = /\s*\^[A-Za-z0-9-]+\s*$/;
 
 // Legacy "skip" markers — a card carrying any of these migrates as suspended.
 const SKIP_TAG = /(?:^|\s)#sr-skip\b/i;
@@ -135,7 +147,10 @@ const DEFAULT_CLOZE_SEP = ";;";
 function formatCloze(inner: string, sepRegex: RegExp, hintLabel: string): string {
   let parts = inner.split(sepRegex).map((p) => p.trim()).filter((p) => p.length > 0);
   if (parts.length === 0) return `==${inner.trim()}==`;
-  if (parts.length > 1 && /^c?\d+$/i.test(parts[0])) parts = parts.slice(1);
+  // Drop a leading Anki/legacy flag token: a cloze number (`c1`/`12`) or the
+  // unsupported hide flag `h` (Decks shows/hides clozes via a profile setting,
+  // not per-cloze). So `{{h::mass}}` → `==mass==`, `{{c1::x}}` → `==x==`.
+  if (parts.length > 1 && /^(?:c?\d+|h)$/i.test(parts[0])) parts = parts.slice(1);
   const answer = parts[0] ?? "";
   const hint = parts.slice(1).join(" ").trim();
   return hint ? `==${answer}== (${hintLabel}: ${hint})` : `==${answer}==`;
@@ -236,6 +251,7 @@ export class LegacySrMigrator {
     const listStack: { indent: number; text: string }[] = [];
     let pendingLines: string[] = [];
     let pendingStart = 0;
+    let inCodeBlock = false;
 
     const start = LegacySrMigrator.frontmatterEnd(lines);
     const loneTitleIdx = LegacySrMigrator.loneTitleH1Index(lines, start);
@@ -251,15 +267,26 @@ export class LegacySrMigrator {
     const multiSep = opts.multiSep || DEFAULT_MULTI_SEP;
     const inlineRev = inlineSep + inlineSep.slice(-1);
     const multiRev = multiSep + multiSep.slice(-1);
+    // Groups: 1=front, 2=whitespace before the separator, 3=reverse sep,
+    // 4=forward sep, 5=back. Group 2 lets us map the separator's index from the
+    // masked copy back onto the original text.
     const inlineRegex = new RegExp(
-      `^(.*?)\\s*(?:(${escapeRegExp(inlineRev)})|(${escapeRegExp(inlineSep)}))\\s*(.+)$`
+      `^(.*?)(\\s*)(?:(${escapeRegExp(inlineRev)})|(${escapeRegExp(inlineSep)}))\\s*(.+)$`
     );
     const detectInline = (
       text: string
     ): { front: string; back: string; isReverse: boolean } | null => {
-      const m = inlineRegex.exec(text);
+      // Locate the separator on a copy with inert spans (code/math/highlights)
+      // blanked, then split the ORIGINAL at that index so a `::`/`?` inside code,
+      // math, or a highlight is never treated as the separator.
+      const m = inlineRegex.exec(maskInertSpans(text));
       if (!m) return null;
-      return { front: m[1].trim(), back: m[4].trim(), isReverse: !!m[2] };
+      const sep = m[3] ?? m[4];
+      const sepStart = m[1].length + m[2].length;
+      const front = text.slice(0, sepStart).trim();
+      const back = text.slice(sepStart + sep.length).trim();
+      if (!back) return null;
+      return { front, back, isReverse: !!m[3] };
     };
     const isMultiSep = (t: string): boolean => t === multiRev || t === multiSep;
 
@@ -276,6 +303,19 @@ export class LegacySrMigrator {
     let i = start;
     while (i < lines.length) {
       const rawLine = lines[i];
+
+      // Fenced code blocks are inert: toggle on the fence delimiter and skip
+      // every line inside so `::`/`?`/`==`/`{{}}` in code never produce cards.
+      if (CODE_FENCE.test(rawLine)) {
+        inCodeBlock = !inCodeBlock;
+        i++;
+        continue;
+      }
+      if (inCodeBlock) {
+        i++;
+        continue;
+      }
+
       const trimmed = rawLine.trim();
 
       if (trimmed === "") {
@@ -362,7 +402,9 @@ export class LegacySrMigrator {
         const content2 = listMatch[2].replace(SR_COMMENT_G, "").trim();
         // Cloze precedence: curly is unambiguous; `==` is a cloze unless a `::`
         // separator sits OUTSIDE the highlights (then it's a Q/A list card).
-        const itemIsQa = detectInline(content2.replace(HIGHLIGHT_CLOZE_G, " ")) !== null;
+        // detectInline masks highlights internally, so a `::` inside `==…==`
+        // doesn't count as a separator.
+        const itemIsQa = detectInline(content2) !== null;
         if (hasCurlyCloze(listMatch[2]) || (HIGHLIGHT_CLOZE.test(listMatch[2]) && !itemIsQa)) {
           // Sibling/loose list items under the same bullet, their internal blank
           // separators, and the trailing SR comment form ONE cloze block — SR
@@ -409,9 +451,15 @@ export class LegacySrMigrator {
           i++;
           continue;
         }
-        const front = pendingLines.join("\n").replace(SR_COMMENT_G, "").trim();
+        let front = pendingLines.join("\n").replace(SR_COMMENT_G, "").trim();
         const frontStart = pendingStart;
         pendingLines = [];
+        // Outliner style: a list item directly followed by an indented `?`/`??`
+        // uses that item as the front (it was buffered as a context bullet).
+        // Pop it so it's the card front, not also a breadcrumb ancestor.
+        if (!front && listStack.length > 0) {
+          front = listStack.pop()?.text ?? "";
+        }
         const backLines: string[] = [];
         let backInner: string | null = null;
         let j = i + 1;
@@ -458,10 +506,9 @@ export class LegacySrMigrator {
       // separator only when it sits OUTSIDE a `==highlight==` (so `==a::b==` stays
       // a cloze); otherwise the line buffers as a cloze/prose block.
       const lineContent = rawLine.replace(SR_COMMENT_G, "").trim();
-      const isQa =
-        !hasCurlyCloze(lineContent) &&
-        detectInline(lineContent.replace(HIGHLIGHT_CLOZE_G, " ")) !== null;
-      const detected = isQa ? detectInline(lineContent) : null;
+      const detected = hasCurlyCloze(lineContent)
+        ? null
+        : detectInline(lineContent);
       if (detected) {
         pendingLines = [];
         cards.push(
@@ -650,6 +697,7 @@ export class LegacySrMigrator {
       .map((l) =>
         l
           .replace(SR_COMMENT_G, "")
+          .replace(BLOCK_REF, "")
           .replace(/^\s*(?:[*+-]|\d+[.)])\s+/, "")
       )
       .join("\n")
@@ -688,9 +736,10 @@ export class LegacySrMigrator {
     opts: ProcessOptions,
     breadcrumb: string[] = []
   ): MigratedCard {
-    // Strip skip comments from the card text (the #sr-skip tag is dropped in translateTags).
-    const cleanFront = rawFront.replace(SKIP_COMMENT_G, "");
-    const cleanBack = rawBack.replace(SKIP_COMMENT_G, "");
+    // Strip skip comments + a trailing Obsidian block reference (the #sr-skip
+    // tag is dropped in translateTags).
+    const cleanFront = rawFront.replace(SKIP_COMMENT_G, "").replace(BLOCK_REF, "");
+    const cleanBack = rawBack.replace(SKIP_COMMENT_G, "").replace(BLOCK_REF, "");
     const frontParsed = FlashcardParser.extractAndStripTags(cleanFront);
     const backParsed = extractBodyTags(cleanBack);
     const tags = LegacySrMigrator.translateTags(
@@ -1100,70 +1149,16 @@ export class LegacySrMigrator {
   }
 
   /**
-   * Rewrite a whole-note review IN PLACE: strip SR scheduling metadata (sr-*
-   * YAML keys, `<!--SR-->` comments, `> [!sr]` callouts, skip comments) and
-   * ADD `reviewTag` (e.g. `decks/review`) to the frontmatter. The original SR
-   * `#review` tag and all other tags are preserved (we only add the one Decks
-   * review tag). The filename stays the card front (title mode); no new file is
-   * created.
+   * Render a NEW title-mode review file from a whole-note review card. The
+   * filename (set by the caller) is the card's front; the cleaned note body
+   * (`card.back`, SR metadata already stripped by {@link processWholeNote}) is
+   * the back. Frontmatter carries exactly the one `reviewTag` (e.g.
+   * `decks/review`). The original note is never modified — this is a duplicate.
    */
-  static rewriteReviewNote(content: string, reviewTag: string): string {
-    const reviewClean = reviewTag.replace(/^#/, "");
-
-    const lines = content.split(/\r?\n/);
-    let fmStart = -1;
-    let fmEnd = -1;
-    if (lines[0]?.trim() === "---") {
-      const end = lines.indexOf("---", 1);
-      if (end !== -1) {
-        fmStart = 0;
-        fmEnd = end;
-      }
-    }
-
-    const fmLines = fmStart === 0 ? lines.slice(1, fmEnd) : [];
-    const bodyLines = fmStart === 0 ? lines.slice(fmEnd + 1) : lines;
-
-    // Collect existing frontmatter tags (block list or inline) and drop sr-* keys + tags.
-    const tags = new Set<string>();
-    const keptFm: string[] = [];
-    for (let i = 0; i < fmLines.length; i++) {
-      const line = fmLines[i];
-      if (SR_YAML_KEY.test(line)) continue;
-      const inlineTags = line.match(/^tags\s*:\s*\[(.*)\]\s*$/i);
-      if (inlineTags) {
-        inlineTags[1].split(",").map((t) => t.trim().replace(/^["']|["']$/g, "")).forEach((t) => t && tags.add(t));
-        continue;
-      }
-      const singleTag = line.match(/^tags\s*:\s*(\S.*)$/i);
-      if (singleTag) {
-        const value = singleTag[1].trim().replace(/^["']|["']$/g, "");
-        if (value) tags.add(value);
-        continue;
-      }
-      if (/^tags\s*:\s*$/i.test(line)) {
-        // Block list — consume following `  - x` items.
-        while (i + 1 < fmLines.length && /^\s*-\s+/.test(fmLines[i + 1])) {
-          const item = fmLines[++i].replace(/^\s*-\s+/, "").trim().replace(/^["']|["']$/g, "");
-          if (item) tags.add(item);
-        }
-        continue;
-      }
-      keptFm.push(line);
-    }
-    // Keep every existing tag (including the original SR `#review`); only add
-    // the single Decks review tag.
-    tags.add(reviewClean);
-
-    const body = bodyLines
-      .filter((l) => !CALLOUT_HEADER.test(l))
-      .map((l) => l.replace(SR_COMMENT_G, "").replace(SKIP_COMMENT_G, ""))
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trimEnd();
-
-    const fmBlock = ["---", ...keptFm, "tags:", ...[...tags].map((t) => `  - ${t}`), "---"];
-    return `${fmBlock.join("\n")}\n\n${body.replace(/^\n+/, "")}\n`;
+  static renderTitleModeFile(card: MigratedCard, reviewTag: string): string {
+    const tag = reviewTag.replace(/^#/, "");
+    const body = card.back.trim();
+    return `---\ntags:\n  - ${tag}\n---\n\n${body}\n`;
   }
 
   /**

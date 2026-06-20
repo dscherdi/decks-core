@@ -201,6 +201,7 @@ export interface IDatabaseService {
   countDueCards(deckId: string): Promise<number>;
   countTotalCards(deckId: string): Promise<number>;
   countAllCards(): Promise<number>;
+  countMatureCards(deckId: string): Promise<number>;
 
   getScheduledDueByDay(
     deckId: string,

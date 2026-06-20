@@ -670,45 +670,42 @@ describe("LegacySrMigrator whole-note reviews", () => {
 
 });
 
-describe("LegacySrMigrator.rewriteReviewNote (in place)", () => {
-  it("adds decks/review, keeps the original #review tag, strips sr-* keys + EOF comment, keeps the body", () => {
-    const content = [
-      "---",
-      "sr-due: 2024-06-18",
-      "sr-interval: 5",
-      "sr-ease: 250",
-      "tags:",
-      "  - review",
-      "  - flashcards/cleancode/comments",
-      "---",
-      "",
-      "## A section",
-      "Body content.",
-      "<!--SR:!2024-06-18,5,250-->",
-    ].join("\n");
-    const out = LegacySrMigrator.rewriteReviewNote(content, "decks/review");
-    expect(out).toContain("- decks/review");
-    // Original tags are preserved (don't rename #review; keep others as-is).
-    expect(out).toContain("- review");
-    expect(out).toContain("- flashcards/cleancode/comments");
-    // Exactly one tag in the decks/ namespace.
-    expect(out.match(/- decks\//g)).toHaveLength(1);
+describe("LegacySrMigrator.renderTitleModeFile (duplicate)", () => {
+  const reviewNote = [
+    "---",
+    "sr-due: 2024-06-18",
+    "sr-interval: 5",
+    "sr-ease: 250",
+    "tags:",
+    "  - review",
+    "  - flashcards/cleancode/comments",
+    "---",
+    "",
+    "## A section",
+    "Body content.",
+    "<!--SR:!2024-06-18,5,250-->",
+  ].join("\n");
+
+  it("renders a title-mode file with exactly the review tag and the cleaned body", () => {
+    const card = LegacySrMigrator.processWholeNote(reviewNote, "My Note");
+    const out = LegacySrMigrator.renderTitleModeFile(card, "decks/review");
+    expect(out.startsWith("---\ntags:\n  - decks/review\n---")).toBe(true);
+    // Exactly one tag, in the decks/ namespace; no carried-over SR tags.
+    expect(out.match(/^ {2}- /gm)).toHaveLength(1);
+    expect(out).not.toContain("flashcards/cleancode/comments");
+    // SR metadata stripped; body kept.
     expect(out).not.toContain("sr-due");
     expect(out).not.toContain("<!--SR:");
     expect(out).toContain("## A section");
     expect(out).toContain("Body content.");
+    // No title heading — the filename is the front in title mode.
+    expect(out).not.toContain("# My Note");
   });
 
-  it("creates frontmatter when the note has none", () => {
-    const out = LegacySrMigrator.rewriteReviewNote("Just a body.\n", "decks/review");
-    expect(out.startsWith("---\n")).toBe(true);
-    expect(out).toContain("tags:\n  - decks/review");
+  it("supports a subtag review tag", () => {
+    const card = LegacySrMigrator.processWholeNote("Just a body.\n", "Note");
+    const out = LegacySrMigrator.renderTitleModeFile(card, "decks/review/spanish");
+    expect(out).toContain("  - decks/review/spanish");
     expect(out).toContain("Just a body.");
-  });
-
-  it("keeps an inline #review tag in the body", () => {
-    const out = LegacySrMigrator.rewriteReviewNote("Body #review here.\n", "decks/review");
-    expect(out).toContain("#review");
-    expect(out).toContain("tags:\n  - decks/review");
   });
 });

@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 27;
+export const CURRENT_SCHEMA_VERSION = 28;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -284,6 +284,8 @@ export const CREATE_TABLES_SQL = `
   -- Forecast-optimized indexes
   CREATE INDEX IF NOT EXISTS idx_flashcards_deck_due ON flashcards(deck_id, due_date);
   CREATE INDEX IF NOT EXISTS idx_review_logs_join ON review_logs(flashcard_id, reviewed_at);
+  -- Cloze sibling/group lookups filter by (deck_id, front).
+  CREATE INDEX IF NOT EXISTS idx_flashcards_deck_front ON flashcards(deck_id, front);
 
   -- Custom deck indexes
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
@@ -775,6 +777,7 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck_due ON flashcards(deck_id, due_date);
     CREATE INDEX IF NOT EXISTS idx_review_logs_join ON review_logs(flashcard_id, reviewed_at);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_deck_front ON flashcards(deck_id, front);
     CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
     CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
 
