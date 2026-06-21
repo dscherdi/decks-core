@@ -97,63 +97,70 @@ export const ru: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Перенос из Spaced Repetition",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Преобразуйте заметки из плагина Spaced Repetition в формат Decks, перенося свои карточки и историю повторений.",
+    howItWorks:
+      "Как это работает: карточки каждой заметки извлекаются в отдельный файл Decks, а сама заметка переписывается в виде чистого, читаемого текста (устаревший синтаксис карточек удаляется) с сохранением истории повторений; обратные карточки сохраняют оба направления. Новые файлы создаются в целевой папке (структура папок сохраняется), а перенесённая заметка ссылается на свой файл карточек — и обратно на оригинал — через свойства frontmatter. Ваши исходные заметки остаются нетронутыми. Повторный запуск переноса перезаписывает ранее созданные файлы.",
+    sourceFolderName: "Исходная папка",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "Папка для поиска устаревших карточек. Оставьте пустым, чтобы сканировать всё хранилище.",
+    targetFolderName: "Целевая папка",
+    targetFolderDesc: "Где будут создаваться новые файлы Decks.",
+    sameFolderName: "Создавать рядом с исходной заметкой",
+    sameFolderDesc:
+      "Создавать перенесённые заметки в папке каждой исходной заметки, а не в целевой папке.",
+    srTagName: "Тег Spaced Repetition",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "Базовый тег, используемый вашими устаревшими карточками. Подтеги преобразуются в ваш тег Decks.",
+    profileName: "Профиль",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "Профиль, применяемый к перенесённым колодам (задаёт уровень заголовка и планирование).",
+    reviewTagName: "Тег повторения всей заметки",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "Заметки с этим тегом переносятся как одна карточка из всей заметки (имя файла = лицевая сторона).",
+    hintLabel: "подсказка",
+    flashcardsProperty: "Карточки",
+    flashcardsSuffix: " (Карточки)",
+    sourceProperty: "Источник",
+    clozeSepName: "Разделитель cloze",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Разделитель внутри cloze для номера/ответа/подсказки (по умолчанию \";;\"). \"::\" также допускается.",
+    progressWriting: "Перенос {file}…",
+    progressSyncing: "Синхронизация колод…",
+    progressRestoring: "Восстановление истории повторений…",
+    inlineSepName: "Однострочный разделитель",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "Разделитель однострочной карточки (по умолчанию \"::\"). Обратная форма повторяет последний символ.",
+    multiSepName: "Многострочный разделитель",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "Разделитель многострочной карточки на отдельной строке (по умолчанию \"?\"). Обратная форма повторяет последний символ.",
+    formatName: "Формат переноса",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "Как располагать перенесённые карточки. Умный режим отправляет однострочные карточки в таблицы, а многострочные — в заголовки.",
+    formatSmart: "Умное автоопределение (рекомендуется)",
+    formatHeaders: "Все заголовки",
+    formatTables: "Все таблицы",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "Все таблицы: многострочные карточки сводятся в ячейки таблицы (переносы строк становятся <br>); сложное содержимое может отображаться некорректно.",
+    deleteForcesHeaders: "",
+    deleteModeName: "Архивировать оригиналы после переноса",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Перемещает каждую исходную заметку в папку _Legacy_SR_Archive после переноса — полностью в безопасности, просто вне вашего активного рабочего пространства.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "Ваши исходные заметки перемещаются в _Legacy_SR_Archive (не удаляются); удалите эту папку самостоятельно, когда будете готовы.",
+    scanButton: "Сканировать",
+    scanning: "Сканирование…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "Найдено файлов: {files}, карточек: {cards}, с историей повторений: {history}.",
+    scanFailed: "Сканирование не удалось. Подробности в консоли.",
+    migrateButton: "Перенести",
+    migrating: "Перенос…",
+    migrateFailed: "Перенос не удался. Подробности в консоли.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "Перенесено {cards} карточек в {files} файлов; восстановлена история для {history}.",
+    doneSummary: "Готово: файлов {files}, карточек {cards}, с историей {history}.",
+    cancel: "Отмена",
   },
 
   commands: {

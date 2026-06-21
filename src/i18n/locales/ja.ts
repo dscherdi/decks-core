@@ -96,63 +96,70 @@ export const ja: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Spaced Repetition から移行",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Spaced Repetition プラグインのノートを Decks 形式に変換し、カードと復習履歴を引き継ぎます。",
+    howItWorks:
+      "仕組み: 各ノートのフラッシュカードがそれぞれ専用の Decks ファイルに抽出され、ノート自体は復習履歴を保持したまま、読みやすいクリーンなテキスト（従来のカード構文を削除）に書き換えられます。リバースカードは両方向を保持します。新しいファイルは対象フォルダー内に作成され（フォルダー構成は保持されます）、移行されたノートはフロントマターを介してそのカードファイルへ（そして元ノートへ）リンクされます。元のノートはそのまま変更されません。移行を再実行すると、以前に生成されたファイルは上書きされます。",
+    sourceFolderName: "ソースフォルダー",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "従来のカードをスキャンするフォルダー。空のままにすると保管庫全体をスキャンします。",
+    targetFolderName: "対象フォルダー",
+    targetFolderDesc: "新しい Decks ファイルを作成する場所。",
+    sameFolderName: "元ノートと同じ場所に出力",
+    sameFolderDesc:
+      "移行したノートを、対象フォルダーではなく各元ノートと同じフォルダーに作成します。",
+    srTagName: "Spaced Repetition タグ",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "従来のカードが使用しているベースタグ。サブタグは Decks タグに変換されます。",
+    profileName: "プロファイル",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "移行したデッキに適用するプロファイル（見出しレベルとスケジュールを設定します）。",
+    reviewTagName: "ノート全体の復習タグ",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "このタグの付いたノートは、単一のノート全体カードとして移行されます（ファイル名 = 表面）。",
+    hintLabel: "ヒント",
+    flashcardsProperty: "フラッシュカード",
+    flashcardsSuffix: " (フラッシュカード)",
+    sourceProperty: "ソース",
+    clozeSepName: "Cloze 区切り文字",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Cloze 内の番号/解答/ヒントの区切り文字（既定は \";;\"）。\"::\" も使用できます。",
+    progressWriting: "{file} を移行中…",
+    progressSyncing: "デッキを同期中…",
+    progressRestoring: "復習履歴を復元中…",
+    inlineSepName: "インライン区切り文字",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "単一行カードの区切り文字（既定は \"::\"）。リバース形式は最後の文字を繰り返します。",
+    multiSepName: "複数行区切り文字",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "独立した行に置く複数行カードの区切り文字（既定は \"?\"）。リバース形式は最後の文字を繰り返します。",
+    formatName: "移行形式",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "移行したカードのレイアウト方法。スマートは単一行カードをテーブルに、複数行カードを見出しに振り分けます。",
+    formatSmart: "スマート自動検出（推奨）",
+    formatHeaders: "すべて見出し",
+    formatTables: "すべてテーブル",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "すべてテーブル: 複数行カードはテーブルのセルに平坦化されます（改行は <br> になります）。複雑な内容は正しく表示されない場合があります。",
+    deleteForcesHeaders: "",
+    deleteModeName: "移行後に元ファイルをアーカイブ",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "移行後、各元ノートを _Legacy_SR_Archive フォルダーに移動します。100% 安全に保たれ、アクティブなワークスペースから外れるだけです。",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "元のノートは _Legacy_SR_Archive に移動されます（削除されません）。準備ができたら、そのフォルダーをご自身で削除してください。",
+    scanButton: "スキャン",
+    scanning: "スキャン中…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "{files} 個のファイル、{cards} 枚のカード、{history} 件の復習履歴が見つかりました。",
+    scanFailed: "スキャンに失敗しました。詳細はコンソールを確認してください。",
+    migrateButton: "移行",
+    migrating: "移行中…",
+    migrateFailed: "移行に失敗しました。詳細はコンソールを確認してください。",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "{cards} 枚のカードを {files} 個のファイルに移行しました。{history} 件の履歴を復元しました。",
+    doneSummary: "完了: {files} 個のファイル、{cards} 枚のカード、{history} 件の履歴。",
+    cancel: "キャンセル",
   },
 
   commands: {

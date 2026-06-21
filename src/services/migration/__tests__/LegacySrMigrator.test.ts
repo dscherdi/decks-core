@@ -922,3 +922,85 @@ describe("LegacySrMigrator DD-MM-YYYY date parsing", () => {
     expect(LegacySrMigrator.processWholeNote(content, "Note").fsrsData?.due).toBe(Date.UTC(2024, 5, 18));
   });
 });
+
+describe("LegacySrMigrator.stripCardSyntax (readable prose)", () => {
+  const strip = (text: string) => LegacySrMigrator.stripCardSyntax(text);
+
+  it("turns inline `::`/`:::` into an em dash", () => {
+    expect(strip("Capital of France :: Paris")).toBe("Capital of France — Paris");
+    expect(strip("Cat ::: Gato")).toBe("Cat — Gato");
+  });
+
+  it("joins a multi-line `?` card with a space and a `??` card with a newline", () => {
+    expect(strip("What is the capital\n?\nParis")).toBe("What is the capital Paris");
+    expect(strip("Front\n??\nBack")).toBe("Front\nBack");
+  });
+
+  it("strips cloze delimiters to the answer text", () => {
+    expect(strip("The capital is ==Paris==.")).toBe("The capital is Paris.");
+    expect(strip("The capital is {{c1::Paris}}.")).toBe("The capital is Paris.");
+    expect(strip("Force is {{mass}} times acceleration.")).toBe("Force is mass times acceleration.");
+  });
+
+  it("leaves `::` inside inline code and fenced code untouched", () => {
+    expect(strip("Use `a::b` here")).toBe("Use `a::b` here");
+    const fenced = ["```", "const x = a ? b : c;", "key::val", "```"].join("\n");
+    expect(strip(fenced)).toBe(fenced);
+  });
+
+  it("de-sugars a card inside a callout, preserving the callout", () => {
+    expect(strip("> [!faq] How to create a user? :: useradd")).toBe(
+      "> [!faq] How to create a user? — useradd"
+    );
+  });
+});
+
+describe("processWholeNote desugars cards in the body (never strips)", () => {
+  it("keeps prose and renders cards as readable prose", () => {
+    const card = LegacySrMigrator.processWholeNote("Intro.\n\nWhat is 2+2? :: 4", "Note", {
+      inlineSep: "::",
+    });
+    expect(card.back).toContain("Intro.");
+    expect(card.back).toContain("What is 2+2? — 4");
+    expect(card.back).not.toContain("::");
+  });
+});
+
+describe("processFile hasProse", () => {
+  it("flags a note with a plain paragraph beyond cards (mixed)", () => {
+    expect(LegacySrMigrator.processFile("Intro paragraph.\n\nQ :: A", OPTS).hasProse).toBe(true);
+  });
+  it("is false for pure cards", () => {
+    expect(LegacySrMigrator.processFile("Q1 :: A1\nQ2 :: A2", OPTS).hasProse).toBe(false);
+  });
+  it("treats headers/bullets as structure, not prose", () => {
+    expect(LegacySrMigrator.processFile("## Topic\nQ :: A", OPTS).hasProse).toBe(false);
+  });
+});
+
+describe("LegacySrMigrator.expandReverseCards", () => {
+  it("expands a reverse card into forward + swapped plain cards", () => {
+    const [card] = LegacySrMigrator.processFile(
+      "Cat ::: Gato\n<!--SR:!2024-06-18,4,260!2024-06-20,40,200-->",
+      OPTS
+    ).dbRecords;
+    expect(card.isReverse).toBe(true);
+
+    const [fwd, swapped] = LegacySrMigrator.expandReverseCards([card]);
+    expect(fwd.isReverse).toBe(false);
+    expect(fwd.front).toBe("Cat");
+    expect(fwd.back).toBe("Gato");
+    expect(fwd.fsrsData?.stability).toBe(4);
+    expect(fwd.fsrsDataReverse).toBeUndefined();
+
+    expect(swapped.isReverse).toBe(false);
+    expect(swapped.front).toBe("Gato");
+    expect(swapped.back).toBe("Cat");
+    expect(swapped.fsrsData?.stability).toBe(40);
+  });
+
+  it("passes non-reverse cards through unchanged", () => {
+    const [card] = LegacySrMigrator.processFile("Cat :: Gato", OPTS).dbRecords;
+    expect(LegacySrMigrator.expandReverseCards([card])).toEqual([card]);
+  });
+});

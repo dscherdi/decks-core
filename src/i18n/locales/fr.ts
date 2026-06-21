@@ -97,63 +97,70 @@ export const fr: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Migrer depuis Spaced Repetition",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Convertit les notes du plugin Spaced Repetition au format Decks, en conservant vos cartes et votre historique de révision.",
+    howItWorks:
+      "Fonctionnement : les cartes de chaque note sont extraites dans leur propre fichier Decks, tandis que la note elle-même est réécrite en texte clair et lisible (l'ancienne syntaxe des cartes est supprimée) avec l'historique de révision préservé ; les cartes inversées conservent les deux sens. Les nouveaux fichiers sont créés dans le dossier cible (votre structure de dossiers est conservée), et la note migrée renvoie vers son fichier de cartes — et inversement vers l'original — via les propriétés (frontmatter). Vos notes d'origine restent intactes. Relancer la migration écrase les fichiers générés précédemment.",
+    sourceFolderName: "Dossier source",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "Dossier à analyser pour les anciennes cartes. Laissez vide pour analyser tout le coffre.",
+    targetFolderName: "Dossier cible",
+    targetFolderDesc: "Emplacement où les nouveaux fichiers Decks seront créés.",
+    sameFolderName: "Créer à côté de la note source",
+    sameFolderDesc:
+      "Crée les notes migrées dans le dossier de chaque note source au lieu d'un dossier cible.",
+    srTagName: "Étiquette Spaced Repetition",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "L'étiquette de base utilisée par vos anciennes cartes. Les sous-étiquettes sont converties vers votre étiquette Decks.",
+    profileName: "Profil",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "Profil appliqué aux paquets migrés (définit le niveau de titre et la planification).",
+    reviewTagName: "Étiquette de révision de note entière",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "Les notes portant cette étiquette sont migrées en une seule carte couvrant toute la note (nom du fichier = recto).",
+    hintLabel: "indice",
+    flashcardsProperty: "Cartes",
+    flashcardsSuffix: " (Cartes)",
+    sourceProperty: "Source",
+    clozeSepName: "Séparateur de texte à trous",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Séparateur à l'intérieur d'un texte à trous pour le numéro/la réponse/l'indice (par défaut \";;\"). \"::\" est également accepté.",
+    progressWriting: "Migration de {file}…",
+    progressSyncing: "Synchronisation des paquets…",
+    progressRestoring: "Restauration de l'historique de révision…",
+    inlineSepName: "Séparateur en ligne",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "Séparateur de carte sur une seule ligne (par défaut \"::\"). La forme inversée répète le dernier caractère.",
+    multiSepName: "Séparateur multiligne",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "Séparateur de carte multiligne sur sa propre ligne (par défaut \"?\"). La forme inversée répète le dernier caractère.",
+    formatName: "Format de migration",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "Disposition des cartes migrées. Le mode intelligent envoie les cartes sur une ligne vers des tableaux et les cartes multilignes vers des titres.",
+    formatSmart: "Détection automatique intelligente (recommandé)",
+    formatHeaders: "Tous en titres",
+    formatTables: "Tous en tableaux",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "Tous en tableaux : les cartes multilignes sont aplaties dans des cellules de tableau (les sauts de ligne deviennent <br>) ; un contenu complexe peut ne pas s'afficher correctement.",
+    deleteForcesHeaders: "",
+    deleteModeName: "Archiver les originaux après la migration",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Déplace chaque note d'origine dans un dossier _Legacy_SR_Archive après la migration — conservée en toute sécurité, simplement hors de votre espace de travail actif.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "Vos notes d'origine sont déplacées vers _Legacy_SR_Archive (et non supprimées) ; supprimez ce dossier vous-même quand vous le souhaitez.",
+    scanButton: "Analyser",
+    scanning: "Analyse…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "{files} fichier(s) trouvé(s), {cards} carte(s), {history} avec historique de révision.",
+    scanFailed: "Échec de l'analyse. Consultez la console pour plus de détails.",
+    migrateButton: "Migrer",
+    migrating: "Migration…",
+    migrateFailed: "Échec de la migration. Consultez la console pour plus de détails.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "{cards} carte(s) migrée(s) dans {files} fichier(s) ; historique restauré pour {history}.",
+    doneSummary: "Terminé : {files} fichier(s), {cards} carte(s), {history} avec historique.",
+    cancel: "Annuler",
   },
 
   commands: {

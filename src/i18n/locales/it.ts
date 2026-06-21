@@ -97,63 +97,70 @@ export const it: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Migra da Spaced Repetition",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Converti le note dal plugin Spaced Repetition nel formato Decks, portando con te le tue schede e la cronologia dei ripassi.",
+    howItWorks:
+      "Come funziona: le flashcard di ogni nota vengono estratte in un proprio file Decks, mentre la nota stessa viene riscritta come testo pulito e leggibile (la sintassi delle schede legacy viene rimossa) preservando la cronologia dei ripassi; le schede inverse mantengono entrambe le direzioni. I nuovi file vengono creati nella cartella di destinazione (la struttura delle tue cartelle viene preservata) e la nota migrata si collega al suo file di schede — e di nuovo all'originale — tramite il frontmatter. Le tue note originali rimangono intatte. Rieseguire la migrazione sovrascrive i file generati in precedenza.",
+    sourceFolderName: "Cartella di origine",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "Cartella in cui cercare le schede legacy. Lascia vuoto per analizzare l'intero vault.",
+    targetFolderName: "Cartella di destinazione",
+    targetFolderDesc: "Dove verranno creati i nuovi file Decks.",
+    sameFolderName: "Crea accanto alla nota di origine",
+    sameFolderDesc:
+      "Crea le note migrate nella cartella di ciascuna nota di origine anziché in una cartella di destinazione.",
+    srTagName: "Tag di Spaced Repetition",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "Il tag di base usato dalle tue schede legacy. I sottotag vengono tradotti nel tuo tag Decks.",
+    profileName: "Profilo",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "Profilo applicato ai mazzi migrati (imposta il livello delle intestazioni e la pianificazione).",
+    reviewTagName: "Tag di ripasso dell'intera nota",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "Le note con questo tag vengono migrate come un'unica scheda dell'intera nota (nome file = fronte).",
+    hintLabel: "suggerimento",
+    flashcardsProperty: "Flashcard",
+    flashcardsSuffix: " (Flashcard)",
+    sourceProperty: "Origine",
+    clozeSepName: "Separatore cloze",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Separatore all'interno di un cloze per numero/risposta/suggerimento (predefinito \";;\"). È accettato anche \"::\".",
+    progressWriting: "Migrazione di {file}…",
+    progressSyncing: "Sincronizzazione dei mazzi…",
+    progressRestoring: "Ripristino della cronologia dei ripassi…",
+    inlineSepName: "Separatore in linea",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "Separatore di scheda su riga singola (predefinito \"::\"). La forma invertita ripete l'ultimo carattere.",
+    multiSepName: "Separatore multiriga",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "Separatore di scheda multiriga su una propria riga (predefinito \"?\"). La forma invertita ripete l'ultimo carattere.",
+    formatName: "Formato di migrazione",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "Come disporre le schede migrate. Smart invia le schede su riga singola alle tabelle e le schede multiriga alle intestazioni.",
+    formatSmart: "Rilevamento automatico smart (consigliato)",
+    formatHeaders: "Tutte intestazioni",
+    formatTables: "Tutte tabelle",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "Tutte tabelle: le schede multiriga vengono appiattite in celle di tabella (le interruzioni di riga diventano <br>); i contenuti complessi potrebbero non essere visualizzati.",
+    deleteForcesHeaders: "",
+    deleteModeName: "Archivia gli originali dopo la migrazione",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Sposta ogni nota originale in una cartella _Legacy_SR_Archive dopo la migrazione — mantenuta al 100% al sicuro, solo fuori dal tuo spazio di lavoro attivo.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "Le tue note originali vengono spostate in _Legacy_SR_Archive (non eliminate); rimuovi tu stesso quella cartella quando sei pronto.",
+    scanButton: "Analizza",
+    scanning: "Analisi in corso…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "Trovati {files} file, {cards} schede, {history} con cronologia dei ripassi.",
+    scanFailed: "Analisi fallita. Vedi la console per i dettagli.",
+    migrateButton: "Migra",
+    migrating: "Migrazione in corso…",
+    migrateFailed: "Migrazione fallita. Vedi la console per i dettagli.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "Migrate {cards} schede in {files} file; cronologia ripristinata per {history}.",
+    doneSummary: "Fatto: {files} file, {cards} schede, {history} con cronologia.",
+    cancel: "Annulla",
   },
 
   commands: {

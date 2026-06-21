@@ -97,11 +97,16 @@ export const en = {
     title: "Migrate from Spaced Repetition",
     description:
       "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
+    howItWorks:
+      "How it works: each note's flashcards are extracted into their own Decks file, while the note itself is rewritten as clean, readable text (legacy card syntax removed) with review history preserved; reverse cards keep both directions. The new files are created under the target folder (your folder structure is preserved), and the migrated note links to its cards file — and back to the original — via frontmatter. Your original notes are left untouched. Re-running the migration overwrites previously generated files.",
     sourceFolderName: "Source folder",
     sourceFolderDesc:
       "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
     targetFolderName: "Target folder",
     targetFolderDesc: "Where the new Decks files will be created.",
+    sameFolderName: "Output beside source note",
+    sameFolderDesc:
+      "Write the migrated note(s) in each source note's own folder instead of a target folder.",
     srTagName: "Spaced Repetition tag",
     srTagDesc:
       "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
@@ -112,6 +117,9 @@ export const en = {
     reviewTagDesc:
       "Notes with this tag are migrated as a single whole-note card (filename = front).",
     hintLabel: "hint",
+    flashcardsProperty: "Flashcards",
+    flashcardsSuffix: " (Flashcards)",
+    sourceProperty: "Source",
     clozeSepName: "Cloze separator",
     clozeSepDesc:
       "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
@@ -132,13 +140,12 @@ export const en = {
     formatTables: "All tables",
     formatTablesWarning:
       "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+    deleteForcesHeaders: "",
+    deleteModeName: "Archive originals after migrating",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Moves each original note into a _Legacy_SR_Archive folder after migrating — kept 100% safe, just out of your active workspace.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
+      "Your original notes are moved to _Legacy_SR_Archive (not deleted); remove that folder yourself whenever you're ready.",
     scanButton: "Scan",
     scanning: "Scanning…",
     scanSummary:

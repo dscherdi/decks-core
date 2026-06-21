@@ -98,63 +98,70 @@ export const sq: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Migro nga Spaced Repetition",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Konverto shënimet nga shtojca Spaced Repetition në formatin Decks, duke sjellë me vete kartat dhe historikun e rishikimit.",
+    howItWorks:
+      "Si funksionon: kartat e secilit shënim nxirren në skedarin e tyre Decks, ndërsa vetë shënimi rishkruhet si tekst i pastër e i lexueshëm (sintaksa e vjetër e kartave hiqet) duke ruajtur historikun e rishikimit; kartat e kthyera ruajnë të dy drejtimet. Skedarët e rinj krijohen nën dosjen e destinacionit (struktura e dosjeve tuaja ruhet), dhe shënimi i migruar lidhet me skedarin e kartave të tij — dhe mbrapsht te origjinali — përmes frontmatter. Shënimet tuaja origjinale lihen të paprekura. Riekzekutimi i migrimit mbishkruan skedarët e gjeneruar më parë.",
+    sourceFolderName: "Dosja burim",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "Dosja për t'u skanuar për karta të vjetra. Lëre bosh për të skanuar të gjithë depon.",
+    targetFolderName: "Dosja destinacion",
+    targetFolderDesc: "Ku do të krijohen skedarët e rinj Decks.",
+    sameFolderName: "Krijo pranë shënimit burim",
+    sameFolderDesc:
+      "Krijo shënimet e migruara në dosjen e secilit shënim burim në vend të një dosjeje destinacioni.",
+    srTagName: "Etiketa Spaced Repetition",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "Etiketa bazë që përdorin kartat tuaja të vjetra. Nënetiketat përkthehen në etiketën tuaj Decks.",
+    profileName: "Profili",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "Profili i aplikuar te pakot e migruara (cakton nivelin e titullit dhe planifikimin).",
+    reviewTagName: "Etiketa e rishikimit të gjithë shënimit",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "Shënimet me këtë etiketë migrohen si një kartë e vetme e gjithë shënimit (emri i skedarit = ana e parme).",
+    hintLabel: "udhëzim",
+    flashcardsProperty: "Kartat",
+    flashcardsSuffix: " (Kartat)",
+    sourceProperty: "Burimi",
+    clozeSepName: "Ndarësi i cloze",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Ndarësi brenda një cloze për numrin/përgjigjen/udhëzimin (parazgjedhje \";;\"). Pranohet edhe \"::\".",
+    progressWriting: "Po migrohet {file}…",
+    progressSyncing: "Po sinkronizohen pakot…",
+    progressRestoring: "Po rikthehet historiku i rishikimit…",
+    inlineSepName: "Ndarësi në një rresht",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "Ndarësi i kartës me një rresht (parazgjedhje \"::\"). Forma e kthyer përsërit karakterin e fundit.",
+    multiSepName: "Ndarësi shumërreshtësh",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "Ndarësi i kartës shumërreshtëshe në rreshtin e vet (parazgjedhje \"?\"). Forma e kthyer përsërit karakterin e fundit.",
+    formatName: "Formati i migrimit",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "Si të paraqiten kartat e migruara. Smart dërgon kartat me një rresht te tabelat dhe kartat shumërreshtëshe te titujt.",
+    formatSmart: "Zbulim automatik smart (rekomandohet)",
+    formatHeaders: "Të gjitha si tituj",
+    formatTables: "Të gjitha si tabela",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "Të gjitha si tabela: kartat shumërreshtëshe rrafshohen në qeliza tabele (ndërprerjet e rreshtit bëhen <br>); përmbajtja komplekse mund të mos shfaqet.",
+    deleteForcesHeaders: "",
+    deleteModeName: "Arkivo origjinalet pas migrimit",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Zhvendos secilin shënim origjinal në një dosje _Legacy_SR_Archive pas migrimit — mbahet 100% i sigurt, thjesht jashtë hapësirës suaj aktive të punës.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "Shënimet tuaja origjinale zhvendosen në _Legacy_SR_Archive (nuk fshihen); hiqe atë dosje vetë kurdo që të jesh gati.",
+    scanButton: "Skano",
+    scanning: "Po skanohet…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "U gjetën {files} skedar(ë), {cards} kartë(a), {history} me historik rishikimi.",
+    scanFailed: "Skanimi dështoi. Shih konsolën për detaje.",
+    migrateButton: "Migro",
+    migrating: "Po migrohet…",
+    migrateFailed: "Migrimi dështoi. Shih konsolën për detaje.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "U migruan {cards} kartë(a) në {files} skedar(ë); u rikthye historiku për {history}.",
+    doneSummary: "U përfundua: {files} skedar(ë), {cards} kartë(a), {history} me historik.",
+    cancel: "Anulo",
   },
 
   commands: {

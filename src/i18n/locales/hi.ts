@@ -100,63 +100,70 @@ export const hi: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Spaced Repetition से माइग्रेट करें",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Spaced Repetition प्लगइन के नोट्स को Decks फ़ॉर्मैट में बदलें, और अपने कार्ड व समीक्षा इतिहास को साथ लेकर आएँ।",
+    howItWorks:
+      "यह कैसे काम करता है: प्रत्येक नोट के फ़्लैशकार्ड अपनी अलग Decks फ़ाइल में निकाले जाते हैं, जबकि नोट को स्वयं साफ़, पठनीय टेक्स्ट के रूप में फिर से लिखा जाता है (पुराना कार्ड सिंटैक्स हटा दिया जाता है) और समीक्षा इतिहास सुरक्षित रहता है; उलटे कार्ड दोनों दिशाएँ बनाए रखते हैं। नई फ़ाइलें लक्ष्य फ़ोल्डर के अंतर्गत बनाई जाती हैं (आपकी फ़ोल्डर संरचना सुरक्षित रहती है), और माइग्रेट किया गया नोट फ्रंटमैटर के माध्यम से अपनी कार्ड फ़ाइल से — और वापस मूल नोट से — लिंक होता है। आपके मूल नोट्स अछूते रहते हैं। माइग्रेशन फिर से चलाने पर पहले बनी फ़ाइलें ओवरराइट हो जाती हैं।",
+    sourceFolderName: "स्रोत फ़ोल्डर",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "पुराने कार्ड स्कैन करने के लिए फ़ोल्डर। पूरे वॉल्ट को स्कैन करने के लिए खाली छोड़ दें।",
+    targetFolderName: "लक्ष्य फ़ोल्डर",
+    targetFolderDesc: "जहाँ नई Decks फ़ाइलें बनाई जाएँगी।",
+    sameFolderName: "स्रोत नोट के साथ बनाएँ",
+    sameFolderDesc:
+      "माइग्रेट किए गए नोट को लक्ष्य फ़ोल्डर के बजाय प्रत्येक स्रोत नोट के अपने फ़ोल्डर में बनाएँ।",
+    srTagName: "Spaced Repetition टैग",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "वह आधार टैग जो आपके पुराने कार्ड उपयोग करते हैं। उपटैग आपके Decks टैग में अनुवादित किए जाते हैं।",
+    profileName: "प्रोफ़ाइल",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "माइग्रेट किए गए डेक पर लागू की गई प्रोफ़ाइल (हेडर स्तर और शेड्यूलिंग सेट करती है)।",
+    reviewTagName: "संपूर्ण-नोट समीक्षा टैग",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "इस टैग वाले नोट्स एक ही संपूर्ण-नोट कार्ड के रूप में माइग्रेट किए जाते हैं (फ़ाइल नाम = सामने)।",
+    hintLabel: "संकेत",
+    flashcardsProperty: "फ़्लैशकार्ड",
+    flashcardsSuffix: " (फ़्लैशकार्ड)",
+    sourceProperty: "स्रोत",
+    clozeSepName: "Cloze विभाजक",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "किसी cloze के अंदर संख्या/उत्तर/संकेत के लिए विभाजक (डिफ़ॉल्ट \";;\")। \"::\" भी स्वीकार किया जाता है।",
+    progressWriting: "{file} माइग्रेट किया जा रहा है…",
+    progressSyncing: "डेक सिंक किए जा रहे हैं…",
+    progressRestoring: "समीक्षा इतिहास पुनर्स्थापित किया जा रहा है…",
+    inlineSepName: "इनलाइन विभाजक",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "एकल-पंक्ति कार्ड विभाजक (डिफ़ॉल्ट \"::\")। उल्टा रूप अंतिम वर्ण को दोहराता है।",
+    multiSepName: "बहु-पंक्ति विभाजक",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "अपनी पंक्ति पर बहु-पंक्ति कार्ड विभाजक (डिफ़ॉल्ट \"?\")। उल्टा रूप अंतिम वर्ण को दोहराता है।",
+    formatName: "माइग्रेशन फ़ॉर्मैट",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "माइग्रेट किए गए कार्डों को कैसे व्यवस्थित करें। Smart एकल-पंक्ति कार्ड को तालिकाओं में और बहु-पंक्ति कार्ड को हेडर में भेजता है।",
+    formatSmart: "Smart स्वतः-पहचान (अनुशंसित)",
+    formatHeaders: "सभी हेडर",
+    formatTables: "सभी तालिकाएँ",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "सभी तालिकाएँ: बहु-पंक्ति कार्ड तालिका कक्षों में समतल कर दिए जाते हैं (पंक्ति विराम <br> बन जाते हैं); जटिल सामग्री शायद रेंडर न हो।",
+    deleteForcesHeaders: "",
+    deleteModeName: "माइग्रेट करने के बाद मूल को संग्रहित करें",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "माइग्रेट करने के बाद प्रत्येक मूल नोट को _Legacy_SR_Archive फ़ोल्डर में ले जाता है — 100% सुरक्षित रखा जाता है, बस आपके सक्रिय कार्यक्षेत्र से बाहर।",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "आपके मूल नोट्स _Legacy_SR_Archive में ले जाए जाते हैं (हटाए नहीं जाते); जब आप तैयार हों तब उस फ़ोल्डर को स्वयं हटा दें।",
+    scanButton: "स्कैन करें",
+    scanning: "स्कैन हो रहा है…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "{files} फ़ाइल(ें), {cards} कार्ड, {history} समीक्षा इतिहास के साथ मिलीं।",
+    scanFailed: "स्कैन विफल। विवरण के लिए कंसोल देखें।",
+    migrateButton: "माइग्रेट करें",
+    migrating: "माइग्रेट हो रहा है…",
+    migrateFailed: "माइग्रेशन विफल। विवरण के लिए कंसोल देखें।",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "{cards} कार्ड को {files} फ़ाइल(ों) में माइग्रेट किया गया; {history} के लिए इतिहास पुनर्स्थापित किया गया।",
+    doneSummary: "पूर्ण: {files} फ़ाइल(ें), {cards} कार्ड, {history} इतिहास के साथ।",
+    cancel: "रद्द करें",
   },
 
   commands: {

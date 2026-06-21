@@ -57,6 +57,7 @@ export type {
   ProcessResult,
   RenderOptions,
   RenderedFile,
+  WholeNoteOptions,
 } from "./services/migration/LegacySrMigrator";
 export { SrHistoryImporter } from "./services/migration/SrHistoryImporter";
 export type {

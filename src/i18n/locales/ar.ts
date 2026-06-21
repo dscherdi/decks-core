@@ -97,63 +97,70 @@ export const ar: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "الترحيل من Spaced Repetition",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "حوّل الملاحظات من إضافة Spaced Repetition إلى تنسيق Decks، مع نقل بطاقاتك وسجل المراجعة معك.",
+    howItWorks:
+      "كيف يعمل: تُستخرج بطاقات كل ملاحظة إلى ملف Decks خاص بها، بينما تُعاد كتابة الملاحظة نفسها كنص نظيف وقابل للقراءة (مع إزالة صيغة البطاقات القديمة) مع الحفاظ على سجل المراجعة؛ والبطاقات العكسية تحتفظ بكلا الاتجاهين. تُنشأ الملفات الجديدة داخل المجلد المستهدف (مع الحفاظ على هيكل مجلداتك)، وترتبط الملاحظة المُرحَّلة بملف بطاقاتها — وبالملاحظة الأصلية — عبر الـ frontmatter. تبقى ملاحظاتك الأصلية دون تغيير. إعادة تشغيل الترحيل تستبدل الملفات المُنشأة سابقًا.",
+    sourceFolderName: "المجلد المصدر",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "المجلد الذي سيتم فحصه بحثًا عن البطاقات القديمة. اتركه فارغًا لفحص الخزنة بأكملها.",
+    targetFolderName: "المجلد المستهدف",
+    targetFolderDesc: "المكان الذي ستُنشأ فيه ملفات Decks الجديدة.",
+    sameFolderName: "الإنشاء بجوار الملاحظة المصدر",
+    sameFolderDesc:
+      "إنشاء الملاحظات المُرحَّلة في مجلد كل ملاحظة مصدر بدلاً من مجلد الوجهة.",
+    srTagName: "وسم Spaced Repetition",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "الوسم الأساسي الذي تستخدمه بطاقاتك القديمة. تُترجَم الوسوم الفرعية إلى وسم Decks الخاص بك.",
+    profileName: "الملف الشخصي",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "الملف الشخصي المطبَّق على المجموعات المُرحَّلة (يحدد مستوى العنوان والجدولة).",
+    reviewTagName: "وسم مراجعة الملاحظة الكاملة",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "تُرحَّل الملاحظات التي تحمل هذا الوسم كبطاقة ملاحظة كاملة واحدة (اسم الملف = الوجه الأمامي).",
+    hintLabel: "تلميح",
+    flashcardsProperty: "البطاقات",
+    flashcardsSuffix: " (البطاقات)",
+    sourceProperty: "المصدر",
+    clozeSepName: "فاصل التعمية (cloze)",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "الفاصل داخل التعمية (cloze) للرقم/الإجابة/التلميح (الافتراضي \";;\"). كما يُقبَل \"::\" أيضًا.",
+    progressWriting: "جارٍ ترحيل {file}…",
+    progressSyncing: "جارٍ مزامنة المجموعات…",
+    progressRestoring: "جارٍ استعادة سجل المراجعة…",
+    inlineSepName: "فاصل في سطر واحد",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "فاصل البطاقة في سطر واحد (الافتراضي \"::\"). الصيغة العكسية تكرر الحرف الأخير.",
+    multiSepName: "فاصل متعدد الأسطر",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "فاصل البطاقة متعدد الأسطر في سطر مستقل (الافتراضي \"?\"). الصيغة العكسية تكرر الحرف الأخير.",
+    formatName: "تنسيق الترحيل",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "كيفية تخطيط البطاقات المُرحَّلة. الوضع الذكي يرسل بطاقات السطر الواحد إلى الجداول والبطاقات متعددة الأسطر إلى العناوين.",
+    formatSmart: "الاكتشاف الذكي التلقائي (موصى به)",
+    formatHeaders: "كل العناوين",
+    formatTables: "كل الجداول",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "كل الجداول: تُسطَّح البطاقات متعددة الأسطر داخل خلايا الجدول (تتحول فواصل الأسطر إلى <br>)؛ قد لا يُعرَض المحتوى المعقد بشكل صحيح.",
+    deleteForcesHeaders: "",
+    deleteModeName: "أرشفة الأصول بعد الترحيل",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "ينقل كل ملاحظة أصلية إلى مجلد _Legacy_SR_Archive بعد الترحيل — تبقى آمنة بنسبة 100%، فقط خارج مساحة عملك النشطة.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "تُنقَل ملاحظاتك الأصلية إلى _Legacy_SR_Archive (لا تُحذَف)؛ احذف ذلك المجلد بنفسك متى كنت مستعدًا.",
+    scanButton: "فحص",
+    scanning: "جارٍ الفحص…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "تم العثور على {files} ملف، و{cards} بطاقة، منها {history} لها سجل مراجعة.",
+    scanFailed: "فشل الفحص. راجع وحدة التحكم للتفاصيل.",
+    migrateButton: "ترحيل",
+    migrating: "جارٍ الترحيل…",
+    migrateFailed: "فشل الترحيل. راجع وحدة التحكم للتفاصيل.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "تم ترحيل {cards} بطاقة إلى {files} ملف؛ واستُعيد السجل لـ {history}.",
+    doneSummary: "تم: {files} ملف، و{cards} بطاقة، منها {history} لها سجل.",
+    cancel: "إلغاء",
   },
 
   commands: {

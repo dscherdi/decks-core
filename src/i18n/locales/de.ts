@@ -99,63 +99,71 @@ export const de: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Von Spaced Repetition migrieren",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Wandle Notizen des Spaced-Repetition-Plugins in das Decks-Format um und übernimm dabei deine Karten und deinen Wiederholungsverlauf.",
+    howItWorks:
+      "So funktioniert es: Die Lernkarten jeder Notiz werden in eine eigene Decks-Datei extrahiert, während die Notiz selbst als sauberer, lesbarer Text neu geschrieben wird (alte Karten-Syntax entfernt) und der Wiederholungsverlauf erhalten bleibt; umgekehrte Karten behalten beide Richtungen. Die neuen Dateien werden im Zielordner erstellt (deine Ordnerstruktur bleibt erhalten), und die migrierte Notiz verweist über das Frontmatter auf ihre Kartendatei – und zurück auf das Original. Deine ursprünglichen Notizen bleiben unangetastet. Ein erneutes Ausführen der Migration überschreibt zuvor erzeugte Dateien.",
+    sourceFolderName: "Quellordner",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "Ordner, der nach alten Karten durchsucht wird. Leer lassen, um den gesamten Tresor zu durchsuchen.",
+    targetFolderName: "Zielordner",
+    targetFolderDesc: "Wo die neuen Decks-Dateien erstellt werden.",
+    sameFolderName: "Neben der Quellnotiz ausgeben",
+    sameFolderDesc:
+      "Migrierte Notiz(en) im Ordner der jeweiligen Quellnotiz statt in einem Zielordner erstellen.",
+    srTagName: "Spaced-Repetition-Tag",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "Der Basis-Tag, den deine alten Karten verwenden. Untertags werden in deinen Decks-Tag übersetzt.",
+    profileName: "Profil",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "Profil, das auf die migrierten Stapel angewendet wird (legt Überschriftenebene und Planung fest).",
+    reviewTagName: "Ganzseiten-Wiederholungstag",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "Notizen mit diesem Tag werden als einzelne Ganzseiten-Karte migriert (Dateiname = Vorderseite).",
+    hintLabel: "Hinweis",
+    flashcardsProperty: "Lernkarten",
+    flashcardsSuffix: " (Lernkarten)",
+    sourceProperty: "Quelle",
+    clozeSepName: "Cloze-Trennzeichen",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Trennzeichen innerhalb eines Cloze für Nummer/Antwort/Hinweis (Standard \";;\"). \"::\" wird ebenfalls akzeptiert.",
+    progressWriting: "Migriere {file}…",
+    progressSyncing: "Stapel werden synchronisiert…",
+    progressRestoring: "Wiederholungsverlauf wird wiederhergestellt…",
+    inlineSepName: "Inline-Trennzeichen",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "Trennzeichen für einzeilige Karten (Standard \"::\"). Die umgekehrte Form wiederholt das letzte Zeichen.",
+    multiSepName: "Mehrzeiliges Trennzeichen",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "Trennzeichen für mehrzeilige Karten in einer eigenen Zeile (Standard \"?\"). Die umgekehrte Form wiederholt das letzte Zeichen.",
+    formatName: "Migrationsformat",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "Wie die migrierten Karten angeordnet werden. Smart leitet einzeilige Karten in Tabellen und mehrzeilige Karten in Überschriften.",
+    formatSmart: "Smart-Erkennung (empfohlen)",
+    formatHeaders: "Alle Überschriften",
+    formatTables: "Alle Tabellen",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "Alle Tabellen: Mehrzeilige Karten werden in Tabellenzellen zusammengefasst (Zeilenumbrüche werden zu <br>); komplexe Inhalte werden möglicherweise nicht dargestellt.",
+    deleteForcesHeaders: "",
+    deleteModeName: "Originale nach der Migration archivieren",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Verschiebt jede ursprüngliche Notiz nach der Migration in einen _Legacy_SR_Archive-Ordner – zu 100 % sicher aufbewahrt, nur außerhalb deines aktiven Arbeitsbereichs.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "Deine ursprünglichen Notizen werden nach _Legacy_SR_Archive verschoben (nicht gelöscht); entferne diesen Ordner selbst, wann immer du bereit bist.",
+    scanButton: "Scannen",
+    scanning: "Wird gescannt…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "{files} Datei(en), {cards} Karte(n), {history} mit Wiederholungsverlauf gefunden.",
+    scanFailed: "Scan fehlgeschlagen. Siehe Konsole für Details.",
+    migrateButton: "Migrieren",
+    migrating: "Wird migriert…",
+    migrateFailed: "Migration fehlgeschlagen. Siehe Konsole für Details.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "{cards} Karte(n) in {files} Datei(en) migriert; Verlauf für {history} wiederhergestellt.",
+    doneSummary:
+      "Fertig: {files} Datei(en), {cards} Karte(n), {history} mit Verlauf.",
+    cancel: "Abbrechen",
   },
 
   commands: {

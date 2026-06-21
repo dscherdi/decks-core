@@ -62,6 +62,11 @@ export interface WholeNoteOptions {
   srBaseTag?: string;
   srReviewTag?: string;
   dateFormat?: string;
+  // Separators/labels for de-sugaring card syntax into readable prose.
+  inlineSep?: string;
+  multiSep?: string;
+  clozeSep?: string;
+  hintLabel?: string;
 }
 
 export interface RenderOptions {
@@ -73,11 +78,17 @@ export interface RenderOptions {
   // Decks parses exactly one deck tag per file, so this replaces — not augments
   // — the base tag.
   deckTag?: string;
+  // Extra serialized YAML lines injected into the output file's frontmatter
+  // (e.g. a `Source: "[[…]]"` link). No leading/trailing `---`.
+  properties?: string;
 }
 
 export interface ProcessResult {
   cleanContent: string;
   dbRecords: MigratedCard[];
+  // True when the note has plain-text paragraphs beyond its cards (a "mixed"
+  // note) — used to decide whether to also emit a readable review note.
+  hasProse: boolean;
 }
 
 export interface RenderedFile {
@@ -286,6 +297,7 @@ export class LegacySrMigrator {
     let pendingLines: string[] = [];
     let pendingStart = 0;
     let inCodeBlock = false;
+    let proseFound = false; // a plain-text paragraph that isn't a flashcard
 
     const start = LegacySrMigrator.frontmatterEnd(lines);
     const loneTitleIdx = LegacySrMigrator.loneTitleH1Index(lines, start);
@@ -329,7 +341,10 @@ export class LegacySrMigrator {
       if (pendingLines.length === 0) return;
       const block = pendingLines.join("\n");
       pendingLines = [];
-      if (!hasClozeMarkers(block)) return; // orphan prose
+      if (!hasClozeMarkers(block)) {
+        if (block.trim().length > 0) proseFound = true; // plain prose, not a card
+        return;
+      }
       const card = LegacySrMigrator.buildClozeCard(block, block, breadcrumb(), opts);
       if (card) cards.push(card);
     };
@@ -544,6 +559,7 @@ export class LegacySrMigrator {
         ? null
         : detectInline(lineContent);
       if (detected) {
+        if (pendingLines.join("\n").trim().length > 0) proseFound = true;
         pendingLines = [];
         cards.push(
           LegacySrMigrator.buildCard(
@@ -573,6 +589,7 @@ export class LegacySrMigrator {
     return {
       cleanContent: LegacySrMigrator.stripMetadata(content),
       dbRecords: cards,
+      hasProse: proseFound,
     };
   }
 
@@ -1110,16 +1127,9 @@ export class LegacySrMigrator {
    */
   static processWholeNote(content: string, title: string, opts?: WholeNoteOptions): MigratedCard {
     LegacySrMigrator.dateFormatHint = opts?.dateFormat;
-    let body = LegacySrMigrator.stripMetadata(LegacySrMigrator.stripFrontmatter(content))
-      .replace(SKIP_COMMENT_G, "")
-      .trim();
-    const families = [opts?.srBaseTag, opts?.srReviewTag, "sr-skip"].filter(
-      (t): t is string => !!t
-    );
-    body = stripInlineTagFamilies(body, families);
     return {
       front: normalizeText(title),
-      back: body,
+      back: LegacySrMigrator.stripCardSyntax(LegacySrMigrator.wholeNoteBody(content, opts), opts),
       tags: [],
       isReverse: false,
       multiline: true,
@@ -1127,6 +1137,105 @@ export class LegacySrMigrator {
       sourceMatch: content,
       fsrsData: LegacySrMigrator.parseFileLevelState(content) ?? undefined,
     };
+  }
+
+  // The cleaned body of a whole-note review: frontmatter + SR metadata stripped,
+  // and inline SR tag families removed.
+  private static wholeNoteBody(content: string, opts?: WholeNoteOptions): string {
+    const body = LegacySrMigrator.stripMetadata(LegacySrMigrator.stripFrontmatter(content))
+      .replace(SKIP_COMMENT_G, "")
+      .trim();
+    const families = [opts?.srBaseTag, opts?.srReviewTag, "sr-skip"].filter(
+      (t): t is string => !!t
+    );
+    return stripInlineTagFamilies(body, families);
+  }
+
+  // De-sugar flashcard syntax into readable prose for a migrated review note:
+  //   `::`/`:::` → ` — ` (em dash); multi-line `?` → join with a space; `??` →
+  //   keep on separate lines; clozes (`==X==`, `{{…}}`) → answer text. Code
+  //   fences are left untouched.
+  static stripCardSyntax(text: string, opts?: WholeNoteOptions): string {
+    const inlineSep = opts?.inlineSep || DEFAULT_INLINE_SEP;
+    const multiSep = opts?.multiSep || DEFAULT_MULTI_SEP;
+    const inlineRev = inlineSep + inlineSep.slice(-1);
+    const multiRev = multiSep + multiSep.slice(-1);
+    const hintLabel = opts?.hintLabel || "hint";
+    const clozeSep = opts?.clozeSep ?? DEFAULT_CLOZE_SEP;
+
+    const out: string[] = [];
+    let inCode = false;
+    let pendingSpaceJoin = false;
+    for (const raw of text.split(/\r?\n/)) {
+      if (CODE_FENCE.test(raw)) {
+        inCode = !inCode;
+        out.push(raw);
+        pendingSpaceJoin = false;
+        continue;
+      }
+      if (inCode) {
+        out.push(raw);
+        continue;
+      }
+      // Clozes first so a `::` inside `{{c1::x}}` isn't read as a separator.
+      const declozed = convertClozeSyntax(raw, hintLabel, clozeSep).replace(HIGHLIGHT_CLOZE_G, "$1");
+      const bare = declozed.replace(/^\s*>?\s*/, "").trim();
+      if (bare === multiRev) continue; // `??`: front/back stay on separate lines
+      if (bare === multiSep) {
+        pendingSpaceJoin = true; // `?`: join the next line onto the previous
+        continue;
+      }
+      const line = LegacySrMigrator.desugarInlineSeparators(declozed, inlineSep, inlineRev);
+      if (pendingSpaceJoin && out.length > 0) {
+        out[out.length - 1] = `${out[out.length - 1]} ${line.trim()}`.trim();
+      } else {
+        out.push(line);
+      }
+      pendingSpaceJoin = false;
+    }
+    return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  // Replace the first `:::`/`::` separator on a line with an em dash, mask-aware
+  // so a separator inside code/math/`==` spans is left alone.
+  private static desugarInlineSeparators(line: string, inlineSep: string, inlineRev: string): string {
+    const masked = maskInertSpans(line);
+    for (const sep of [inlineRev, inlineSep]) {
+      const idx = masked.indexOf(sep);
+      if (idx >= 0) {
+        const before = line.slice(0, idx).replace(/\s+$/, "");
+        const after = line.slice(idx + sep.length).replace(/^\s+/, "");
+        return `${before} — ${after}`;
+      }
+    }
+    return line;
+  }
+
+  // Expand each reverse card into two plain cards in the same file: forward
+  // `A→B` (its forward state) and swapped `B→A` (its reverse state). Avoids the
+  // separate `(reversed)` file — Decks reverse is file-level, but SR already
+  // stores both directions' states independently.
+  static expandReverseCards(cards: MigratedCard[]): MigratedCard[] {
+    const out: MigratedCard[] = [];
+    for (const card of cards) {
+      if (!card.isReverse) {
+        out.push(card);
+        continue;
+      }
+      out.push({ ...card, isReverse: false, fsrsDataReverse: undefined });
+      const context = card.breadcrumb ? card.breadcrumb.split(" > ").filter((p) => p.length > 0) : [];
+      const ownFront = card.back;
+      out.push({
+        ...card,
+        isReverse: false,
+        ownFront,
+        front: [...context, ownFront].filter((p) => p.length > 0).join(" > "),
+        back: card.ownFront ?? card.front,
+        fsrsData: card.fsrsDataReverse,
+        fsrsDataReverse: undefined,
+      });
+    }
+    return out;
   }
 
   /**
@@ -1180,6 +1289,9 @@ export class LegacySrMigrator {
 
     const frontmatterLines = ["---", "tags:", `  - ${deckTag}`];
     if (reverse) frontmatterLines.push("reverse: true");
+    if (options.properties && options.properties.trim()) {
+      frontmatterLines.push(...options.properties.trim().split("\n"));
+    }
     frontmatterLines.push("---", "");
 
     // Single-line QA and single-line clozes bundle into context tables; pipe-

@@ -98,63 +98,70 @@ export const tr: Translations = {
   },
 
   srMigration: {
-    title: "Migrate from Spaced Repetition",
+    title: "Spaced Repetition'dan taşı",
     description:
-      "Convert notes from the Spaced Repetition plugin into Decks format, bringing your cards and review history with you.",
-    sourceFolderName: "Source folder",
+      "Spaced Repetition eklentisindeki notları Decks formatına dönüştürün; kartlarınızı ve tekrar geçmişinizi de beraberinde getirin.",
+    howItWorks:
+      "Nasıl çalışır: her notun kartları kendi Decks dosyasına çıkarılır, notun kendisi ise temiz, okunabilir bir metin olarak yeniden yazılır (eski kart sözdizimi kaldırılır) ve tekrar geçmişi korunur; ters kartlar her iki yönü de saklar. Yeni dosyalar hedef klasörün altında oluşturulur (klasör yapınız korunur) ve taşınan not, kartlar dosyasına — ve oradan da orijinaline — frontmatter aracılığıyla bağlanır. Orijinal notlarınız değiştirilmeden bırakılır. Taşımanın yeniden çalıştırılması, önceden oluşturulan dosyaların üzerine yazar.",
+    sourceFolderName: "Kaynak klasör",
     sourceFolderDesc:
-      "Folder to scan for legacy cards. Leave empty to scan the whole vault.",
-    targetFolderName: "Target folder",
-    targetFolderDesc: "Where the new Decks files will be created.",
-    srTagName: "Spaced Repetition tag",
+      "Eski kartların taranacağı klasör. Tüm kasanın taranması için boş bırakın.",
+    targetFolderName: "Hedef klasör",
+    targetFolderDesc: "Yeni Decks dosyalarının oluşturulacağı yer.",
+    sameFolderName: "Kaynak notun yanına oluştur",
+    sameFolderDesc:
+      "Taşınan notları hedef klasör yerine her kaynak notun kendi klasöründe oluştur.",
+    srTagName: "Spaced Repetition etiketi",
     srTagDesc:
-      "The base tag your legacy cards use. Subtags are translated to your Decks tag.",
-    profileName: "Profile",
+      "Eski kartlarınızın kullandığı temel etiket. Alt etiketler, Decks etiketinize dönüştürülür.",
+    profileName: "Profil",
     profileDesc:
-      "Profile applied to the migrated decks (sets the header level and scheduling).",
-    reviewTagName: "Whole-note review tag",
+      "Taşınan destelere uygulanan profil (başlık düzeyini ve planlamayı belirler).",
+    reviewTagName: "Tüm-not tekrar etiketi",
     reviewTagDesc:
-      "Notes with this tag are migrated as a single whole-note card (filename = front).",
-    hintLabel: "hint",
-    clozeSepName: "Cloze separator",
+      "Bu etikete sahip notlar, tek bir tüm-not kartı olarak taşınır (dosya adı = ön yüz).",
+    hintLabel: "ipucu",
+    flashcardsProperty: "Kartlar",
+    flashcardsSuffix: " (Kartlar)",
+    sourceProperty: "Kaynak",
+    clozeSepName: "Boşluk doldurma ayırıcısı",
     clozeSepDesc:
-      "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",
-    progressWriting: "Migrating {file}…",
-    progressSyncing: "Syncing decks…",
-    progressRestoring: "Restoring review history…",
-    inlineSepName: "Inline separator",
+      "Bir boşluk doldurma içinde numara/cevap/ipucu için ayırıcı (varsayılan \";;\"). \"::\" de kabul edilir.",
+    progressWriting: "{file} taşınıyor…",
+    progressSyncing: "Desteler eşitleniyor…",
+    progressRestoring: "Tekrar geçmişi geri yükleniyor…",
+    inlineSepName: "Satır içi ayırıcı",
     inlineSepDesc:
-      "Single-line card separator (default \"::\"). The reversed form repeats the last character.",
-    multiSepName: "Multi-line separator",
+      "Tek satırlık kart ayırıcısı (varsayılan \"::\"). Ters biçim son karakteri tekrarlar.",
+    multiSepName: "Çok satırlı ayırıcı",
     multiSepDesc:
-      "Multi-line card separator on its own line (default \"?\"). The reversed form repeats the last character.",
-    formatName: "Migration format",
+      "Kendi satırında yer alan çok satırlı kart ayırıcısı (varsayılan \"?\"). Ters biçim son karakteri tekrarlar.",
+    formatName: "Taşıma formatı",
     formatDesc:
-      "How to lay out the migrated cards. Smart sends single-line cards to tables and multi-line cards to headers.",
-    formatSmart: "Smart auto-detect (recommended)",
-    formatHeaders: "All headers",
-    formatTables: "All tables",
+      "Taşınan kartların nasıl düzenleneceği. Akıllı seçeneği, tek satırlık kartları tablolara, çok satırlı kartları başlıklara gönderir.",
+    formatSmart: "Akıllı otomatik algılama (önerilen)",
+    formatHeaders: "Tüm başlıklar",
+    formatTables: "Tüm tablolar",
     formatTablesWarning:
-      "All tables: multi-line cards are flattened into table cells (line breaks become <br>); complex content may not render.",
-    deleteForcesHeaders:
-      "Replace-with-links uses header format so each card has a linkable anchor.",
-    deleteModeName: "Replace originals with links",
+      "Tüm tablolar: çok satırlı kartlar tablo hücrelerine düzleştirilir (satır sonları <br> olur); karmaşık içerik düzgün görüntülenmeyebilir.",
+    deleteForcesHeaders: "",
+    deleteModeName: "Taşımadan sonra orijinalleri arşivle",
     deleteModeDesc:
-      "Irreversible. Strips legacy metadata and replaces each card with a link to its new home. A .bak copy is kept.",
+      "Taşımadan sonra her orijinal notu bir _Legacy_SR_Archive klasörüne taşır — %100 güvenli tutulur, yalnızca aktif çalışma alanınızın dışına alınır.",
     deleteWarning:
-      "This permanently rewrites your original notes. A .bak backup is created next to each file.",
-    scanButton: "Scan",
-    scanning: "Scanning…",
+      "Orijinal notlarınız _Legacy_SR_Archive klasörüne taşınır (silinmez); hazır olduğunuzda o klasörü kendiniz kaldırın.",
+    scanButton: "Tara",
+    scanning: "Taranıyor…",
     scanSummary:
-      "Found {files} file(s), {cards} card(s), {history} with review history.",
-    scanFailed: "Scan failed. See console for details.",
-    migrateButton: "Migrate",
-    migrating: "Migrating…",
-    migrateFailed: "Migration failed. See console for details.",
+      "{files} dosya, {cards} kart, {history} tekrar geçmişiyle bulundu.",
+    scanFailed: "Tarama başarısız oldu. Ayrıntılar için konsola bakın.",
+    migrateButton: "Taşı",
+    migrating: "Taşınıyor…",
+    migrateFailed: "Taşıma başarısız oldu. Ayrıntılar için konsola bakın.",
     successNotice:
-      "Migrated {cards} card(s) into {files} file(s); restored history for {history}.",
-    doneSummary: "Done: {files} file(s), {cards} card(s), {history} with history.",
-    cancel: "Cancel",
+      "{cards} kart, {files} dosyaya taşındı; {history} için geçmiş geri yüklendi.",
+    doneSummary: "Tamamlandı: {files} dosya, {cards} kart, {history} geçmişiyle.",
+    cancel: "İptal",
   },
 
   commands: {
