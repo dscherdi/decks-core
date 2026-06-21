@@ -55,16 +55,18 @@ describe("Group 2 — multi-line cards", () => {
 });
 
 describe("Group 3 — clozes", () => {
-  it("3.1 orphaned cloze → front falls back to the note title", () => {
+  it("3.1 orphaned cloze → sentence in the front, empty breadcrumb", () => {
     const [c] = proc("The primary component of plant cell walls is ==cellulose==.");
     expect(c.clozes).toBeDefined();
-    expect(c.front).toBe("Note");
+    expect(c.front).toBe("The primary component of plant cell walls is ==cellulose==.");
+    expect(c.breadcrumb).toBe("");
     expect(c.clozes!.map((x) => x.clozeText)).toEqual(["cellulose"]);
   });
 
   it("3.2 heading breadcrumb cloze (bold is NOT a cloze — use ==)", () => {
     const [c] = proc("### Botany\nThe primary component is ==cellulose==.");
-    expect(c.front).toBe("Botany");
+    expect(c.front).toBe("The primary component is ==cellulose==.");
+    expect(c.breadcrumb).toBe("Botany");
     expect(c.clozes!.map((x) => x.clozeText)).toEqual(["cellulose"]);
   });
 
@@ -78,7 +80,7 @@ describe("Group 4 — advanced clozes", () => {
   it("4.1 hint `{{x::hint}}` relocates the hint, clozeText is the answer", () => {
     const [c] = proc("The capital of Japan is {{Tokyo::city}}.");
     expect(c.clozes![0].clozeText).toBe("Tokyo");
-    expect(c.back).toContain("==Tokyo== (hint: city)");
+    expect(c.front).toContain("==Tokyo== (hint: city)");
   });
 
   it("4.2 sequenced `==1::a== ==2::b==` → two ordered clozes, numbers dropped", () => {
@@ -138,7 +140,7 @@ describe("Group 6 — embeds & links", () => {
   it("6.2 wikilinks are not confused with clozes", () => {
     const [c] = proc("The foundation of [[Calculus]] was developed by ==Newton== and ==Leibniz==.");
     expect(c.clozes!.map((x) => x.clozeText)).toEqual(["Newton", "Leibniz"]);
-    expect(c.back).toContain("[[Calculus]]");
+    expect(c.front).toContain("[[Calculus]]");
   });
 });
 
@@ -193,7 +195,7 @@ describe("Group 10 — outlines & hierarchy", () => {
     expect(c.front).not.toContain("- ");
   });
 
-  it("10.2 a nested cloze flattens the ancestor list path into the front", () => {
+  it("10.2 a nested cloze keeps the ancestor list path in the breadcrumb", () => {
     const md = [
       "- **Continent: Europe**",
       "    - Country: Germany",
@@ -201,7 +203,8 @@ describe("Group 10 — outlines & hierarchy", () => {
     ].join("\n");
     const [c] = proc(md);
     expect(c.clozes!.map((x) => x.clozeText)).toEqual(["Berlin"]);
-    expect(c.front).toContain("Country: Germany");
+    expect(c.front).toBe("The capital is ==Berlin==.");
+    expect(c.breadcrumb).toContain("Country: Germany");
   });
 
   it("10.3 a list item + indented `??` + list answer (outliner pattern)", () => {

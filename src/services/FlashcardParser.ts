@@ -113,13 +113,14 @@ export class FlashcardParser {
     notes: string,
     type: "header-paragraph" | "table",
     breadcrumb: string,
-    tags: string[]
+    tags: string[],
+    clozeSource: string = back
   ): ParsedFlashcard[] {
     const matches: { text: string; index: number }[] = [];
     let match: RegExpExecArray | null;
     const regex = new RegExp(FlashcardParser.CLOZE_REGEX.source, "g");
 
-    while ((match = regex.exec(back)) !== null) {
+    while ((match = regex.exec(clozeSource)) !== null) {
       matches.push({ text: match[1], index: matches.length });
     }
 
@@ -233,27 +234,37 @@ export class FlashcardParser {
             (cell) => unescapeTableCell(cell.trim()),
           );
 
-          if (cells.length >= 2 && cells[0] && cells[1]) {
-            // Build breadcrumb from header stack (excluding the current header since it's the table container)
+          if (cells.length >= 1 && cells[0]) {
+            const back = cells[1] ?? "";
             const breadcrumb = headerStack.map((h) => h.text).join(" > ");
             const rowNotes = cells.length >= 3 ? (cells[2] || "") : "";
             const rowTags = FlashcardParser.collectStackTags(headerStack);
+            const frontIsCloze =
+              clozeEnabled &&
+              new RegExp(FlashcardParser.CLOZE_REGEX.source).test(cells[0]);
 
-            if (clozeEnabled) {
-              const expanded = FlashcardParser.expandClozes(
-                cells[0], cells[1], rowNotes, "table", breadcrumb, rowTags
+            if (back.length > 0) {
+              // Standard 2-column row.
+              if (clozeEnabled) {
+                flashcards.push(
+                  ...FlashcardParser.expandClozes(
+                    cells[0], back, rowNotes, "table", breadcrumb, rowTags
+                  )
+                );
+              } else {
+                flashcards.push({
+                  front: cells[0], back, notes: rowNotes, type: "table", breadcrumb, tags: rowTags,
+                });
+              }
+            } else if (frontIsCloze) {
+              // 1-column / empty-back cloze: the cloze lives in the front.
+              flashcards.push(
+                ...FlashcardParser.expandClozes(
+                  cells[0], "", rowNotes, "table", breadcrumb, rowTags, cells[0]
+                )
               );
-              flashcards.push(...expanded);
-            } else {
-              flashcards.push({
-                front: cells[0],
-                back: cells[1],
-                notes: rowNotes,
-                type: "table",
-                breadcrumb,
-                tags: rowTags,
-              });
             }
+            // else: a non-cloze row with no back is an incomplete row — ignore.
           }
         } else {
           // Table under wrong header level or has non-table content - treat as regular content

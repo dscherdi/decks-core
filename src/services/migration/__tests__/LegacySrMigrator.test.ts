@@ -174,6 +174,48 @@ describe("LegacySrMigrator.processFile", () => {
       expect(cards).toHaveLength(0);
     });
   });
+
+  describe("cards inside callouts", () => {
+    it("strips callout markers from a single-line card", () => {
+      const [card] = process("> [!faq] Capital of France :: Paris");
+      expect(card.front).toBe("Capital of France");
+      expect(card.back).toBe("Paris");
+    });
+
+    it("parses a multi-line card written inside a callout", () => {
+      const content = [
+        "> [!faq] How to create a user?",
+        "> ?",
+        "> `useradd username`",
+        "> Delete that user by `userdel username`",
+      ].join("\n");
+      const [card] = process(content);
+      expect(card.front).toBe("How to create a user?");
+      expect(card.multiline).toBe(true);
+      expect(card.back).toContain("useradd username");
+      expect(card.back).toContain("userdel username");
+      expect(card.back).not.toContain(">");
+      expect(card.back).not.toContain("[!faq]");
+    });
+
+    it("still reads scheduling state from a trailing [!sr] callout", () => {
+      const content = [
+        "> [!faq] Cat :: Gato",
+        "",
+        "> [!sr|card-metadata]",
+        "> <!--SR:!2023-10-16,4,250-->",
+      ].join("\n");
+      const [card] = process(content);
+      expect(card.front).toBe("Cat");
+      expect(card.fsrsData).toBeDefined();
+    });
+
+    it("leaves an ordinary content blockquote intact", () => {
+      const content = ["Question", "?", "Answer line", "> a quoted note"].join("\n");
+      const [card] = process(content);
+      expect(card.back).toContain("> a quoted note");
+    });
+  });
 });
 
 describe("breadcrumb flattening", () => {
@@ -302,9 +344,9 @@ describe("cloze migration", () => {
   it("converts {{x}}, {{c1::x}}, and ==x== to highlights with ordered clozes", () => {
     const card = cloze("The capital of {{c1::France}} is ==Paris== and {{the Louvre}}.")[0];
     expect(card.clozes).toBeDefined();
-    expect(card.back).toContain("==France==");
-    expect(card.back).toContain("==Paris==");
-    expect(card.back).toContain("==the Louvre==");
+    expect(card.front).toContain("==France==");
+    expect(card.front).toContain("==Paris==");
+    expect(card.front).toContain("==the Louvre==");
     expect(card.clozes!.map((c) => [c.clozeText, c.clozeOrder])).toEqual([
       ["France", 0],
       ["Paris", 1],
@@ -314,31 +356,31 @@ describe("cloze migration", () => {
 
   it("relocates an Anki hint outside the highlight with a translated label", () => {
     const card = cloze("The capital is {{c1::Paris::capital city}}.")[0];
-    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.front).toContain("==Paris== (hint: capital city)");
     expect(card.clozes![0].clozeText).toBe("Paris"); // hint not part of clozeText
   });
 
   it("relocates a footnote hint", () => {
     const card = cloze("The capital is ==Paris==^[capital city].")[0];
-    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.front).toContain("==Paris== (hint: capital city)");
     expect(card.clozes![0].clozeText).toBe("Paris");
   });
 
   it("parses the SR `;;` separator inside == highlights, dropping the number", () => {
     const card = cloze("The capital is ==1;;Paris;;capital city==.")[0];
-    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.front).toContain("==Paris== (hint: capital city)");
     expect(card.clozes![0].clozeText).toBe("Paris");
   });
 
   it("accepts `::` inside == highlights too", () => {
     const card = cloze("The capital is ==Paris::capital city==.")[0];
-    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.front).toContain("==Paris== (hint: capital city)");
     expect(card.clozes![0].clozeText).toBe("Paris");
   });
 
   it("parses the `;;` separator inside curly clozes", () => {
     const card = cloze("The capital is {{Paris;;capital city}}.")[0];
-    expect(card.back).toContain("==Paris== (hint: capital city)");
+    expect(card.front).toContain("==Paris== (hint: capital city)");
     expect(card.clozes![0].clozeText).toBe("Paris");
   });
 
@@ -347,7 +389,7 @@ describe("cloze migration", () => {
       ...clozeOpts,
       clozeSep: "@@",
     }).dbRecords[0];
-    expect(card.back).toContain("==Paris== (hint: capital)");
+    expect(card.front).toContain("==Paris== (hint: capital)");
     expect(card.clozes![0].clozeText).toBe("Paris");
   });
 
@@ -358,15 +400,20 @@ describe("cloze migration", () => {
     expect(card.clozes!.map((c) => c.fsrsData?.stability)).toEqual([4, 9, 16]);
   });
 
-  it("uses breadcrumb as front, else the note title", () => {
-    expect(cloze("The capital is ==Paris==.")[0].front).toBe("MyNote");
-    expect(cloze("## Geography\nThe capital is ==Paris==.")[0].front).toBe("Geography");
+  it("keeps the sentence in the front; the context goes to the breadcrumb", () => {
+    const top = cloze("The capital is ==Paris==.")[0];
+    expect(top.front).toBe("The capital is ==Paris==.");
+    expect(top.breadcrumb).toBe("");
+    const heading = cloze("## Geography\nThe capital is ==Paris==.")[0];
+    expect(heading.front).toBe("The capital is ==Paris==.");
+    expect(heading.breadcrumb).toBe("Geography");
   });
 
-  it("migrates a list-item cloze (front = breadcrumb header)", () => {
+  it("migrates a list-item cloze (sentence in front, heading in breadcrumb)", () => {
     const cards = cloze("### Photosynthesis\n- Plants convert ==sunlight== into energy.");
     expect(cards).toHaveLength(1);
-    expect(cards[0].front).toBe("Photosynthesis");
+    expect(cards[0].front).toBe("Plants convert ==sunlight== into energy.");
+    expect(cards[0].breadcrumb).toBe("Photosynthesis");
     expect(cards[0].clozes!.map((c) => c.clozeText)).toEqual(["sunlight"]);
   });
 
@@ -437,12 +484,15 @@ describe("cloze migration", () => {
     expect(card.back).not.toContain("sr-skip");
   });
 
-  it("always renders cloze blocks as headers, never tables", () => {
+  it("renders a single-line cloze as a 1-column table with the sentence in the cell", () => {
     const cards = cloze("The capital is ==Paris==.");
-    const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "tables" });
+    const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, {
+      format: "tables",
+      noteTitle: "MyNote",
+    });
     expect(main.content).toContain("## MyNote");
-    expect(main.content).toContain("==Paris==");
-    expect(main.content).not.toContain("| Front | Back | Notes |");
+    expect(main.content).toContain("| Front |");
+    expect(main.content).toContain("| The capital is ==Paris==. |");
   });
 });
 
@@ -555,6 +605,82 @@ describe("LegacySrMigrator.renderDecksFiles — smart routing", () => {
   });
 });
 
+describe("contextual bundling (Groups 13 & 14)", () => {
+  const render = (md: string, noteTitle?: string) =>
+    LegacySrMigrator.renderDecksFiles(process(md), "#decks", 2, {
+      format: "smart",
+      noteTitle,
+    });
+  const tableCount = (content: string) =>
+    content.split("| Front | Back | Notes |").length - 1;
+
+  it("13.1 bundles QA cards under one heading into a single table with own-front rows", () => {
+    const [main] = render("## State Capitals\nNew York :: Albany\n\nTexas :: Austin");
+    expect(tableCount(main.content)).toBe(1);
+    expect(main.content).toContain("## State Capitals");
+    expect(main.content).toContain("| New York | Albany |");
+    expect(main.content).toContain("| Texas | Austin |");
+  });
+
+  it("13.2 bundles QA cards nested under a list item, using the parent text as the container", () => {
+    const md = ["- State Capitals", "    - New York :: Albany", "    - Texas :: Austin"].join("\n");
+    const [main] = render(md);
+    expect(tableCount(main.content)).toBe(1);
+    expect(main.content).toContain("## State Capitals");
+    expect(main.content).toContain("| New York | Albany |");
+    expect(main.content).toContain("| Texas | Austin |");
+  });
+
+  it("13.4 a reverse card in a bundle goes to the (reversed) file; forwards bundle in main", () => {
+    const files = render("## Animals\nCat :: Gato\n\nDog ::: Perro");
+    const main = files.find((f) => f.suffix === "")!;
+    const rev = files.find((f) => f.reverse)!;
+    expect(main.content).toContain("| Cat | Gato |");
+    expect(main.content).not.toContain("Perro");
+    expect(rev.content).toContain("| Dog | Perro |");
+  });
+
+  it("13.5 the nearest heading wins as the container label", () => {
+    const [main] = render("## Geography\n### Europe\nFrance :: Paris");
+    expect(main.content).toContain("## Europe");
+    expect(main.content).toContain("| France | Paris |");
+    expect(main.content).not.toContain("Geography > Europe");
+  });
+
+  it("13.6 each bundled card keeps its own SR state", () => {
+    const cards = process(
+      "## Caps\nFrance :: Paris <!--SR:!2024-06-18,4,250-->\n\nSpain :: Madrid <!--SR:!2024-06-19,9,250-->"
+    );
+    expect(cards.map((c) => c.fsrsData?.stability)).toEqual([4, 9]);
+  });
+
+  it("13.x bundles top-level (no heading) cards under the note title", () => {
+    const [main] = render("France :: Paris\n\nSpain :: Madrid", "Geo");
+    expect(tableCount(main.content)).toBe(1);
+    expect(main.content).toContain("## Geo");
+    expect(main.content).toContain("| France | Paris |");
+    expect(main.content).toContain("| Spain | Madrid |");
+  });
+
+  it("14.1 bundles clozes under one heading into a 1-column table (sentence in front)", () => {
+    const [main] = render(
+      "## Planets\n- The largest planet is ==Jupiter==. <!--SR:!2024-06-18,4,250-->\n- Closest to the sun is ==Mercury==. <!--SR:!2024-06-19,9,250-->"
+    );
+    expect(main.content).toContain("## Planets");
+    expect(main.content).toContain("| Front |");
+    expect(main.content).not.toContain("| Front | Back | Notes |");
+    expect(main.content).toContain("| The largest planet is ==Jupiter==. |");
+    expect(main.content).toContain("| Closest to the sun is ==Mercury==. |");
+  });
+
+  it("14.3 mixes QA and clozes in one 3-column table; cloze rows have an empty back", () => {
+    const [main] = render("## Mix\nNew York :: Albany\n\nThe capital is ==Paris==.");
+    expect(tableCount(main.content)).toBe(1);
+    expect(main.content).toContain("| New York | Albany |  |");
+    expect(main.content).toContain("| The capital is ==Paris==. |  |  |");
+  });
+});
+
 describe("LegacySrMigrator.renderDecksFiles — tables format", () => {
   it("places multi-line cards into table cells using <br> and escapes pipes", () => {
     const cards = process("Front\n?\nline one\nline | two");
@@ -656,8 +782,15 @@ describe("LegacySrMigrator whole-note reviews", () => {
     expect(s.lapses).toBe(1);
   });
 
-  it("rejects non-ISO due dates (no NaN crash)", () => {
+  it("parses DD-MM-YYYY due dates", () => {
     const content = ["---", "sr-due: 18-06-2024", "sr-interval: 4", "sr-ease: 250", "---", "Body"].join("\n");
+    const s = wholeNote(content).fsrsData!;
+    expect(s.due).toBe(Date.UTC(2024, 5, 18));
+    expect(s.intervalDays).toBe(4);
+  });
+
+  it("rejects genuinely unparseable due dates (no NaN crash)", () => {
+    const content = ["---", "sr-due: not-a-date", "sr-interval: 4", "sr-ease: 250", "---", "Body"].join("\n");
     expect(wholeNote(content).fsrsData).toBeUndefined();
   });
 
@@ -707,5 +840,85 @@ describe("LegacySrMigrator.renderTitleModeFile (duplicate)", () => {
     const out = LegacySrMigrator.renderTitleModeFile(card, "decks/review/spanish");
     expect(out).toContain("  - decks/review/spanish");
     expect(out).toContain("Just a body.");
+  });
+
+  it("preserves user frontmatter properties and tags, dropping SR tags", () => {
+    const card = LegacySrMigrator.processWholeNote("Body content.\n", "Note");
+    const out = LegacySrMigrator.renderTitleModeFile(card, "decks/review", {
+      extraTags: ["biology", "important"],
+      properties: "author: Jane\naliases:\n  - Foo",
+    });
+    expect(out).toContain("author: Jane");
+    expect(out).toContain("aliases:\n  - Foo");
+    expect(out).toContain("  - decks/review");
+    expect(out).toContain("  - biology");
+    expect(out).toContain("  - important");
+    expect(out).toContain("Body content.");
+    // review tag comes first, before the user tags
+    expect(out.indexOf("- decks/review")).toBeLessThan(out.indexOf("- biology"));
+  });
+});
+
+describe("LegacySrMigrator.reviewUserTags", () => {
+  const opts = { srBaseTag: "#flashcards", srReviewTag: "#review", decksBaseTag: "#decks" };
+
+  it("drops SR base, SR review, and Decks families; keeps user tags", () => {
+    const got = LegacySrMigrator.reviewUserTags(
+      ["review", "review/spanish", "flashcards", "flashcards/x", "decks/foo", "biology", "important"],
+      opts
+    );
+    expect(got).toEqual(["biology", "important"]);
+  });
+
+  it("dedupes case-insensitively and preserves order, tolerating leading #", () => {
+    expect(LegacySrMigrator.reviewUserTags(["#Biology", "biology", "Math"], opts)).toEqual([
+      "Biology",
+      "Math",
+    ]);
+  });
+});
+
+describe("LegacySrMigrator.processWholeNote inline SR tag stripping", () => {
+  it("strips inline SR base/review/skip tags from the body, keeps user tags", () => {
+    const content = [
+      "Body mentions #flashcards and #review/spanish here.",
+      "Keep #biology and #flashcardsX though. #sr-skip",
+    ].join("\n");
+    const card = LegacySrMigrator.processWholeNote(content, "Note", {
+      srBaseTag: "#flashcards",
+      srReviewTag: "#review",
+    });
+    expect(card.back).not.toContain("#flashcards ");
+    expect(card.back).not.toContain("#review/spanish");
+    expect(card.back).not.toContain("#sr-skip");
+    expect(card.back).toContain("#biology");
+    expect(card.back).toContain("#flashcardsX"); // not the same family
+  });
+});
+
+describe("LegacySrMigrator DD-MM-YYYY date parsing", () => {
+  it("parses a DD-MM-YYYY date in an inline SR comment", () => {
+    const [card] = LegacySrMigrator.processFile("Q :: A\n<!--SR:!18-06-2024,4,250-->", {
+      srBaseTag: "#flashcards",
+      decksBaseTag: "#decks",
+    }).dbRecords;
+    expect(card.fsrsData?.due).toBe(Date.UTC(2024, 5, 18));
+  });
+
+  it("defaults an ambiguous DD-MM date to day-first", () => {
+    const content = ["---", "sr-due: 04-05-2024", "sr-interval: 1", "sr-ease: 250", "---", "Body"].join("\n");
+    const s = LegacySrMigrator.processWholeNote(content, "Note").fsrsData!;
+    expect(s.due).toBe(Date.UTC(2024, 4, 4)); // 4 May, not 5 Apr
+  });
+
+  it("honors a month-first dateFormat hint", () => {
+    const content = ["---", "sr-due: 04-05-2024", "sr-interval: 1", "sr-ease: 250", "---", "Body"].join("\n");
+    const s = LegacySrMigrator.processWholeNote(content, "Note", { dateFormat: "MM-DD-YYYY" }).fsrsData!;
+    expect(s.due).toBe(Date.UTC(2024, 3, 5)); // 5 Apr
+  });
+
+  it("still parses ISO dates", () => {
+    const content = ["---", "sr-due: 2024-06-18", "sr-interval: 1", "sr-ease: 250", "---", "Body"].join("\n");
+    expect(LegacySrMigrator.processWholeNote(content, "Note").fsrsData?.due).toBe(Date.UTC(2024, 5, 18));
   });
 });

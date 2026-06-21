@@ -24,6 +24,11 @@ export interface MigratedCard {
   front: string; // clean front (no inline tags)
   back: string;
   tags: string[]; // translated to the target base tag
+  // Bundling: the card's own front (table-cell text) and its context path
+  // (heading/list ancestors). When bundled into a table the cell shows ownFront
+  // and the table's container header is the closest context.
+  ownFront?: string;
+  breadcrumb?: string;
   isReverse: boolean;
   multiline: boolean; // ? / ?? cards (vs single-line :: / :::) — drives smart routing
   suspended: boolean; // legacy skip marker (#sr-skip or skip comment) → suspend on import
@@ -49,6 +54,14 @@ export interface ProcessOptions {
   noteTitle?: string; // fallback front for a bare cloze block (no breadcrumb)
   hintLabel?: string; // translated label for relocated cloze hints (default "hint")
   clozeSep?: string; // SR cloze number/answer/hint separator (default ";;"); `::` always also accepted
+  dateFormat?: string; // SR date format hint (e.g. "DD-MM-YYYY"); disambiguates day/month
+}
+
+// Options for migrating a whole-note review.
+export interface WholeNoteOptions {
+  srBaseTag?: string;
+  srReviewTag?: string;
+  dateFormat?: string;
 }
 
 export interface RenderOptions {
@@ -216,6 +229,22 @@ function extractBodyTags(text: string): { cleaned: string; tags: string[] } {
   return { cleaned, tags: unique };
 }
 
+// Remove inline `#family` and `#family/sub` tags from body text (e.g. SR tags on
+// a migrated review note), keeping unrelated tags like `#familyOther`. Matches at
+// start-of-line or after whitespace; consumes one trailing space to avoid gaps.
+function stripInlineTagFamilies(body: string, families: string[]): string {
+  const names = families
+    .map((f) => f.replace(/^#/, "").trim())
+    .filter((f) => f.length > 0);
+  if (names.length === 0) return body;
+  const alt = names.map(escapeRegExp).join("|");
+  const re = new RegExp(
+    `(?<=^|\\s)#(?:${alt})(?:/[A-Za-z0-9_-]+)*(?![A-Za-z0-9/_-])[ \\t]?`,
+    "gim"
+  );
+  return body.replace(re, "").replace(/[ \t]+\n/g, "\n").trim();
+}
+
 // A short, stable 6-char block-reference id (e.g. ^a1b2c3). Derived from the
 // card front + ordinal so duplicate fronts stay distinct. Block refs are immune
 // to Obsidian's heading-link sanitization (punctuation, `?`, `+`).
@@ -244,8 +273,13 @@ function parentTagLabel(tags: string[]): string {
  * the legacy SM-2/FSRS scheduling state for each review direction.
  */
 export class LegacySrMigrator {
+  // Date-format hint (e.g. "DD-MM-YYYY") for the current parse pass; set at each
+  // entry point and read by parseSrDate to disambiguate day/month order.
+  private static dateFormatHint: string | undefined;
+
   static processFile(content: string, opts: ProcessOptions): ProcessResult {
-    const lines = content.split(/\r?\n/);
+    LegacySrMigrator.dateFormatHint = opts.dateFormat;
+    const lines = LegacySrMigrator.decalloutLines(content.split(/\r?\n/));
     const cards: MigratedCard[] = [];
     const headerStack: { level: number; text: string }[] = [];
     const listStack: { indent: number; text: string }[] = [];
@@ -608,6 +642,64 @@ export class LegacySrMigrator {
     return best ?? fallback;
   }
 
+  // User tags to carry onto a migrated review file: drop the SR base, SR review,
+  // and Decks families (reserved — the review deck tag is added separately).
+  // Tags are `#`-stripped, order-preserved, deduped (case-insensitive).
+  static reviewUserTags(
+    tags: string[],
+    opts: { srBaseTag: string; srReviewTag: string; decksBaseTag: string }
+  ): string[] {
+    const families = [opts.srBaseTag, opts.srReviewTag, opts.decksBaseTag]
+      .map((t) => t.replace(/^#/, "").toLowerCase())
+      .filter((f) => f.length > 0);
+    const inFamily = (lower: string): boolean =>
+      families.some((f) => lower === f || lower.startsWith(f + "/"));
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of tags) {
+      const tag = raw.replace(/^#/, "").trim();
+      const lower = tag.toLowerCase();
+      if (tag.length === 0 || inFamily(lower) || seen.has(lower)) continue;
+      seen.add(lower);
+      result.push(tag);
+    }
+    return result;
+  }
+
+  // SR cards authored inside a callout (`> [!faq] Q` / `> ?` / `> A`) arrive with
+  // blockquote markers. De-callout non-`[!sr]` callout blocks (strip the `>` prefix
+  // and the `[!type]` opener) so the normal parser sees clean card content. `[!sr…]`
+  // callouts carry scheduling metadata and are left untouched.
+  private static decalloutLines(lines: string[]): string[] {
+    const opener = /^\s*>\s?\[!([^\]\s|]*)(?:\|[^\]]*)?\][-+]?\s?(.*)$/;
+    const quoted = /^\s*>\s?(.*)$/;
+    const out: string[] = [];
+    let inCallout = false;
+    for (const line of lines) {
+      const open = opener.exec(line);
+      if (open) {
+        if (open[1].toLowerCase() === "sr") {
+          inCallout = false;
+          out.push(line); // leave [!sr] metadata callouts intact
+        } else {
+          inCallout = true;
+          out.push(open[2]); // title-on-same-line becomes the first content line
+        }
+        continue;
+      }
+      if (inCallout) {
+        const q = quoted.exec(line);
+        if (q) {
+          out.push(q[1]); // strip one `>` level
+          continue;
+        }
+        inCallout = false; // blockquote block ended
+      }
+      out.push(line);
+    }
+    return out;
+  }
+
   private static frontmatterEnd(lines: string[]): number {
     if (lines[0]?.trim() !== "---") return 0;
     const end = lines.indexOf("---", 1);
@@ -706,21 +798,40 @@ export class LegacySrMigrator {
 
     const backParsed = extractBodyTags(cleaned);
     const tags = LegacySrMigrator.translateTags(backParsed.tags, opts);
-    const back = convertClozeSyntax(backParsed.cleaned, hintLabel, opts.clozeSep ?? DEFAULT_CLOZE_SEP).trim();
-    const entries = extractClozes(back);
+    const sentence = convertClozeSyntax(backParsed.cleaned, hintLabel, opts.clozeSep ?? DEFAULT_CLOZE_SEP).trim();
+    const entries = extractClozes(sentence);
     if (entries.length === 0) return null;
 
-    const front =
-      breadcrumb.filter((p) => p.length > 0).join(" > ") || normalizeText(opts.noteTitle || "");
+    const context = breadcrumb.filter((p) => p.length > 0);
+    const clozes = entries.map((c) => ({ ...c, fsrsData: states[c.clozeOrder] }));
+
+    // A single-line cloze bundles into a table: the sentence goes in the front
+    // (id = the sentence), back empty. A multi-line cloze block stays a header
+    // block (front = context/title, back = the block).
+    if (!sentence.includes("\n")) {
+      return {
+        front: sentence,
+        back: "",
+        tags,
+        ownFront: sentence,
+        breadcrumb: context.join(" > "),
+        isReverse: false,
+        multiline: false,
+        suspended,
+        clozes,
+        sourceMatch,
+      };
+    }
 
     return {
-      front,
-      back,
+      front: context.join(" > ") || normalizeText(opts.noteTitle || ""),
+      back: sentence,
       tags,
+      breadcrumb: context.join(" > "),
       isReverse: false,
       multiline: true,
       suspended,
-      clozes: entries.map((c) => ({ ...c, fsrsData: states[c.clozeOrder] })),
+      clozes,
       sourceMatch,
     };
   }
@@ -748,12 +859,15 @@ export class LegacySrMigrator {
     );
 
     const ownFront = stripMarkers(normalizeText(frontParsed.cleaned));
-    const front = [...breadcrumb, ownFront].filter((p) => p.length > 0).join(" > ");
+    const context = breadcrumb.filter((p) => p.length > 0);
+    const front = [...context, ownFront].filter((p) => p.length > 0).join(" > ");
 
     const card: MigratedCard = {
       front,
       back: backParsed.cleaned,
       tags,
+      ownFront,
+      breadcrumb: context.join(" > "),
       isReverse,
       multiline,
       suspended,
@@ -851,12 +965,34 @@ export class LegacySrMigrator {
   }
 
   private static isDateLike(value: string): boolean {
-    return /^\d{4}-\d{2}-\d{2}/.test(value);
+    return /^\d{4}-\d{2}-\d{2}/.test(value) || /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(value);
+  }
+
+  // Parse an SR date (frontmatter sr-due or a `<!--SR:-->` bang-date) to epoch ms.
+  // Accepts ISO YYYY-MM-DD[...] and DD-MM-YYYY / DD/MM/YYYY. Ambiguous all-≤12
+  // dates default to DD-MM-YYYY (SR's format) unless the hint is month-first.
+  private static parseSrDate(value: string, format = LegacySrMigrator.dateFormatHint): number | null {
+    const v = value.trim();
+    const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(v);
+    if (iso) {
+      const ms = Date.parse(v);
+      return Number.isFinite(ms) ? ms : Date.UTC(+iso[1], +iso[2] - 1, +iso[3]);
+    }
+    const dmy = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(v);
+    if (dmy) {
+      let day = +dmy[1];
+      let month = +dmy[2];
+      const monthFirst = !!format && /^M{1,2}[-/]D/i.test(format.trim());
+      if (monthFirst) [day, month] = [month, day];
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      return Date.UTC(+dmy[3], month - 1, day);
+    }
+    return null;
   }
 
   private static buildState(sched: SchedSegment, fsrs: FsrsSegment | null): FsrsState | null {
-    const due = Date.parse(sched.date);
-    if (!Number.isFinite(due)) return null;
+    const due = LegacySrMigrator.parseSrDate(sched.date);
+    if (due === null) return null;
 
     const interval = Number.isFinite(sched.interval) ? Math.max(sched.interval, 1) : 1;
 
@@ -933,11 +1069,8 @@ export class LegacySrMigrator {
 
     const dueStr = fm["sr-due"];
     if (!dueStr) return null;
-    // Obsidian frontmatter dates are ISO 8601 (YYYY-MM-DD); reject anything else
-    // to avoid Date.parse locale ambiguity producing NaN / swapped month-day.
-    if (!/^\d{4}-\d{2}-\d{2}/.test(dueStr)) return null;
-    const due = Date.parse(dueStr);
-    if (!Number.isFinite(due)) return null;
+    const due = LegacySrMigrator.parseSrDate(dueStr);
+    if (due === null) return null;
 
     const num = (key: string): number | undefined => {
       const raw = fm[key];
@@ -975,10 +1108,15 @@ export class LegacySrMigrator {
    * Build a single migrated card from an SR whole-note review. In Decks title
    * mode the filename is the card front and the whole note body is the back.
    */
-  static processWholeNote(content: string, title: string): MigratedCard {
-    const body = LegacySrMigrator.stripMetadata(LegacySrMigrator.stripFrontmatter(content))
+  static processWholeNote(content: string, title: string, opts?: WholeNoteOptions): MigratedCard {
+    LegacySrMigrator.dateFormatHint = opts?.dateFormat;
+    let body = LegacySrMigrator.stripMetadata(LegacySrMigrator.stripFrontmatter(content))
       .replace(SKIP_COMMENT_G, "")
       .trim();
+    const families = [opts?.srBaseTag, opts?.srReviewTag, "sr-skip"].filter(
+      (t): t is string => !!t
+    );
+    body = stripInlineTagFamilies(body, families);
     return {
       front: normalizeText(title),
       back: body,
@@ -1044,23 +1182,22 @@ export class LegacySrMigrator {
     if (reverse) frontmatterLines.push("reverse: true");
     frontmatterLines.push("---", "");
 
-    // Pipe guardrail: a `|` in a single-line card (LaTeX, matrices) would shatter
-    // a table, and escaping it as `\|` breaks MathJax — so smart mode routes any
-    // pipe-bearing card to a header instead.
-    const asTable = (card: MigratedCard): boolean =>
-      !card.clozes && // cloze blocks are always headers (highlights can't live in a table cell)
-      (format === "tables" ||
-        (format === "smart" &&
-          !card.multiline &&
-          !card.front.includes("|") &&
-          !card.back.includes("|")));
+    // Single-line QA and single-line clozes bundle into context tables; pipe-
+    // bearing QA (LaTeX) and multi-line blocks render as header blocks.
+    const asTable = (card: MigratedCard): boolean => {
+      if (format === "headers") return false;
+      if (card.clozes) return !card.multiline && card.back === "";
+      if (format === "tables") return true;
+      const f = card.ownFront ?? card.front;
+      return !card.multiline && !f.includes("|") && !card.back.includes("|");
+    };
 
     const tableCards = cards.filter(asTable);
     const headerCards = cards.filter((c) => !asTable(c));
 
     const sections: string[] = [];
     sections.push(
-      ...LegacySrMigrator.renderTableSections(
+      ...LegacySrMigrator.renderContextTables(
         tableCards,
         level,
         options.noteTitle,
@@ -1068,6 +1205,12 @@ export class LegacySrMigrator {
       )
     );
     headerCards.forEach((card, ordinal) => {
+      // A single-line cloze forced to a header (headers format): put the
+      // sentence in the body so the parser expands it.
+      if (card.clozes && card.back === "" && card.ownFront) {
+        card.front = card.breadcrumb || normalizeText(options.noteTitle || "");
+        card.back = card.ownFront;
+      }
       sections.push(LegacySrMigrator.renderHeaderBlock(card, level, ordinal, options.withBlockRefs));
     });
 
@@ -1091,15 +1234,12 @@ export class LegacySrMigrator {
     return `${hashes} ${card.front}${tagSuffix}\n\n${back}`;
   }
 
-  // Single-line cards become table rows. Tables can't carry per-row tags, so
-  // group by tag-set and let an enclosing header supply the tags (the parser
-  // assigns the header stack's tags to every row beneath it).
-  //
-  // In delete mode the original card is replaced with a link to the table's
-  // container header — but tags in a heading break heading links, so the
-  // linkable container header is kept clean and the tags move to a parent
-  // header one level up.
-  private static renderTableSections(
+  // Bundle table cards by their context (heading / list parent / top-level).
+  // The container header is the closest context (or the note title at top level);
+  // the parser assigns it as each row's breadcrumb and its tags to every row.
+  // Each table card's front is finalized to its own front (QA) or sentence
+  // (cloze) so the injected id matches what the parser reads from the cell.
+  private static renderContextTables(
     cards: MigratedCard[],
     level: number,
     noteTitle?: string,
@@ -1107,9 +1247,12 @@ export class LegacySrMigrator {
   ): string[] {
     if (cards.length === 0) return [];
     const hashes = "#".repeat(level);
+    // Group by context AND tag-set: a table's container header supplies one
+    // tag-set to all its rows, so cards sharing a context but differing in tags
+    // can't share a table.
     const groups = new Map<string, MigratedCard[]>();
     for (const card of cards) {
-      const key = [...card.tags].sort().join(" ");
+      const key = `${card.breadcrumb ?? ""} ${[...card.tags].sort().join(" ")}`;
       const group = groups.get(key);
       if (group) group.push(card);
       else groups.set(key, [card]);
@@ -1118,24 +1261,35 @@ export class LegacySrMigrator {
     const sections: string[] = [];
     let index = 0;
     for (const group of groups.values()) {
+      for (const c of group) if (c.ownFront !== undefined) c.front = c.ownFront;
       const tags = group[0].tags;
       const tagSuffix = tags.map((t) => ` #${t}`).join("");
-      const table = `| Front | Back | Notes |\n| --- | --- | --- |\n${group
-        .map((card) => `| ${escapeTableCell(card.front.trim())} | ${escapeTableCell(card.back.trim())} |  |`)
-        .join("\n")}`;
+      const bc = group[0].breadcrumb ?? "";
+      const closest = bc.length > 0 ? (bc.split(" > ").pop() as string) : "";
+      const label = closest || (noteTitle && noteTitle.trim().length > 0 ? noteTitle.trim() : "Cards");
+      const hasQA = group.some((c) => !c.clozes);
+
+      const table = hasQA
+        ? `| Front | Back | Notes |\n| --- | --- | --- |\n${group
+            .map((c) =>
+              c.clozes
+                ? `| ${escapeTableCell(c.front.trim())} |  |  |`
+                : `| ${escapeTableCell(c.front.trim())} | ${escapeTableCell(c.back.trim())} |  |`
+            )
+            .join("\n")}`
+        : `| Front |\n| --- |\n${group
+            .map((c) => `| ${escapeTableCell(c.front.trim())} |`)
+            .join("\n")}`;
 
       if (!withBlockRefs) {
-        const label = noteTitle && noteTitle.trim().length > 0 ? noteTitle.trim() : "Cards";
         sections.push(`${hashes} ${label}${tagSuffix}\n\n${table}`);
       } else {
-        const container = safeHeaderLabel(noteTitle, index);
+        const container = safeHeaderLabel(label, index);
         if (tags.length > 0 && level > 1) {
-          // Parent header carries the tags; clean container header is the link target.
           const parent = "#".repeat(level - 1);
           group.forEach((c) => (c.headerAnchor = container));
           sections.push(`${parent} ${parentTagLabel(tags)}${tagSuffix}\n\n${hashes} ${container}\n\n${table}`);
         } else if (tags.length > 0) {
-          // No room for a parent header (level 1) — keep tags inline, link to the file.
           group.forEach((c) => (c.headerAnchor = ""));
           sections.push(`${hashes} ${container}${tagSuffix}\n\n${table}`);
         } else {
@@ -1155,10 +1309,26 @@ export class LegacySrMigrator {
    * the back. Frontmatter carries exactly the one `reviewTag` (e.g.
    * `decks/review`). The original note is never modified — this is a duplicate.
    */
-  static renderTitleModeFile(card: MigratedCard, reviewTag: string): string {
-    const tag = reviewTag.replace(/^#/, "");
+  static renderTitleModeFile(
+    card: MigratedCard,
+    reviewTag: string,
+    opts?: { extraTags?: string[]; properties?: string }
+  ): string {
+    const reviewClean = reviewTag.replace(/^#/, "");
+    const extra = (opts?.extraTags ?? [])
+      .map((t) => t.replace(/^#/, "").trim())
+      .filter((t) => t.length > 0 && t !== reviewClean);
+    const tags = [reviewClean, ...Array.from(new Set(extra))];
+    const props = opts?.properties?.trim();
+    const frontmatter = [
+      "---",
+      ...(props ? props.split("\n") : []),
+      "tags:",
+      ...tags.map((t) => `  - ${t}`),
+      "---",
+    ];
     const body = card.back.trim();
-    return `---\ntags:\n  - ${tag}\n---\n\n${body}\n`;
+    return `${frontmatter.join("\n")}\n\n${body}\n`;
   }
 
   /**
