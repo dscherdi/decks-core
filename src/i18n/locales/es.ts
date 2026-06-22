@@ -124,7 +124,7 @@ export const es: Translations = {
     hintLabel: "pista",
     flashcardsProperty: "Tarjetas",
     flashcardsSuffix: " (Tarjetas)",
-    sourceProperty: "Origen",
+    sourceProperty: "Nota de origen",
     clozeSepName: "Separador de cloze",
     clozeSepDesc:
       "Separador dentro de un cloze para el número/respuesta/pista (por defecto \";;\"). También se acepta \"::\".",

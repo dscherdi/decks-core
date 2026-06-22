@@ -123,7 +123,7 @@ export const tr: Translations = {
     hintLabel: "ipucu",
     flashcardsProperty: "Kartlar",
     flashcardsSuffix: " (Kartlar)",
-    sourceProperty: "Kaynak",
+    sourceProperty: "Köken notu",
     clozeSepName: "Boşluk doldurma ayırıcısı",
     clozeSepDesc:
       "Bir boşluk doldurma içinde numara/cevap/ipucu için ayırıcı (varsayılan \";;\"). \"::\" de kabul edilir.",

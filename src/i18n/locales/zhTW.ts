@@ -119,7 +119,7 @@ export const zhTW: Translations = {
     hintLabel: "提示",
     flashcardsProperty: "閃卡",
     flashcardsSuffix: " (閃卡)",
-    sourceProperty: "來源",
+    sourceProperty: "來源筆記",
     clozeSepName: "填空分隔符號",
     clozeSepDesc:
       "填空中用於編號／答案／提示的分隔符號（預設為 \";;\"）。也接受 \"::\"。",

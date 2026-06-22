@@ -123,7 +123,7 @@ export const sq: Translations = {
     hintLabel: "udhëzim",
     flashcardsProperty: "Kartat",
     flashcardsSuffix: " (Kartat)",
-    sourceProperty: "Burimi",
+    sourceProperty: "Shënimi i origjinës",
     clozeSepName: "Ndarësi i cloze",
     clozeSepDesc:
       "Ndarësi brenda një cloze për numrin/përgjigjen/udhëzimin (parazgjedhje \";;\"). Pranohet edhe \"::\".",

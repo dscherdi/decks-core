@@ -125,7 +125,7 @@ export const hi: Translations = {
     hintLabel: "संकेत",
     flashcardsProperty: "फ़्लैशकार्ड",
     flashcardsSuffix: " (फ़्लैशकार्ड)",
-    sourceProperty: "स्रोत",
+    sourceProperty: "स्रोत नोट",
     clozeSepName: "Cloze विभाजक",
     clozeSepDesc:
       "किसी cloze के अंदर संख्या/उत्तर/संकेत के लिए विभाजक (डिफ़ॉल्ट \";;\")। \"::\" भी स्वीकार किया जाता है।",

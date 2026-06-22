@@ -119,7 +119,7 @@ export const en = {
     hintLabel: "hint",
     flashcardsProperty: "Flashcards",
     flashcardsSuffix: " (Flashcards)",
-    sourceProperty: "Source",
+    sourceProperty: "Origin note",
     clozeSepName: "Cloze separator",
     clozeSepDesc:
       "Separator inside a cloze for the number/answer/hint (default \";;\"). \"::\" is also accepted.",

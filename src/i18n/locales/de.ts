@@ -124,7 +124,7 @@ export const de: Translations = {
     hintLabel: "Hinweis",
     flashcardsProperty: "Lernkarten",
     flashcardsSuffix: " (Lernkarten)",
-    sourceProperty: "Quelle",
+    sourceProperty: "Ursprungsnotiz",
     clozeSepName: "Cloze-Trennzeichen",
     clozeSepDesc:
       "Trennzeichen innerhalb eines Cloze für Nummer/Antwort/Hinweis (Standard \";;\"). \"::\" wird ebenfalls akzeptiert.",

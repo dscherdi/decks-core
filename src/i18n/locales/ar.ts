@@ -122,7 +122,7 @@ export const ar: Translations = {
     hintLabel: "تلميح",
     flashcardsProperty: "البطاقات",
     flashcardsSuffix: " (البطاقات)",
-    sourceProperty: "المصدر",
+    sourceProperty: "ملاحظة المصدر",
     clozeSepName: "فاصل التعمية (cloze)",
     clozeSepDesc:
       "الفاصل داخل التعمية (cloze) للرقم/الإجابة/التلميح (الافتراضي \";;\"). كما يُقبَل \"::\" أيضًا.",

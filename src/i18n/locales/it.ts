@@ -122,7 +122,7 @@ export const it: Translations = {
     hintLabel: "suggerimento",
     flashcardsProperty: "Flashcard",
     flashcardsSuffix: " (Flashcard)",
-    sourceProperty: "Origine",
+    sourceProperty: "Nota di origine",
     clozeSepName: "Separatore cloze",
     clozeSepDesc:
       "Separatore all'interno di un cloze per numero/risposta/suggerimento (predefinito \";;\"). È accettato anche \"::\".",

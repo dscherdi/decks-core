@@ -122,7 +122,7 @@ export const fr: Translations = {
     hintLabel: "indice",
     flashcardsProperty: "Cartes",
     flashcardsSuffix: " (Cartes)",
-    sourceProperty: "Source",
+    sourceProperty: "Note d'origine",
     clozeSepName: "Séparateur de texte à trous",
     clozeSepDesc:
       "Séparateur à l'intérieur d'un texte à trous pour le numéro/la réponse/l'indice (par défaut \";;\"). \"::\" est également accepté.",

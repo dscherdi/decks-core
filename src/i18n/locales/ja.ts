@@ -121,7 +121,7 @@ export const ja: Translations = {
     hintLabel: "ヒント",
     flashcardsProperty: "フラッシュカード",
     flashcardsSuffix: " (フラッシュカード)",
-    sourceProperty: "ソース",
+    sourceProperty: "元のノート",
     clozeSepName: "Cloze 区切り文字",
     clozeSepDesc:
       "Cloze 内の番号/解答/ヒントの区切り文字（既定は \";;\"）。\"::\" も使用できます。",

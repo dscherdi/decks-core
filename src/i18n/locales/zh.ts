@@ -117,7 +117,7 @@ export const zh: Translations = {
     hintLabel: "提示",
     flashcardsProperty: "闪卡",
     flashcardsSuffix: " (闪卡)",
-    sourceProperty: "来源",
+    sourceProperty: "来源笔记",
     clozeSepName: "填空分隔符",
     clozeSepDesc:
       "填空内部用于编号/答案/提示的分隔符（默认 \";;\"）。也接受 \"::\"。",

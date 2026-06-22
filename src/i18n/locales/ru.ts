@@ -122,7 +122,7 @@ export const ru: Translations = {
     hintLabel: "подсказка",
     flashcardsProperty: "Карточки",
     flashcardsSuffix: " (Карточки)",
-    sourceProperty: "Источник",
+    sourceProperty: "Исходная заметка",
     clozeSepName: "Разделитель cloze",
     clozeSepDesc:
       "Разделитель внутри cloze для номера/ответа/подсказки (по умолчанию \";;\"). \"::\" также допускается.",
