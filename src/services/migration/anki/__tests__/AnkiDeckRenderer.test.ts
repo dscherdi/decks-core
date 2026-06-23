@@ -21,6 +21,7 @@ function basic(partial: Partial<AnkiParsedCard>): AnkiParsedCard {
     deckName: "Deck",
     front: "Front",
     back: "Back",
+    notes: "",
     media: [],
     scheduling: NEW_SCHED,
     ...partial,
@@ -78,5 +79,59 @@ describe("AnkiDeckRenderer", () => {
     ];
     const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
     expect(decks.map((d) => d.relativePath)).toEqual(["German/01 Hallo", "German/02 Wetter"]);
+  });
+
+  it("appends notes after a --- in header-paragraph format", () => {
+    const cards = [basic({ front: "Hallo", back: "Hello", notes: "informal greeting" })];
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2, "header-paragraph");
+    expect(deck.content).toContain("## Hallo\n\nHello\n\n---\n\ninformal greeting");
+  });
+
+  it("promotes notes into back when back is empty (no dangling ---)", () => {
+    const cards = [basic({ front: "Hallo", back: "", notes: "only notes" })];
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2, "header-paragraph");
+    expect(deck.content).toContain("## Hallo\n\nonly notes");
+    expect(deck.content).not.toContain("---\n\n");
+  });
+
+  it("emits a 2-col table when no card has notes", () => {
+    const cards = [
+      basic({ front: "Hallo", back: "Hello" }),
+      basic({ noteId: 2, cardId: 11, front: "Tschüss", back: "Bye" }),
+    ];
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2, "table");
+    expect(deck.content).toContain("| Front | Back |\n| --- | --- |");
+    expect(deck.content).toContain("| Hallo | Hello |");
+    expect(deck.content).not.toContain("| Notes |");
+  });
+
+  it("emits a 3-col table when any card has notes", () => {
+    const cards = [
+      basic({ front: "Hallo", back: "Hello", notes: "informal" }),
+      basic({ noteId: 2, cardId: 11, front: "Tschüss", back: "Bye" }),
+    ];
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2, "table");
+    expect(deck.content).toContain("| Front | Back | Notes |\n| --- | --- | --- |");
+    expect(deck.content).toContain("| Hallo | Hello | informal |");
+    expect(deck.content).toContain("| Tschüss | Bye |  |");
+  });
+
+  it("emits a 1-col cloze table with the sentence as the cell", () => {
+    const cloze = basic({
+      isCloze: true,
+      front: "header",
+      back: "Du trinkst ==jeden Tag== Bier.",
+      clozeBody: "Du trinkst ==jeden Tag== Bier.",
+      clozeText: "jeden Tag",
+      clozeOrder: 0,
+    });
+    const [deck] = AnkiDeckRenderer.render([cloze], "decks/anki", 2, "table");
+    expect(deck.content).toContain("| Front |\n| --- |\n| Du trinkst ==jeden Tag== Bier. |");
+  });
+
+  it("escapes pipes and newlines in table cells", () => {
+    const cards = [basic({ front: "a|b", back: "line1\nline2" })];
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2, "table");
+    expect(deck.content).toContain("| a\\|b | line1<br>line2 |");
   });
 });

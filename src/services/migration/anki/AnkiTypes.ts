@@ -55,7 +55,8 @@ export interface AnkiParsedCard {
   isCloze: boolean;
   deckName: string; // full "Parent::Child" path
   front: string; // sanitized; used as the markdown header AND for id generation
-  back: string; // sanitized
+  back: string; // sanitized primary answer (or the cloze sentence)
+  notes: string; // secondary answer fields + relocated front-side media
   clozeBody?: string; // cloze only: full sentence with every {{cN::…}} → ==…==
   clozeText?: string; // cloze only: this ord's answer (the ==highlight== text)
   clozeOrder?: number; // cloze only: 0-based document order of this ord's highlight

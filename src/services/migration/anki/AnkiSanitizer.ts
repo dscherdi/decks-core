@@ -1,10 +1,10 @@
 /**
  * Converts an Anki field value (HTML, with Anki-specific markup) into clean
- * Decks markdown. Pure string transforms — no DOM, so it runs in core.
- *
- * Handles: cloze deletions, `[sound:…]`, `<img>`, MathJax delimiters, common
- * block/inline HTML, and HTML entities. Media filenames encountered along the
- * way are collected so the caller knows which files to copy into the vault.
+ * Decks markdown. Anki-specific tokens (cloze, `[sound:…]`, `<img>`, MathJax) are
+ * handled here as pure string transforms — no DOM — and the referenced media
+ * filenames are collected. The generic HTML→markdown conversion is delegated to
+ * an injected `htmlToMarkdown` (the plugin supplies a turndown-based one); core
+ * falls back to a regex strip so it stays DOM-free for tests and mobile.
  */
 
 const SOUND_TAG = /\[sound:([^\]]+)\]/g;
@@ -30,13 +30,22 @@ export interface SanitizeResult {
   media: string[];
 }
 
+/** Generic HTML → markdown converter (the plugin injects a turndown-based one). */
+export type HtmlToMarkdown = (html: string) => string;
+
+export interface SanitizeOptions {
+  hintLabel?: string;
+  htmlToMarkdown?: HtmlToMarkdown;
+}
+
 export class AnkiSanitizer {
   /**
-   * Sanitize a single Anki field value to Decks markdown.
-   *
-   * @param hintLabel label prefixed to a relocated cloze hint (default "hint").
+   * Sanitize a single Anki field value to Decks markdown. Anki tokens become
+   * markdown first (so the HTML converter sees only real HTML), then the
+   * injected `htmlToMarkdown` (or the regex fallback) handles the rest.
    */
-  static sanitizeField(value: string, hintLabel = "hint"): SanitizeResult {
+  static sanitizeField(value: string, options: SanitizeOptions = {}): SanitizeResult {
+    const hintLabel = options.hintLabel ?? "hint";
     const media: string[] = [];
     if (!value) return { text: "", media };
 
@@ -67,7 +76,8 @@ export class AnkiSanitizer {
     text = text.replace(MATHJAX_BLOCK, (_m, body: string) => `$$${body.trim()}$$`);
     text = text.replace(MATHJAX_INLINE, (_m, body: string) => `$${body.trim()}$`);
 
-    text = AnkiSanitizer.stripHtml(text);
+    // Generic tag conversion: injected turndown, else the DOM-free regex strip.
+    text = options.htmlToMarkdown ? options.htmlToMarkdown(text) : AnkiSanitizer.stripHtml(text);
     text = AnkiSanitizer.decodeEntities(text);
 
     return { text: AnkiSanitizer.collapseWhitespace(text), media };

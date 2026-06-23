@@ -101,9 +101,9 @@ describe("AnkiCollectionParser", () => {
     });
     const result = AnkiCollectionParser.parse(db);
     expect(result.cards[0].front).toBe("haben"); // header stays text-only
-    expect(result.cards[0].back).toContain("to have");
-    expect(result.cards[0].back).toContain("![[a.mp3]]"); // audio answer field
-    expect(result.cards[0].back).toContain("![[img.jpg]]"); // front-side image relocated to body
+    expect(result.cards[0].back).toBe("to have"); // primary answer field
+    expect(result.cards[0].notes).toContain("![[a.mp3]]"); // secondary audio field
+    expect(result.cards[0].notes).toContain("![[img.jpg]]"); // front-side image relocated to notes
     expect(result.mediaFiles).toEqual(["a.mp3", "img.jpg"]);
   });
 

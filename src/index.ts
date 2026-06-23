@@ -68,9 +68,13 @@ export type {
 export { AnkiCollectionParser } from "./services/migration/anki/AnkiCollectionParser";
 export type { AnkiParseOptions } from "./services/migration/anki/AnkiCollectionParser";
 export { AnkiSanitizer } from "./services/migration/anki/AnkiSanitizer";
-export type { SanitizeResult } from "./services/migration/anki/AnkiSanitizer";
+export type {
+  SanitizeResult,
+  SanitizeOptions,
+  HtmlToMarkdown,
+} from "./services/migration/anki/AnkiSanitizer";
 export { AnkiDeckRenderer } from "./services/migration/anki/AnkiDeckRenderer";
-export type { AnkiRenderedDeck } from "./services/migration/anki/AnkiDeckRenderer";
+export type { AnkiRenderedDeck, AnkiFormat } from "./services/migration/anki/AnkiDeckRenderer";
 export { AnkiHistoryImporter } from "./services/migration/anki/AnkiHistoryImporter";
 export type {
   AnkiRevlogRow,

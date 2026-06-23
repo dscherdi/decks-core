@@ -1,5 +1,6 @@
 import type { RawDatabase } from "../../FlashcardSynchronizer";
 import { AnkiSanitizer } from "./AnkiSanitizer";
+import type { HtmlToMarkdown, SanitizeOptions } from "./AnkiSanitizer";
 import type { AnkiRevlogRow } from "./AnkiHistoryImporter";
 import type {
   AnkiDeckMeta,
@@ -32,6 +33,7 @@ const ID_FIELD = /^(id|guid|uid|key)$/i;
 
 export interface AnkiParseOptions {
   hintLabel?: string;
+  htmlToMarkdown?: HtmlToMarkdown;
 }
 
 /**
@@ -41,7 +43,10 @@ export interface AnkiParseOptions {
  */
 export class AnkiCollectionParser {
   static parse(db: RawDatabase, options: AnkiParseOptions = {}): AnkiParseResult {
-    const hintLabel = options.hintLabel ?? "hint";
+    const sanitize: SanitizeOptions = {
+      hintLabel: options.hintLabel ?? "hint",
+      htmlToMarkdown: options.htmlToMarkdown,
+    };
     const models = AnkiCollectionParser.readModels(db);
     const decks = AnkiCollectionParser.readDecks(db);
 
@@ -60,8 +65,8 @@ export class AnkiCollectionParser {
 
       const parsed =
         model.type === 1
-          ? AnkiCollectionParser.buildClozeCard(row, model, fieldMap, deckName, hintLabel)
-          : AnkiCollectionParser.buildBasicCard(row, model, fieldMap, deckName, hintLabel);
+          ? AnkiCollectionParser.buildClozeCard(row, model, fieldMap, deckName, sanitize)
+          : AnkiCollectionParser.buildBasicCard(row, model, fieldMap, deckName, sanitize);
       if (!parsed) continue;
 
       noteIds.add(row.nid);
@@ -220,7 +225,7 @@ export class AnkiCollectionParser {
     model: AnkiModel,
     fieldMap: Map<string, string>,
     deckName: string,
-    hintLabel: string
+    sanitize: SanitizeOptions
   ): AnkiParsedCard | null {
     const tmpl = model.tmpls.find((t) => t.ord === row.ord) ?? model.tmpls[0];
     if (!tmpl) return null;
@@ -235,22 +240,25 @@ export class AnkiCollectionParser {
     const promptText = AnkiCollectionParser.joinFields(
       promptFields.length ? promptFields : [model.flds[0]?.name ?? ""],
       fieldMap,
-      hintLabel,
+      sanitize,
       media
     );
     const answerSource =
       answerFields.length > 0
         ? answerFields
         : model.flds.map((f) => f.name).filter((name) => !promptFields.includes(name));
-    const answer = AnkiCollectionParser.joinFields(answerSource, fieldMap, hintLabel, media);
+    // back = primary (first non-empty) answer field; the rest become notes.
+    const answerParts = AnkiCollectionParser.fieldParts(answerSource, fieldMap, sanitize, media);
+    const back = answerParts.length > 0 ? answerParts[0] : "";
+    const secondaryAnswers = answerParts.slice(1);
 
     // A markdown header must stay a single text line, so front-side media embeds
-    // are relocated into the body rather than the `## …` heading.
+    // are relocated into the notes rather than the `## …` heading.
     const { text: headerText, embeds: frontEmbeds } = AnkiCollectionParser.splitEmbeds(promptText);
     const headerFront = AnkiCollectionParser.toHeader(headerText) || `Card ${row.nid}-${row.ord}`;
-    const back = [answer, ...frontEmbeds].filter((part) => part.trim().length > 0).join("\n\n");
+    const notes = [...secondaryAnswers, ...frontEmbeds].filter((p) => p.trim().length > 0).join("\n\n");
 
-    if (!back.trim() && headerFront.startsWith("Card ")) return null;
+    if (!back.trim() && !notes.trim() && headerFront.startsWith("Card ")) return null;
 
     return {
       noteId: row.nid,
@@ -260,6 +268,7 @@ export class AnkiCollectionParser {
       deckName,
       front: headerFront,
       back,
+      notes,
       media,
       scheduling: row.scheduling,
     };
@@ -270,26 +279,29 @@ export class AnkiCollectionParser {
     model: AnkiModel,
     fieldMap: Map<string, string>,
     deckName: string,
-    hintLabel: string
+    sanitize: SanitizeOptions
   ): AnkiParsedCard | null {
     const fieldNames = new Set(model.flds.map((f) => f.name));
     const clozeFieldName = AnkiCollectionParser.findClozeField(model, fieldNames);
     if (!clozeFieldName) return null;
 
     const media: string[] = [];
-    const bodyResult = AnkiSanitizer.sanitizeField(fieldMap.get(clozeFieldName) ?? "", hintLabel);
+    const bodyResult = AnkiSanitizer.sanitizeField(fieldMap.get(clozeFieldName) ?? "", sanitize);
     for (const m of bodyResult.media) media.push(m);
     const clozeBody = bodyResult.text;
 
-    // Extra answer-side fields (translation, image, audio) appended below the body.
+    // The header field doubles as the card title, so keep it out of the notes.
+    const headerFieldName = model.flds.find((f) => CLOZE_HEADER_FIELD.test(f.name))?.name;
+    const header =
+      AnkiCollectionParser.clozeHeader(headerFieldName, fieldMap, sanitize) || `Cloze ${row.nid}`;
+
+    // Remaining answer-side fields (image, audio, other text) become the notes.
     const extras = model.flds
       .map((f) => f.name)
-      .filter((name) => name !== clozeFieldName && !ID_FIELD.test(name));
-    const extraText = AnkiCollectionParser.joinFields(extras, fieldMap, hintLabel, media);
+      .filter((name) => name !== clozeFieldName && name !== headerFieldName && !ID_FIELD.test(name));
+    const notes = AnkiCollectionParser.joinFields(extras, fieldMap, sanitize, media);
 
-    const header = AnkiCollectionParser.clozeHeader(model, fieldMap, hintLabel) || `Cloze ${row.nid}`;
     const answers = AnkiCollectionParser.highlightAnswers(clozeBody);
-    const back = extraText.trim() ? `${clozeBody}\n\n${extraText}` : clozeBody;
 
     return {
       noteId: row.nid,
@@ -298,7 +310,8 @@ export class AnkiCollectionParser {
       isCloze: true,
       deckName,
       front: header,
-      back,
+      back: clozeBody,
+      notes,
       clozeBody,
       clozeText: answers[row.ord],
       clozeOrder: row.ord,
@@ -321,13 +334,12 @@ export class AnkiCollectionParser {
   }
 
   private static clozeHeader(
-    model: AnkiModel,
+    headerFieldName: string | undefined,
     fieldMap: Map<string, string>,
-    hintLabel: string
+    sanitize: SanitizeOptions
   ): string {
-    const named = model.flds.find((f) => CLOZE_HEADER_FIELD.test(f.name));
-    const value = named ? fieldMap.get(named.name) ?? "" : "";
-    const { text } = AnkiCollectionParser.splitEmbeds(AnkiSanitizer.sanitizeField(value, hintLabel).text);
+    const value = headerFieldName ? fieldMap.get(headerFieldName) ?? "" : "";
+    const { text } = AnkiCollectionParser.splitEmbeds(AnkiSanitizer.sanitizeField(value, sanitize).text);
     return AnkiCollectionParser.toHeader(text);
   }
 
@@ -340,21 +352,31 @@ export class AnkiCollectionParser {
     return answers;
   }
 
-  private static joinFields(
+  // Sanitized, non-empty text per field (collecting media), preserving order.
+  private static fieldParts(
     names: string[],
     fieldMap: Map<string, string>,
-    hintLabel: string,
+    sanitize: SanitizeOptions,
     media: string[]
-  ): string {
+  ): string[] {
     const parts: string[] = [];
     for (const name of names) {
       const raw = fieldMap.get(name);
       if (!raw) continue;
-      const result = AnkiSanitizer.sanitizeField(raw, hintLabel);
+      const result = AnkiSanitizer.sanitizeField(raw, sanitize);
       for (const m of result.media) media.push(m);
       if (result.text.trim()) parts.push(result.text.trim());
     }
-    return parts.join("\n\n");
+    return parts;
+  }
+
+  private static joinFields(
+    names: string[],
+    fieldMap: Map<string, string>,
+    sanitize: SanitizeOptions,
+    media: string[]
+  ): string {
+    return AnkiCollectionParser.fieldParts(names, fieldMap, sanitize, media).join("\n\n");
   }
 
   // A markdown header must be a single line; collapse newlines so multi-field

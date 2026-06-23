@@ -3,7 +3,7 @@ import type { AnkiRevlogRow, AnkiDeckItem } from "../AnkiHistoryImporter";
 import type { AnkiParsedCard, AnkiScheduling } from "../AnkiTypes";
 import type { HistoryDb } from "../../SrHistoryImporter";
 import type { Flashcard, ReviewLog } from "../../../../database/types";
-import { generateFlashcardId } from "../../../../utils/hash";
+import { generateClozeFlashcardId, generateFlashcardId } from "../../../../utils/hash";
 
 function sched(partial: Partial<AnkiScheduling>): AnkiScheduling {
   return { type: 0, queue: 0, due: 0, ivl: 0, factor: 0, reps: 0, lapses: 0, data: "{}", ...partial };
@@ -18,6 +18,7 @@ function card(partial: Partial<AnkiParsedCard>): AnkiParsedCard {
     deckName: "Deck",
     front: "Front",
     back: "Back",
+    notes: "",
     media: [],
     scheduling: sched({}),
     ...partial,
@@ -140,5 +141,28 @@ describe("AnkiHistoryImporter.importHistory", () => {
     const result = await AnkiHistoryImporter.importHistory(db, items, {}, now);
     expect(result.injected).toBe(0);
     expect(db.updates).toHaveLength(0);
+  });
+
+  it("computes a cloze card id from the right front per format", async () => {
+    const clozeCard = card({
+      isCloze: true,
+      front: "Header",
+      back: "Du trinkst ==jeden Tag== Bier.",
+      clozeBody: "Du trinkst ==jeden Tag== Bier.",
+      clozeText: "jeden Tag",
+      clozeOrder: 0,
+      scheduling: sched({ type: 2, ivl: 10, reps: 2 }),
+    });
+    const items: AnkiDeckItem[] = [{ deckId: "deck_x", profileFsrs: PROFILE, cards: [clozeCard] }];
+
+    const tableDb = new MockHistoryDb();
+    await AnkiHistoryImporter.importHistory(tableDb, items, { format: "table" }, now);
+    const tableId = generateClozeFlashcardId("Du trinkst ==jeden Tag== Bier.", "jeden Tag", 0, "deck_x");
+    expect(tableDb.updates[0].id).toBe(tableId);
+
+    const headerDb = new MockHistoryDb();
+    await AnkiHistoryImporter.importHistory(headerDb, items, { format: "header-paragraph" }, now);
+    const headerId = generateClozeFlashcardId("Header", "jeden Tag", 0, "deck_x");
+    expect(headerDb.updates[0].id).toBe(headerId);
   });
 });
