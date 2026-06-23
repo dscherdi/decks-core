@@ -1,5 +1,9 @@
 import { FlashcardParser, type ParsedFlashcard } from "./FlashcardParser";
-import { CanvasParser, type CanvasTextEdge, type CanvasTextNode } from "./CanvasParser";
+import {
+  CanvasParser,
+  type CanvasTextEdge,
+  type CanvasTextNode,
+} from "./CanvasParser";
 
 /**
  * CanvasFlashcardExtractor - Turns a .canvas file into ParsedFlashcards.
@@ -23,7 +27,7 @@ export class CanvasFlashcardExtractor {
 
   static extract(
     rawJson: string,
-    headerLevel = 2,
+    headerLevel: number | number[] = 2,
     fileTitle?: string,
     clozeEnabled = false,
   ): ParsedFlashcard[] {
@@ -37,17 +41,24 @@ export class CanvasFlashcardExtractor {
       connectedNodeIds.add(e.toNode);
     }
 
-    const sortedEdges = [...canvas.edges].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const sortedEdges = [...canvas.edges].sort((a, b) =>
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    );
 
     const out: ParsedFlashcard[] = [];
 
     for (const edge of sortedEdges) {
-      const cards = CanvasFlashcardExtractor.expandEdge(edge, nodeText, clozeEnabled);
+      const cards = CanvasFlashcardExtractor.expandEdge(
+        edge,
+        nodeText,
+        clozeEnabled,
+      );
       out.push(...cards);
     }
 
-    const sortedStandaloneNodes: CanvasTextNode[] = canvas.nodes
-      .filter((n) => !connectedNodeIds.has(n.id));
+    const sortedStandaloneNodes: CanvasTextNode[] = canvas.nodes.filter(
+      (n) => !connectedNodeIds.has(n.id),
+    );
     for (const node of sortedStandaloneNodes) {
       const standaloneCards = FlashcardParser.parseFlashcardsFromContent(
         node.text,
@@ -78,7 +89,8 @@ export class CanvasFlashcardExtractor {
     const fromText = nodeText.get(edge.fromNode) ?? "";
     const toText = nodeText.get(edge.toNode) ?? "";
 
-    const { cleaned: front, tags } = FlashcardParser.extractAndStripTags(fromText);
+    const { cleaned: front, tags } =
+      FlashcardParser.extractAndStripTags(fromText);
     const back = toText;
     const hint = edge.label;
 

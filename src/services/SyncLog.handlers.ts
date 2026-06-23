@@ -19,13 +19,13 @@ import type { IDatabaseService } from "../database/DatabaseService.interface";
 import type { ILogger as Logger } from "../database/DatabaseService.interface";
 import type { SyncLogEntry } from "./SyncLog.types";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
-import type { ReviewLog } from "../database/types";
+import { serializeHeaderLevels, type ReviewLog } from "../database/types";
 
 export type OpHandler = (
   db: IDatabaseService,
   sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ) => Promise<void>;
 
 /**
@@ -36,12 +36,12 @@ export async function applyOp(
   db: IDatabaseService,
   sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   const handler = HANDLERS[entry.o];
   if (!handler) {
     logger.debug(
-      `SyncLog: no handler for op type "${entry.o}" from ${sourceDeviceId}; skipping`
+      `SyncLog: no handler for op type "${entry.o}" from ${sourceDeviceId}; skipping`,
     );
     return;
   }
@@ -90,7 +90,7 @@ async function handleRate(
   db: IDatabaseService,
   sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   if (entry.o !== "rate") return;
   const p = entry.p;
@@ -144,7 +144,7 @@ async function handleRate(
   } catch (error) {
     logger.debug(
       `SyncLog rate: insertReviewLog failed for ${reviewLog.id}; likely duplicate, continuing`,
-      error
+      error,
     );
   }
 
@@ -152,13 +152,13 @@ async function handleRate(
   const localCard = await db.getFlashcardById(p.c);
   if (!localCard) {
     logger.debug(
-      `SyncLog rate from ${sourceDeviceId}: card ${p.c} not yet on this device; log row preserved for later restore`
+      `SyncLog rate from ${sourceDeviceId}: card ${p.c} not yet on this device; log row preserved for later restore`,
     );
     return;
   }
   if (localCard.modified >= p.log.reviewedAt) {
     logger.debug(
-      `SyncLog rate from ${sourceDeviceId}: local card ${p.c} modified ${localCard.modified} >= remote reviewedAt ${p.log.reviewedAt}; keeping local`
+      `SyncLog rate from ${sourceDeviceId}: local card ${p.c} modified ${localCard.modified} >= remote reviewedAt ${p.log.reviewedAt}; keeping local`,
     );
     return;
   }
@@ -197,7 +197,7 @@ async function handleRateUndo(
   db: IDatabaseService,
   sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   if (entry.o !== "rate_undo") return;
   const { logId } = entry.p;
@@ -205,7 +205,7 @@ async function handleRateUndo(
   const log = await db.getReviewLogById(logId);
   if (!log) {
     logger.debug(
-      `SyncLog rate_undo from ${sourceDeviceId}: log ${logId} not found locally; nothing to revert`
+      `SyncLog rate_undo from ${sourceDeviceId}: log ${logId} not found locally; nothing to revert`,
     );
     return;
   }
@@ -228,7 +228,7 @@ async function handleRateUndo(
     });
   } else if (card) {
     logger.debug(
-      `SyncLog rate_undo from ${sourceDeviceId}: card ${log.flashcardId} modified ${card.modified} no longer matches log ${log.reviewedAt}; keeping newer state, just deleting log row`
+      `SyncLog rate_undo from ${sourceDeviceId}: card ${log.flashcardId} modified ${card.modified} no longer matches log ${log.reviewedAt}; keeping newer state, just deleting log row`,
     );
   }
 
@@ -251,7 +251,7 @@ async function handleDeckReset(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   if (entry.o !== "deck_reset") return;
   const { deckId, resetAt } = entry.p;
@@ -261,14 +261,14 @@ async function handleDeckReset(
     `DELETE FROM review_logs
      WHERE flashcard_id IN (SELECT id FROM flashcards WHERE deck_id = ?)
        AND reviewed_at <= ?`,
-    [deckId, resetAt]
+    [deckId, resetAt],
   );
 
   // Wipe sessions started before the reset.
   await db.executeSql(
     `DELETE FROM review_sessions
      WHERE deck_id = ? AND started_at <= ?`,
-    [deckId, resetAt]
+    [deckId, resetAt],
   );
 
   // Reset cards whose state hasn't been touched by a newer rate.
@@ -284,7 +284,7 @@ async function handleDeckReset(
          last_reviewed = NULL,
          modified = ?
      WHERE deck_id = ? AND modified <= ?`,
-    [resetAt, resetAt, deckId, resetAt]
+    [resetAt, resetAt, deckId, resetAt],
   );
 
   logger.debug(`SyncLog deck_reset: deck=${deckId} cutoff=${resetAt} applied`);
@@ -303,7 +303,7 @@ async function handleCustomDeckReset(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   if (entry.o !== "custom_deck_reset") return;
   const { customDeckId, resetAt } = entry.p;
@@ -316,7 +316,7 @@ async function handleCustomDeckReset(
   const deck = await db.getCustomDeckById(customDeckId);
   if (!deck) {
     logger.debug(
-      `SyncLog custom_deck_reset: deck ${customDeckId} not present locally; skipping`
+      `SyncLog custom_deck_reset: deck ${customDeckId} not present locally; skipping`,
     );
     return;
   }
@@ -339,7 +339,7 @@ async function handleCustomDeckReset(
     `DELETE FROM review_logs
      WHERE flashcard_id IN (${placeholders})
        AND reviewed_at <= ?`,
-    [...cardIds, resetAt]
+    [...cardIds, resetAt],
   );
 
   await db.executeSql(
@@ -354,11 +354,11 @@ async function handleCustomDeckReset(
          last_reviewed = NULL,
          modified = ?
      WHERE id IN (${placeholders}) AND modified <= ?`,
-    [resetAt, resetAt, ...cardIds, resetAt]
+    [resetAt, resetAt, ...cardIds, resetAt],
   );
 
   logger.debug(
-    `SyncLog custom_deck_reset: deck=${customDeckId} cutoff=${resetAt} cards=${cardIds.length} applied`
+    `SyncLog custom_deck_reset: deck=${customDeckId} cutoff=${resetAt} cards=${cardIds.length} applied`,
   );
 }
 
@@ -374,7 +374,7 @@ async function handleProfileUpsert(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "profile_upsert") return;
   const p = entry.p;
@@ -383,12 +383,12 @@ async function handleProfileUpsert(
        id, name,
        has_new_cards_limit_enabled, new_cards_per_day,
        has_review_cards_limit_enabled, review_cards_per_day,
-       header_level, review_order,
+       header_level, header_levels, review_order,
        learning_steps, relearning_steps,
        fsrs_request_retention, fsrs_profile,
        cloze_enabled, cloze_show_context,
        is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -396,6 +396,7 @@ async function handleProfileUpsert(
        has_review_cards_limit_enabled = excluded.has_review_cards_limit_enabled,
        review_cards_per_day = excluded.review_cards_per_day,
        header_level = excluded.header_level,
+       header_levels = excluded.header_levels,
        review_order = excluded.review_order,
        learning_steps = excluded.learning_steps,
        relearning_steps = excluded.relearning_steps,
@@ -415,6 +416,7 @@ async function handleProfileUpsert(
       p.hasReviewCardsLimitEnabled ? 1 : 0,
       p.reviewCardsPerDay,
       p.headerLevel,
+      serializeHeaderLevels(p.headerLevels ?? p.headerLevel, p.headerLevel),
       p.reviewOrder,
       p.learningSteps,
       p.relearningSteps,
@@ -425,7 +427,7 @@ async function handleProfileUpsert(
       p.isDefault ? 1 : 0,
       p.created,
       p.modified,
-    ]
+    ],
   );
 }
 
@@ -433,7 +435,7 @@ async function handleProfileDelete(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "profile_delete") return;
   // is_default = 0 guard mirrors the public deleteProfile rule: the DEFAULT
@@ -444,7 +446,7 @@ async function handleProfileDelete(
      WHERE id = ?
        AND is_default = 0
        AND (deleted_at IS NULL OR deleted_at < ?)`,
-    [entry.p.deletedAt, entry.p.deletedAt, entry.p.id, entry.p.deletedAt]
+    [entry.p.deletedAt, entry.p.deletedAt, entry.p.id, entry.p.deletedAt],
   );
 }
 
@@ -458,7 +460,7 @@ async function handleWeightSetUpsert(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "weight_set_upsert") return;
   const p = entry.p;
@@ -486,7 +488,7 @@ async function handleWeightSetUpsert(
       p.created,
       p.modified,
       p.deletedAt,
-    ]
+    ],
   );
 }
 
@@ -496,7 +498,7 @@ async function handleTagMappingUpsert(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "tag_mapping_upsert") return;
   const { id, profileId, tag, created } = entry.p;
@@ -513,7 +515,7 @@ async function handleTagMappingUpsert(
   }>(
     `SELECT id, created, deleted_at FROM profile_tag_mappings WHERE id = ? OR tag = ?`,
     [id, tag],
-    { asObject: true }
+    { asObject: true },
   );
 
   for (const row of conflicts) {
@@ -524,13 +526,13 @@ async function handleTagMappingUpsert(
   if (conflicts.length > 0) {
     await db.executeSql(
       `DELETE FROM profile_tag_mappings WHERE id = ? OR tag = ?`,
-      [id, tag]
+      [id, tag],
     );
   }
   await db.executeSql(
     `INSERT INTO profile_tag_mappings (id, profile_id, tag, created, deleted_at)
      VALUES (?, ?, ?, ?, NULL)`,
-    [id, profileId, tag, created]
+    [id, profileId, tag, created],
   );
 }
 
@@ -538,7 +540,7 @@ async function handleTagMappingDelete(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "tag_mapping_delete") return;
   await db.executeSql(
@@ -546,7 +548,7 @@ async function handleTagMappingDelete(
      SET deleted_at = ?
      WHERE id = ?
        AND (deleted_at IS NULL OR deleted_at < ?)`,
-    [entry.p.deletedAt, entry.p.id, entry.p.deletedAt]
+    [entry.p.deletedAt, entry.p.id, entry.p.deletedAt],
   );
 }
 
@@ -556,7 +558,7 @@ async function handleCustomDeckUpsert(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "custom_deck_upsert") return;
   const p = entry.p;
@@ -571,7 +573,15 @@ async function handleCustomDeckUpsert(
        modified = excluded.modified,
        deleted_at = NULL
      WHERE excluded.modified > COALESCE(custom_decks.deleted_at, custom_decks.modified)`,
-    [p.id, p.name, p.deckType, p.filterDefinition, p.lastReviewed, p.created, p.modified]
+    [
+      p.id,
+      p.name,
+      p.deckType,
+      p.filterDefinition,
+      p.lastReviewed,
+      p.created,
+      p.modified,
+    ],
   );
 }
 
@@ -579,7 +589,7 @@ async function handleCustomDeckDelete(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "custom_deck_delete") return;
   await db.executeSql(
@@ -587,7 +597,7 @@ async function handleCustomDeckDelete(
      SET deleted_at = ?, modified = ?
      WHERE id = ?
        AND (deleted_at IS NULL OR deleted_at < ?)`,
-    [entry.p.deletedAt, entry.p.deletedAt, entry.p.id, entry.p.deletedAt]
+    [entry.p.deletedAt, entry.p.deletedAt, entry.p.id, entry.p.deletedAt],
   );
 }
 
@@ -608,14 +618,14 @@ async function handleCustomDeckCardAdd(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   if (entry.o !== "custom_deck_card_add") return;
   const p = entry.p;
 
   const tombstoneRows = (await db.querySql(
     "SELECT 1 FROM custom_deck_card_tombstones WHERE custom_deck_id = ? AND flashcard_id = ?",
-    [p.customDeckId, p.flashcardId]
+    [p.customDeckId, p.flashcardId],
   )) as Array<[number]>;
   if (tombstoneRows.length > 0) return;
 
@@ -626,21 +636,21 @@ async function handleCustomDeckCardAdd(
   // and the next applyPending replay (if any) will fire idempotently.
   const cardExists = (await db.querySql(
     "SELECT 1 FROM flashcards WHERE id = ?",
-    [p.flashcardId]
+    [p.flashcardId],
   )) as Array<[number]>;
   if (cardExists.length === 0) {
     logger.debug(
-      `SyncLog custom_deck_card_add: flashcard ${p.flashcardId} not yet on this device; skipping`
+      `SyncLog custom_deck_card_add: flashcard ${p.flashcardId} not yet on this device; skipping`,
     );
     return;
   }
   const deckExists = (await db.querySql(
     "SELECT 1 FROM custom_decks WHERE id = ? AND deleted_at IS NULL",
-    [p.customDeckId]
+    [p.customDeckId],
   )) as Array<[number]>;
   if (deckExists.length === 0) {
     logger.debug(
-      `SyncLog custom_deck_card_add: custom deck ${p.customDeckId} missing or tombstoned; skipping`
+      `SyncLog custom_deck_card_add: custom deck ${p.customDeckId} missing or tombstoned; skipping`,
     );
     return;
   }
@@ -648,7 +658,12 @@ async function handleCustomDeckCardAdd(
   await db.executeSql(
     `INSERT OR IGNORE INTO custom_deck_cards (id, custom_deck_id, flashcard_id, created)
      VALUES (?, ?, ?, ?)`,
-    [`${p.customDeckId}::${p.flashcardId}`, p.customDeckId, p.flashcardId, p.created]
+    [
+      `${p.customDeckId}::${p.flashcardId}`,
+      p.customDeckId,
+      p.flashcardId,
+      p.created,
+    ],
   );
 }
 
@@ -656,7 +671,7 @@ async function handleCustomDeckCardRemove(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "custom_deck_card_remove") return;
   const p = entry.p;
@@ -668,12 +683,12 @@ async function handleCustomDeckCardRemove(
      ON CONFLICT(custom_deck_id, flashcard_id) DO UPDATE SET
        removed_at_hlc = excluded.removed_at_hlc
      WHERE excluded.removed_at_hlc > custom_deck_card_tombstones.removed_at_hlc`,
-    [p.customDeckId, p.flashcardId, p.removedAt]
+    [p.customDeckId, p.flashcardId, p.removedAt],
   );
   await db.executeSql(
     `DELETE FROM custom_deck_cards
      WHERE custom_deck_id = ? AND flashcard_id = ?`,
-    [p.customDeckId, p.flashcardId]
+    [p.customDeckId, p.flashcardId],
   );
 }
 
@@ -687,7 +702,7 @@ async function handleSessionStart(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "session_start") return;
   const p = entry.p;
@@ -695,7 +710,7 @@ async function handleSessionStart(
     `INSERT OR IGNORE INTO review_sessions
        (id, deck_id, started_at, ended_at, goal_total, done_unique)
      VALUES (?, ?, ?, NULL, ?, 0)`,
-    [p.id, p.deckId, p.startedAt, p.goalTotal]
+    [p.id, p.deckId, p.startedAt, p.goalTotal],
   );
 }
 
@@ -708,14 +723,14 @@ async function handleSessionProgress(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "session_progress") return;
   await db.executeSql(
     `UPDATE review_sessions
      SET done_unique = ?
      WHERE id = ? AND done_unique < ?`,
-    [entry.p.doneUnique, entry.p.id, entry.p.doneUnique]
+    [entry.p.doneUnique, entry.p.id, entry.p.doneUnique],
   );
 }
 
@@ -723,14 +738,14 @@ async function handleSessionEnd(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "session_end") return;
   await db.executeSql(
     `UPDATE review_sessions
      SET ended_at = ?
      WHERE id = ? AND (ended_at IS NULL OR ended_at < ?)`,
-    [entry.p.endedAt, entry.p.id, entry.p.endedAt]
+    [entry.p.endedAt, entry.p.id, entry.p.endedAt],
   );
 }
 
@@ -748,14 +763,14 @@ async function handleCardSuspend(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "card_suspend") return;
   await db.executeSql(
     `UPDATE flashcards
      SET suspended_at = ?, modified = ?
      WHERE id = ? AND modified < ?`,
-    [entry.p.at, entry.p.at, entry.p.c, entry.p.at]
+    [entry.p.at, entry.p.at, entry.p.c, entry.p.at],
   );
 }
 
@@ -763,14 +778,14 @@ async function handleCardUnsuspend(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "card_unsuspend") return;
   await db.executeSql(
     `UPDATE flashcards
      SET suspended_at = NULL, modified = ?
      WHERE id = ? AND modified < ?`,
-    [entry.p.at, entry.p.c, entry.p.at]
+    [entry.p.at, entry.p.c, entry.p.at],
   );
 }
 
@@ -778,14 +793,14 @@ async function handleCardBury(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "card_bury") return;
   await db.executeSql(
     `UPDATE flashcards
      SET buried_until = ?, modified = ?
      WHERE id = ? AND modified < ?`,
-    [entry.p.until, entry.p.at, entry.p.c, entry.p.at]
+    [entry.p.until, entry.p.at, entry.p.c, entry.p.at],
   );
 }
 
@@ -793,14 +808,14 @@ async function handleCardUnbury(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "card_unbury") return;
   await db.executeSql(
     `UPDATE flashcards
      SET buried_until = NULL, modified = ?
      WHERE id = ? AND modified < ?`,
-    [entry.p.at, entry.p.c, entry.p.at]
+    [entry.p.at, entry.p.c, entry.p.at],
   );
 }
 
@@ -817,7 +832,7 @@ async function handleCardReset(
   db: IDatabaseService,
   _sourceDeviceId: string,
   entry: SyncLogEntry,
-  _logger: Logger
+  _logger: Logger,
 ): Promise<void> {
   if (entry.o !== "card_reset") return;
   const { c, at } = entry.p;
@@ -825,7 +840,7 @@ async function handleCardReset(
   await db.executeSql(
     `DELETE FROM review_logs
      WHERE flashcard_id = ? AND reviewed_at <= ?`,
-    [c, at]
+    [c, at],
   );
 
   await db.executeSql(
@@ -842,6 +857,6 @@ async function handleCardReset(
          buried_until = NULL,
          modified = ?
      WHERE id = ? AND modified <= ?`,
-    [at, at, c, at]
+    [at, at, c, at],
   );
 }

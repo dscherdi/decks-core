@@ -14,7 +14,10 @@ export interface DeckProfile {
   hasReviewCardsLimitEnabled: boolean;
   reviewCardsPerDay: number;
 
+  // Legacy/primary heading level. Kept for compatibility with existing
+  // callers, sync logs, and databases that predate multi-heading profiles.
   headerLevel: number;
+  headerLevels?: number[];
 
   reviewOrder: ReviewOrder;
 
@@ -34,13 +37,15 @@ export interface DeckProfile {
   modified: string;
 }
 
-export const DEFAULT_PROFILE_ID = 'profile_default';
+export const DEFAULT_PROFILE_ID = "profile_default";
 export const HEADER_LEVEL_TITLE = 0;
+export const HEADER_LEVEL_MIN = 1;
+export const HEADER_LEVEL_MAX = 6;
 
 // Preinstalled profiles shipped with the database (seeded in schemas.ts):
 // one per header level plus a title-mode profile for whole-note reviews.
-export const REVIEW_PROFILE_ID = 'profile_sr_review';
-export const REVIEW_PROFILE_NAME = 'Review notes';
+export const REVIEW_PROFILE_ID = "profile_sr_review";
+export const REVIEW_PROFILE_NAME = "Review notes";
 export const PRESET_HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 export function headingProfileId(level: number): string {
   return `profile_heading_${level}`;
@@ -49,13 +54,17 @@ export function headingProfileName(level: number): string {
   return `Heading ${level}`;
 }
 
-export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modified'> = {
-  name: 'DEFAULT',
+export const DEFAULT_DECK_PROFILE: Omit<
+  DeckProfile,
+  "id" | "created" | "modified"
+> = {
+  name: "DEFAULT",
   hasNewCardsLimitEnabled: false,
   newCardsPerDay: 20,
   hasReviewCardsLimitEnabled: false,
   reviewCardsPerDay: 100,
   headerLevel: 2,
+  headerLevels: [2],
   reviewOrder: "due-date",
   learningSteps: "1m",
   relearningSteps: "10m",
@@ -67,6 +76,87 @@ export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modifie
   clozeShowContext: "hidden",
   isDefault: true,
 };
+
+export function normalizeHeaderLevels(
+  value: number | number[] | null | undefined,
+  fallback = 2,
+): number[] {
+  const raw = Array.isArray(value)
+    ? value
+    : value === null || value === undefined
+      ? [fallback]
+      : [value];
+  const unique = Array.from(
+    new Set(
+      raw
+        .map((level) => Number(level))
+        .filter(
+          (level) =>
+            Number.isInteger(level) &&
+            level >= HEADER_LEVEL_TITLE &&
+            level <= HEADER_LEVEL_MAX,
+        ),
+    ),
+  );
+
+  if (unique.includes(HEADER_LEVEL_TITLE)) {
+    return [HEADER_LEVEL_TITLE];
+  }
+
+  const headings = unique
+    .filter((level) => level >= HEADER_LEVEL_MIN)
+    .sort((a, b) => a - b);
+
+  return headings.length > 0 ? headings : normalizeHeaderLevels(fallback, 2);
+}
+
+export function primaryHeaderLevel(
+  value: number | number[] | null | undefined,
+  fallback = 2,
+): number {
+  return normalizeHeaderLevels(value, fallback)[0] ?? fallback;
+}
+
+export function serializeHeaderLevels(
+  value: number | number[] | null | undefined,
+  fallback = 2,
+): string {
+  return JSON.stringify(normalizeHeaderLevels(value, fallback));
+}
+
+export function parseHeaderLevels(
+  raw: string | number | number[] | null | undefined,
+  fallback = 2,
+): number[] {
+  if (Array.isArray(raw) || typeof raw === "number") {
+    return normalizeHeaderLevels(raw, fallback);
+  }
+
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return normalizeHeaderLevels(
+          parsed.map((level) => Number(level)),
+          fallback,
+        );
+      }
+      if (typeof parsed === "number") {
+        return normalizeHeaderLevels(parsed, fallback);
+      }
+    } catch {
+      const levels = raw
+        .split(",")
+        .map((level) => Number(level.trim()))
+        .filter((level) => Number.isInteger(level));
+      if (levels.length > 0) {
+        return normalizeHeaderLevels(levels, fallback);
+      }
+    }
+  }
+
+  return normalizeHeaderLevels(fallback, 2);
+}
 
 export interface ProfileTagMapping {
   id: string;
@@ -90,7 +180,10 @@ export interface DeckWithProfile extends Deck {
   profile: DeckProfile;
 }
 
-export function deckWithProfile(deck: Deck, profile: DeckProfile): DeckWithProfile {
+export function deckWithProfile(
+  deck: Deck,
+  profile: DeckProfile,
+): DeckWithProfile {
   return {
     ...deck,
     profile,
@@ -98,7 +191,7 @@ export function deckWithProfile(deck: Deck, profile: DeckProfile): DeckWithProfi
 }
 
 export interface DeckGroup {
-  type: 'group';
+  type: "group";
   tag: string;
   name: string;
   deckIds: string[];
@@ -109,26 +202,44 @@ export interface DeckGroup {
 }
 
 export interface FileDeck extends DeckWithProfile {
-  type: 'file';
+  type: "file";
 }
 
-export type CustomDeckType = 'manual' | 'filter';
+export type CustomDeckType = "manual" | "filter";
 
 export type FilterOperator =
-  | "equals" | "not_equals"
-  | "contains" | "not_contains"
-  | "greater_than" | "less_than"
-  | "before" | "after"
-  | "is_due" | "is_new"
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "greater_than"
+  | "less_than"
+  | "before"
+  | "after"
+  | "is_due"
+  | "is_new"
   | "in";
 
 export type FilterField =
-  | "deckId" | "deckTag" | "type" | "sourceFile" | "breadcrumb" | "tags"
-  | "state" | "dueDate" | "difficulty" | "stability"
-  | "interval" | "repetitions" | "lapses"
-  | "lastReviewed" | "created"
-  | "isLeech" | "isDense"
-  | "isSuspended" | "isBuried";
+  | "deckId"
+  | "deckTag"
+  | "type"
+  | "sourceFile"
+  | "breadcrumb"
+  | "tags"
+  | "state"
+  | "dueDate"
+  | "difficulty"
+  | "stability"
+  | "interval"
+  | "repetitions"
+  | "lapses"
+  | "lastReviewed"
+  | "created"
+  | "isLeech"
+  | "isDense"
+  | "isSuspended"
+  | "isBuried";
 
 export interface FilterRule {
   field: FilterField;
@@ -162,7 +273,7 @@ export interface CustomDeckCard {
 }
 
 export interface CustomDeckGroup {
-  type: 'custom';
+  type: "custom";
   id: string;
   name: string;
   deckType: CustomDeckType;
@@ -176,20 +287,25 @@ export interface CustomDeckGroup {
 export type DeckOrGroup = FileDeck | DeckGroup | CustomDeckGroup;
 
 export function isDeckGroup(item: DeckOrGroup): item is DeckGroup {
-  return item.type === 'group';
+  return item.type === "group";
 }
 
 export function isFileDeck(item: DeckOrGroup): item is FileDeck {
-  return item.type === 'file';
+  return item.type === "file";
 }
 
 export function isCustomDeck(item: DeckOrGroup): item is CustomDeckGroup {
-  return item.type === 'custom';
+  return item.type === "custom";
 }
 
 export type FlashcardState = "new" | "review";
 
-export type FlashcardType = "header-paragraph" | "table" | "cloze" | "image-occlusion" | "spatial";
+export type FlashcardType =
+  | "header-paragraph"
+  | "table"
+  | "cloze"
+  | "image-occlusion"
+  | "spatial";
 
 export interface Flashcard {
   id: string;
@@ -424,7 +540,6 @@ export interface MaturityProgressionResult {
   theoreticalMaintenanceLevel: number | null; // Calculated from lapse rate for validation
 }
 
-
 /**
  * Determine if a flashcard is mature (interval > 21 days)
  * TODO 19: Mature cards are flashcards that have an interval over 21 days
@@ -441,7 +556,7 @@ export function isCardMature(flashcard: Flashcard): boolean {
  * Get the card maturity type for classification
  */
 export function getCardMaturityType(
-  flashcard: Flashcard
+  flashcard: Flashcard,
 ): "new" | "review" | "mature" {
   if (flashcard.state === "new") {
     return "new";
@@ -455,7 +570,7 @@ export function isCardSuspended(card: Pick<Flashcard, "suspendedAt">): boolean {
 
 export function isCardBuried(
   card: Pick<Flashcard, "buriedUntil">,
-  now: Date
+  now: Date,
 ): boolean {
   if (!card.buriedUntil) return false;
   return card.buriedUntil > now.toISOString();
@@ -463,7 +578,7 @@ export function isCardBuried(
 
 export function isCardAvailable(
   card: Pick<Flashcard, "suspendedAt" | "buriedUntil">,
-  now: Date
+  now: Date,
 ): boolean {
   return !isCardSuspended(card) && !isCardBuried(card, now);
 }

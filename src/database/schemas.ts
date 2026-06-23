@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 28;
+export const CURRENT_SCHEMA_VERSION = 29;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -19,13 +19,13 @@ const presetProfileRow = (
   id: string,
   name: string,
   headerLevel: number,
-  clozeEnabled: number
+  clozeEnabled: number,
 ): string => `
   INSERT OR IGNORE INTO deckprofiles (
     id, name,
     has_new_cards_limit_enabled, new_cards_per_day,
     has_review_cards_limit_enabled, review_cards_per_day,
-    header_level, review_order,
+    header_level, header_levels, review_order,
     learning_steps, relearning_steps,
     fsrs_request_retention, fsrs_profile,
     cloze_enabled, cloze_show_context,
@@ -33,7 +33,7 @@ const presetProfileRow = (
   ) VALUES (
     '${id}', '${name}',
     0, 20, 0, 100,
-    ${headerLevel}, 'due-date',
+    ${headerLevel}, '[${headerLevel}]', 'due-date',
     '1m', '10m',
     0.9, 'STANDARD',
     ${clozeEnabled}, 'hidden',
@@ -42,7 +42,12 @@ const presetProfileRow = (
 
 export const SEED_PRESET_PROFILES_SQL = [
   ...PRESET_HEADING_LEVELS.map((level) =>
-    presetProfileRow(headingProfileId(level), headingProfileName(level), level, 1)
+    presetProfileRow(
+      headingProfileId(level),
+      headingProfileName(level),
+      level,
+      1,
+    ),
   ),
   presetProfileRow(REVIEW_PROFILE_ID, REVIEW_PROFILE_NAME, 0, 0),
 ].join("\n");
@@ -61,6 +66,7 @@ export const CREATE_TABLES_SQL = `
     has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
     review_cards_per_day INTEGER NOT NULL DEFAULT 100,
     header_level INTEGER NOT NULL DEFAULT 2,
+    header_levels TEXT NOT NULL DEFAULT '[2]',
     review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
     learning_steps TEXT NOT NULL DEFAULT '1m',
     relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -245,7 +251,7 @@ export const CREATE_TABLES_SQL = `
     id, name,
     has_new_cards_limit_enabled, new_cards_per_day,
     has_review_cards_limit_enabled, review_cards_per_day,
-    header_level, review_order,
+    header_level, header_levels, review_order,
     learning_steps, relearning_steps,
     fsrs_request_retention, fsrs_profile,
     is_default, created, modified
@@ -254,7 +260,7 @@ export const CREATE_TABLES_SQL = `
     'DEFAULT',
     0, 20,
     0, 100,
-    2, 'due-date',
+    2, '[2]', 'due-date',
     '1m', '10m',
     0.9, 'STANDARD',
     1,
@@ -322,28 +328,41 @@ function getColumnNames(db: Database, tableName: string): string[] {
   }
 }
 
-
 export function buildMigrationSQL(db: Database): string {
   const reviewLogsColumns = getColumnNames(db, "review_logs");
   const reviewLogsExists = reviewLogsColumns.length > 0;
   const deckprofilesColumns = getColumnNames(db, "deckprofiles");
-  const needsLearningSteps = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("learning_steps");
-  const needsCloze = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("cloze_enabled");
-  const needsUseTrained = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("fsrs_use_trained");
-  const needsDeckprofilesDeletedAt = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("deleted_at");
+  const needsLearningSteps =
+    deckprofilesColumns.length > 0 &&
+    !deckprofilesColumns.includes("learning_steps");
+  const needsCloze =
+    deckprofilesColumns.length > 0 &&
+    !deckprofilesColumns.includes("cloze_enabled");
+  const needsUseTrained =
+    deckprofilesColumns.length > 0 &&
+    !deckprofilesColumns.includes("fsrs_use_trained");
+  const needsDeckprofilesDeletedAt =
+    deckprofilesColumns.length > 0 &&
+    !deckprofilesColumns.includes("deleted_at");
+  const needsHeaderLevels =
+    deckprofilesColumns.length > 0 &&
+    !deckprofilesColumns.includes("header_levels");
   const customDecksColumns = getColumnNames(db, "custom_decks");
-  const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
-  const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
+  const needsDeckType =
+    customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
+  const needsCustomDecksDeletedAt =
+    customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
 
   // Helper: pick current column, fall back to old renamed column, then default
   const col = (
     columns: string[],
     currentName: string,
     oldName: string | null,
-    fallback: string
+    fallback: string,
   ): string => {
     if (columns.includes(currentName)) return currentName;
-    if (oldName && columns.includes(oldName)) return `${oldName} as ${currentName}`;
+    if (oldName && columns.includes(oldName))
+      return `${oldName} as ${currentName}`;
     return `${fallback} as ${currentName}`;
   };
 
@@ -351,7 +370,7 @@ export function buildMigrationSQL(db: Database): string {
   const pick = (
     columns: string[],
     currentName: string,
-    oldName: string | null
+    oldName: string | null,
   ): string | null => {
     if (columns.includes(currentName)) return currentName;
     if (oldName && columns.includes(oldName)) return oldName;
@@ -365,7 +384,7 @@ export function buildMigrationSQL(db: Database): string {
     columns: string[],
     currentName: string,
     oldName: string | null,
-    fallback: string
+    fallback: string,
   ): string => {
     const s = pick(columns, currentName, oldName);
     return `${s ? `COALESCE(${s}, ${fallback})` : fallback} as ${currentName}`;
@@ -379,7 +398,7 @@ export function buildMigrationSQL(db: Database): string {
     columns: string[],
     currentName: string,
     expr: (sqlCol: string) => string,
-    fallback: string
+    fallback: string,
   ): string => {
     const s = pick(columns, currentName, null);
     return `${s ? expr(s) : fallback} as ${currentName}`;
@@ -394,20 +413,36 @@ export function buildMigrationSQL(db: Database): string {
     reqCol(rl, "last_reviewed_at", null, "datetime('now')"),
     col(rl, "shown_at", null, "NULL"),
     reqCol(rl, "reviewed_at", null, "datetime('now')"),
-    enumCol(rl, "rating", (c) => `CASE WHEN ${c} IN (1, 2, 3, 4) THEN ${c} ELSE 3 END`, "3"),
+    enumCol(
+      rl,
+      "rating",
+      (c) => `CASE WHEN ${c} IN (1, 2, 3, 4) THEN ${c} ELSE 3 END`,
+      "3",
+    ),
     enumCol(
       rl,
       "rating_label",
-      (c) => `CASE WHEN LOWER(${c}) IN ('again', 'hard', 'good', 'easy') THEN LOWER(${c}) ELSE 'good' END`,
-      "'good'"
+      (c) =>
+        `CASE WHEN LOWER(${c}) IN ('again', 'hard', 'good', 'easy') THEN LOWER(${c}) ELSE 'good' END`,
+      "'good'",
     ),
     col(rl, "time_elapsed_ms", "time_elapsed", "NULL"),
-    enumCol(rl, "old_state", (c) => `CASE WHEN ${c} IN ('new', 'review') THEN ${c} ELSE 'new' END`, "'new'"),
+    enumCol(
+      rl,
+      "old_state",
+      (c) => `CASE WHEN ${c} IN ('new', 'review') THEN ${c} ELSE 'new' END`,
+      "'new'",
+    ),
     reqCol(rl, "old_repetitions", null, "0"),
     reqCol(rl, "old_lapses", null, "0"),
     reqCol(rl, "old_stability", null, "0"),
     reqCol(rl, "old_difficulty", null, "5.0"),
-    enumCol(rl, "new_state", (c) => `CASE WHEN ${c} IN ('new', 'review') THEN ${c} ELSE 'review' END`, "'review'"),
+    enumCol(
+      rl,
+      "new_state",
+      (c) => `CASE WHEN ${c} IN ('new', 'review') THEN ${c} ELSE 'review' END`,
+      "'review'",
+    ),
     reqCol(rl, "new_repetitions", null, "1"),
     reqCol(rl, "new_lapses", null, "0"),
     reqCol(rl, "new_stability", null, "2.5"),
@@ -423,8 +458,9 @@ export function buildMigrationSQL(db: Database): string {
     enumCol(
       rl,
       "profile",
-      (c) => `CASE WHEN ${c} = 'INTENSIVE' THEN 'STANDARD' WHEN ${c} IN ('STANDARD', 'TRAINED') THEN ${c} ELSE 'STANDARD' END`,
-      "'STANDARD'"
+      (c) =>
+        `CASE WHEN ${c} = 'INTENSIVE' THEN 'STANDARD' WHEN ${c} IN ('STANDARD', 'TRAINED') THEN ${c} ELSE 'STANDARD' END`,
+      "'STANDARD'",
     ),
     reqCol(rl, "maximum_interval_days", null, "36500"),
     reqCol(rl, "min_minutes", null, "1"),
@@ -450,6 +486,7 @@ export function buildMigrationSQL(db: Database): string {
       has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
       review_cards_per_day INTEGER NOT NULL DEFAULT 100,
       header_level INTEGER NOT NULL DEFAULT 2,
+      header_levels TEXT NOT NULL DEFAULT '[2]',
       review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
       learning_steps TEXT NOT NULL DEFAULT '1m',
       relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -464,30 +501,56 @@ export function buildMigrationSQL(db: Database): string {
       deleted_at TEXT
     );
 
-    ${needsLearningSteps ? `
+    ${
+      needsLearningSteps
+        ? `
     ALTER TABLE deckprofiles ADD COLUMN learning_steps TEXT NOT NULL DEFAULT '1m';
     ALTER TABLE deckprofiles ADD COLUMN relearning_steps TEXT NOT NULL DEFAULT '10m';
     UPDATE deckprofiles SET learning_steps = '1m' WHERE fsrs_profile = 'INTENSIVE';
-    ` : ""}
+    `
+        : ""
+    }
 
-    ${needsCloze ? `
+    ${
+      needsCloze
+        ? `
     ALTER TABLE deckprofiles ADD COLUMN cloze_enabled INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE deckprofiles ADD COLUMN cloze_show_context TEXT NOT NULL DEFAULT 'open';
-    ` : ""}
+    `
+        : ""
+    }
 
-    ${needsUseTrained ? `
+    ${
+      needsUseTrained
+        ? `
     ALTER TABLE deckprofiles ADD COLUMN fsrs_use_trained INTEGER NOT NULL DEFAULT 0;
-    ` : ""}
+    `
+        : ""
+    }
 
-    ${needsDeckprofilesDeletedAt ? `
+    ${
+      needsDeckprofilesDeletedAt
+        ? `
     ALTER TABLE deckprofiles ADD COLUMN deleted_at TEXT;
-    ` : ""}
+    `
+        : ""
+    }
+
+    ${
+      needsHeaderLevels
+        ? `
+    ALTER TABLE deckprofiles ADD COLUMN header_levels TEXT NOT NULL DEFAULT '[2]';
+    UPDATE deckprofiles SET header_levels = '[' || header_level || ']'
+      WHERE header_levels IS NULL OR header_levels = '' OR header_levels = '[2]';
+    `
+        : ""
+    }
 
     INSERT OR IGNORE INTO deckprofiles (
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       is_default, created, modified
@@ -496,7 +559,7 @@ export function buildMigrationSQL(db: Database): string {
       'DEFAULT',
       0, 20,
       0, 100,
-      2, 'due-date',
+      2, '[2]', 'due-date',
       '1m', '10m',
       0.9, 'STANDARD',
       1,
@@ -516,6 +579,7 @@ export function buildMigrationSQL(db: Database): string {
       has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
       review_cards_per_day INTEGER NOT NULL DEFAULT 100,
       header_level INTEGER NOT NULL DEFAULT 2,
+      header_levels TEXT NOT NULL DEFAULT '[2]',
       review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
       learning_steps TEXT NOT NULL DEFAULT '1m',
       relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -533,7 +597,7 @@ export function buildMigrationSQL(db: Database): string {
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
@@ -543,7 +607,7 @@ export function buildMigrationSQL(db: Database): string {
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention,
       CASE
@@ -641,8 +705,12 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_weight_set_id TEXT
     );
 
-    ${reviewLogsExists ? `INSERT OR IGNORE INTO review_logs_new (id, flashcard_id, session_id, last_reviewed_at, shown_at, reviewed_at, rating, rating_label, time_elapsed_ms, old_state, old_repetitions, old_lapses, old_stability, old_difficulty, new_state, new_repetitions, new_lapses, new_stability, new_difficulty, old_interval_minutes, new_interval_minutes, old_due_at, new_due_at, elapsed_days, retrievability, request_retention, profile, maximum_interval_days, min_minutes, fsrs_weights_version, scheduler_version, note_model_id, card_template_id, content_hash, client, fsrs_weight_set_id)
-    SELECT ${reviewLogsSelect} FROM review_logs;` : ""}
+    ${
+      reviewLogsExists
+        ? `INSERT OR IGNORE INTO review_logs_new (id, flashcard_id, session_id, last_reviewed_at, shown_at, reviewed_at, rating, rating_label, time_elapsed_ms, old_state, old_repetitions, old_lapses, old_stability, old_difficulty, new_state, new_repetitions, new_lapses, new_stability, new_difficulty, old_interval_minutes, new_interval_minutes, old_due_at, new_due_at, elapsed_days, retrievability, request_retention, profile, maximum_interval_days, min_minutes, fsrs_weights_version, scheduler_version, note_model_id, card_template_id, content_hash, client, fsrs_weight_set_id)
+    SELECT ${reviewLogsSelect} FROM review_logs;`
+        : ""
+    }
 
     DROP TABLE IF EXISTS review_logs;
     ALTER TABLE review_logs_new RENAME TO review_logs;
@@ -723,14 +791,22 @@ export function buildMigrationSQL(db: Database): string {
       deleted_at TEXT
     );
 
-    ${needsDeckType ? `
+    ${
+      needsDeckType
+        ? `
     ALTER TABLE custom_decks ADD COLUMN deck_type TEXT NOT NULL DEFAULT 'manual';
     ALTER TABLE custom_decks ADD COLUMN filter_definition TEXT;
-    ` : ""}
+    `
+        : ""
+    }
 
-    ${needsCustomDecksDeletedAt ? `
+    ${
+      needsCustomDecksDeletedAt
+        ? `
     ALTER TABLE custom_decks ADD COLUMN deleted_at TEXT;
-    ` : ""}
+    `
+        : ""
+    }
 
     -- Custom deck cards junction table (many-to-many)
     CREATE TABLE IF NOT EXISTS custom_deck_cards (
@@ -861,18 +937,18 @@ export const SQL_QUERIES = {
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
     SELECT id, name, has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order, learning_steps, relearning_steps,
+      header_level, header_levels, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified
@@ -882,7 +958,7 @@ export const SQL_QUERIES = {
   GET_PROFILE_BY_NAME: `
     SELECT id, name, has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order, learning_steps, relearning_steps,
+      header_level, header_levels, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified
@@ -892,7 +968,7 @@ export const SQL_QUERIES = {
   GET_ALL_PROFILES: `
     SELECT id, name, has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order, learning_steps, relearning_steps,
+      header_level, header_levels, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified
@@ -904,7 +980,7 @@ export const SQL_QUERIES = {
   GET_DEFAULT_PROFILE: `
     SELECT id, name, has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order, learning_steps, relearning_steps,
+      header_level, header_levels, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified
@@ -916,7 +992,7 @@ export const SQL_QUERIES = {
       name = ?,
       has_new_cards_limit_enabled = ?, new_cards_per_day = ?,
       has_review_cards_limit_enabled = ?, review_cards_per_day = ?,
-      header_level = ?, review_order = ?,
+      header_level = ?, header_levels = ?, review_order = ?,
       learning_steps = ?, relearning_steps = ?,
       fsrs_request_retention = ?, fsrs_profile = ?,
       cloze_enabled = ?, cloze_show_context = ?,
