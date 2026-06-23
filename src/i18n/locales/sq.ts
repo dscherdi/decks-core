@@ -96,6 +96,39 @@ export const sq: Translations = {
     bone2: "Rrezori (Radius)",
     bone3: "Bërrylori (Ulna)",
   },
+  anki: {
+    title: "Import from Anki",
+    description:
+      "Import an Anki .apkg export into Decks — your decks, cards, media and review history come with you.",
+    howItWorks:
+      "How it works: each Anki deck becomes a Decks file (the deck hierarchy is preserved as folders), notes are converted to clean front/back cards, media is copied into your vault, and scheduling/review history is imported so cards resume where Anki left them.",
+    fileLabel: "Anki file",
+    fileDesc: "Choose an .apkg file exported from Anki.",
+    noFileSelected: "No file selected",
+    targetFolderName: "Target folder",
+    targetFolderDesc: "Where the imported Decks files will be created.",
+    profileName: "Profile",
+    profileDesc:
+      "Profile applied to the imported decks (sets the header level and scheduling).",
+    scanButton: "Scan",
+    scanning: "Scanning…",
+    scanSummary:
+      "Found {decks} deck(s), {cards} card(s), {history} with review history, {media} media file(s).",
+    scanFailed: "Scan failed. See console for details.",
+    importButton: "Import",
+    importing: "Importing…",
+    importFailed: "Import failed. See console for details.",
+    selectFileFirst: "Select an .apkg file first.",
+    progressReading: "Reading collection…",
+    progressWriting: "Writing {deck}…",
+    progressSyncing: "Syncing decks…",
+    progressImporting: "Importing review history…",
+    successNotice:
+      "Imported {cards} card(s) into {decks} deck(s); history for {history}.",
+    doneSummary:
+      "Done: {decks} deck(s), {cards} card(s), {media} media, {history} with history.",
+    cancel: "Cancel",
+  },
 
   srMigration: {
     title: "Migro nga Spaced Repetition",
@@ -166,6 +199,7 @@ export const sq: Translations = {
 
   commands: {
     migrateFromSr: "Migrate from Spaced Repetition plugin",
+    importFromAnki: "Import from Anki (.apkg)",
     showPanel: "Shfaq panelin e kartave",
     showReleaseNotes: "Shfaq shënimet e versionit",
     openManager: "Hap menaxherin e kartave",

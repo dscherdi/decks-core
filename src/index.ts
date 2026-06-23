@@ -65,6 +65,27 @@ export type {
   MigrationDeckItem,
   HistoryDb,
 } from "./services/migration/SrHistoryImporter";
+export { AnkiCollectionParser } from "./services/migration/anki/AnkiCollectionParser";
+export type { AnkiParseOptions } from "./services/migration/anki/AnkiCollectionParser";
+export { AnkiSanitizer } from "./services/migration/anki/AnkiSanitizer";
+export type { SanitizeResult } from "./services/migration/anki/AnkiSanitizer";
+export { AnkiDeckRenderer } from "./services/migration/anki/AnkiDeckRenderer";
+export type { AnkiRenderedDeck } from "./services/migration/anki/AnkiDeckRenderer";
+export { AnkiHistoryImporter } from "./services/migration/anki/AnkiHistoryImporter";
+export type {
+  AnkiRevlogRow,
+  AnkiDeckItem,
+  AnkiImportHistoryOptions,
+} from "./services/migration/anki/AnkiHistoryImporter";
+export type {
+  AnkiModel,
+  AnkiModelField,
+  AnkiTemplate,
+  AnkiDeckMeta,
+  AnkiScheduling,
+  AnkiParsedCard,
+  AnkiParseResult,
+} from "./services/migration/anki/AnkiTypes";
 export * from "./services/HLC";
 export type {
   SyncOpV1,
