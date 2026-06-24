@@ -47,6 +47,24 @@ export type {
   RawDatabase,
   RawStatement,
 } from "./services/FlashcardSynchronizer";
+
+// Table template engine
+export {
+  extractTemplateBlocks,
+  stripTemplateBlocks,
+  mergeTemplate,
+  referencedVariables,
+  templateIsSatisfied,
+  parseTemplateFile,
+  resolveCardTemplate,
+} from "./services/templates";
+export type {
+  TemplateEngine,
+  TemplateSide,
+  TemplateField,
+  ResolvedTemplateSet,
+  ResolvedRender,
+} from "./services/templates";
 export { LegacySrMigrator } from "./services/migration/LegacySrMigrator";
 export type {
   FsrsState,

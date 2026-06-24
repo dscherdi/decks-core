@@ -1,4 +1,5 @@
 import { splitTableLine, unescapeTableCell } from "../utils/markdown-table";
+import type { TemplateRow } from "../database/types";
 
 export interface ParsedFlashcard {
   front: string;
@@ -17,6 +18,8 @@ export interface ParsedFlashcard {
   // edge label rendered as a hint on the front of the card.
   edgeId?: string;
   hint?: string;
+  // Table rows carry their headers/cells/row-tags for render-time template binding.
+  templateRow?: TemplateRow;
 }
 
 /**
@@ -183,6 +186,7 @@ export class FlashcardParser {
     // Single pass through lines for both table and header parsing
     let inTable = false;
     let tableRowCount = 0;
+    let currentTableHeaders: string[] = [];
     let currentHeader: { text: string; level: number; tags: string[] } | null = null;
     let currentContent: string[] = [];
     let inFrontmatter = false;
@@ -219,12 +223,20 @@ export class FlashcardParser {
           if (!inTable) {
             inTable = true;
             tableRowCount = 0;
+            currentTableHeaders = [];
           }
 
           tableRowCount++;
 
-          // Skip first row (header) and second row (separator)
-          if (tableRowCount <= 2) {
+          // Capture the header row (row 1) for named-column template merges;
+          // skip it and the separator (row 2) from card generation.
+          if (tableRowCount === 1) {
+            currentTableHeaders = splitTableLine(trimmedLine.slice(1, -1)).map(
+              (cell) => unescapeTableCell(cell.trim()),
+            );
+            continue;
+          }
+          if (tableRowCount === 2) {
             continue;
           }
 
@@ -254,6 +266,12 @@ export class FlashcardParser {
               } else {
                 flashcards.push({
                   front: cells[0], back, notes: rowNotes, type: "table", breadcrumb, tags: rowTags,
+                  // Capture row data so a tag-bound template can merge it at
+                  // render time (binding tags come from the header — `rowTags`).
+                  templateRow: {
+                    headers: currentTableHeaders,
+                    cells,
+                  },
                 });
               }
             } else if (frontIsCloze) {

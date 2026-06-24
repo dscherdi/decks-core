@@ -9,6 +9,7 @@ import type {
   CustomDeck,
   CustomDeckType,
   FsrsWeightSet,
+  DeckTemplate,
 } from "./types";
 import type { SqlJsValue, SqlRecord, SqlRow } from "./sql-types";
 import type { SyncData, SyncResult } from "../services/FlashcardSynchronizer";
@@ -65,6 +66,18 @@ export interface IDatabaseService {
   updateDeck(id: string, updates: Partial<Deck>): Promise<void>;
   updateDeckTimestamp(deckId: string): Promise<void>;
   updateDeckLastReviewed(deckId: string, timestamp: string): Promise<void>;
+  setDeckFileTags(deckId: string, fileTags: string[]): Promise<void>;
+  // Deck template cache (synced from the template folder).
+  getAllDeckTemplates(): Promise<DeckTemplate[]>;
+  upsertDeckTemplate(
+    template: Omit<DeckTemplate, "created" | "modified">
+  ): Promise<void>;
+  deleteDeckTemplateByFile(sourceFile: string): Promise<void>;
+  renameDeckTemplate(
+    oldSourceFile: string,
+    newSourceFile: string,
+    newId: string
+  ): Promise<void>;
   renameDeck(
     oldDeckId: string,
     newDeckId: string,
