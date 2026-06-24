@@ -73,6 +73,12 @@ export type {
   SanitizeOptions,
   HtmlToMarkdown,
 } from "./services/migration/anki/AnkiSanitizer";
+export { AnkiTemplateEngine } from "./services/migration/anki/AnkiTemplateEngine";
+export type {
+  AnkiTemplateData,
+  AnkiTemplateResult,
+  AnkiExtraField,
+} from "./services/migration/anki/AnkiTemplateEngine";
 export { AnkiDeckRenderer } from "./services/migration/anki/AnkiDeckRenderer";
 export type { AnkiRenderedDeck, AnkiFormat } from "./services/migration/anki/AnkiDeckRenderer";
 export { AnkiHistoryImporter } from "./services/migration/anki/AnkiHistoryImporter";

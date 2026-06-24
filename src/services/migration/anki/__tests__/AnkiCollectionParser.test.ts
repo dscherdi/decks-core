@@ -45,8 +45,13 @@ const STANDARD_MODEL = {
   type: 0,
   flds: [{ name: "German" }, { name: "English" }, { name: "Image" }, { name: "Audio" }],
   tmpls: [
-    { name: "Card 1", ord: 0, qfmt: "{{German}}{{#Image}}{{Image}}{{/Image}}", afmt: "{{FrontSide}}{{English}}{{Audio}}" },
-    { name: "Card 2", ord: 1, qfmt: "{{English}}", afmt: "{{FrontSide}}{{German}}{{Audio}}" },
+    {
+      name: "Card 1",
+      ord: 0,
+      qfmt: "{{German}}{{#Image}}{{Image}}{{/Image}}",
+      afmt: "{{FrontSide}}<hr id=answer>{{English}}{{Audio}}",
+    },
+    { name: "Card 2", ord: 1, qfmt: "{{English}}", afmt: "{{FrontSide}}<hr id=answer>{{German}}{{Audio}}" },
   ],
 };
 
@@ -101,10 +106,47 @@ describe("AnkiCollectionParser", () => {
     });
     const result = AnkiCollectionParser.parse(db);
     expect(result.cards[0].front).toBe("haben"); // header stays text-only
-    expect(result.cards[0].back).toBe("to have"); // primary answer field
-    expect(result.cards[0].notes).toContain("![[a.mp3]]"); // secondary audio field
+    expect(result.cards[0].back).toContain("to have"); // answer side (afmt)
+    expect(result.cards[0].back).toContain("![[a.mp3]]"); // audio is on the answer side
     expect(result.cards[0].notes).toContain("![[img.jpg]]"); // front-side image relocated to notes
     expect(result.mediaFiles).toEqual(["a.mp3", "img.jpg"]);
+  });
+
+  it("surfaces template-unreferenced fields as notes", () => {
+    const model = {
+      id: "m3",
+      name: "WithExtra",
+      type: 0,
+      flds: [{ name: "Front" }, { name: "Back" }, { name: "Source" }],
+      tmpls: [
+        { name: "Card 1", ord: 0, qfmt: "{{Front}}", afmt: "{{FrontSide}}<hr id=answer>{{Back}}" },
+      ],
+    };
+    const db = makeFakeDb({
+      models: { m3: model },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, ord: 0, mid: "m3", flds: ["Q", "A", "Book p.5"] })],
+    });
+    const result = AnkiCollectionParser.parse(db);
+    expect(result.cards[0].front).toBe("Q");
+    expect(result.cards[0].back).toBe("A");
+    expect(result.cards[0].notes).toContain("**Source:** Book p.5");
+  });
+
+  it("skips image-occlusion note types", () => {
+    const ioModel = {
+      id: "m4",
+      name: "Image Occlusion Enhanced",
+      type: 0,
+      flds: [{ name: "Image" }, { name: "Question Mask" }],
+      tmpls: [{ name: "IO", ord: 0, qfmt: '<div id="io-overlay">{{Question Mask}}</div>', afmt: "{{FrontSide}}" }],
+    };
+    const db = makeFakeDb({
+      models: { m4: ioModel },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, ord: 0, mid: "m4", flds: ["img", "mask"] })],
+    });
+    expect(AnkiCollectionParser.parse(db).cardCount).toBe(0);
   });
 
   it("converts cloze notes to ==highlight== bodies", () => {

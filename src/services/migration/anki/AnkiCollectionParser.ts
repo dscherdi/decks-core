@@ -1,6 +1,8 @@
 import type { RawDatabase } from "../../FlashcardSynchronizer";
 import { AnkiSanitizer } from "./AnkiSanitizer";
 import type { HtmlToMarkdown, SanitizeOptions } from "./AnkiSanitizer";
+import { AnkiTemplateEngine } from "./AnkiTemplateEngine";
+import type { AnkiTemplateData } from "./AnkiTemplateEngine";
 import type { AnkiRevlogRow } from "./AnkiHistoryImporter";
 import type {
   AnkiDeckMeta,
@@ -13,18 +15,6 @@ import type {
 
 // Anki joins a note's field values with the unit separator.
 const FIELD_SEPARATOR = "\x1f";
-
-// Template tokens that are not user fields and must be ignored during field-role
-// resolution.
-const SPECIAL_TOKENS = new Set([
-  "FrontSide",
-  "Tags",
-  "Type",
-  "Deck",
-  "Subdeck",
-  "Card",
-  "CardFlag",
-]);
 
 // Field-name match for picking a readable header on cloze notes.
 const CLOZE_HEADER_FIELD = /trans|back|mean|english|answer|definition|hint/i;
@@ -59,6 +49,8 @@ export class AnkiCollectionParser {
     for (const row of rows) {
       const model = models.get(row.mid);
       if (!model) continue;
+      // Image-occlusion note types have no front/back equivalent in Decks.
+      if (AnkiCollectionParser.isImageOcclusion(model)) continue;
       const deckName = decks.get(row.did) ?? "Default";
       const fieldValues = AnkiCollectionParser.splitFields(row.flds);
       const fieldMap = AnkiCollectionParser.mapFields(model, fieldValues);
@@ -199,27 +191,6 @@ export class AnkiCollectionParser {
     return map;
   }
 
-  // --- Field-role resolution ---
-
-  // Ordered, de-duplicated field names referenced by a template, ignoring
-  // conditionals, special tokens, and field modifiers (`text:`, `hint:`, …).
-  private static referencedFields(template: string, fieldNames: Set<string>): string[] {
-    const result: string[] = [];
-    const seen = new Set<string>();
-    const regex = /\{\{([^}]+)\}\}/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(template)) !== null) {
-      let token = match[1].trim();
-      token = token.replace(/^[#^/]/, "").trim(); // strip conditional markers
-      if (token.includes(":")) token = token.slice(token.lastIndexOf(":") + 1).trim();
-      if (!token || SPECIAL_TOKENS.has(token)) continue;
-      if (!fieldNames.has(token) || seen.has(token)) continue;
-      seen.add(token);
-      result.push(token);
-    }
-    return result;
-  }
-
   private static buildBasicCard(
     row: RawCardNote,
     model: AnkiModel,
@@ -229,36 +200,35 @@ export class AnkiCollectionParser {
   ): AnkiParsedCard | null {
     const tmpl = model.tmpls.find((t) => t.ord === row.ord) ?? model.tmpls[0];
     if (!tmpl) return null;
-    const fieldNames = new Set(model.flds.map((f) => f.name));
 
-    const promptFields = AnkiCollectionParser.referencedFields(tmpl.qfmt, fieldNames);
-    const answerFields = AnkiCollectionParser.referencedFields(tmpl.afmt, fieldNames).filter(
-      (name) => !promptFields.includes(name)
-    );
+    // Deterministically render the templates; field roles come from qfmt/afmt,
+    // never from field names.
+    const data: AnkiTemplateData = {};
+    for (const field of model.flds) data[field.name] = fieldMap.get(field.name) ?? "";
+    const rendered = AnkiTemplateEngine.render(tmpl.qfmt, tmpl.afmt, data);
 
     const media: string[] = [];
-    const promptText = AnkiCollectionParser.joinFields(
-      promptFields.length ? promptFields : [model.flds[0]?.name ?? ""],
-      fieldMap,
-      sanitize,
-      media
-    );
-    const answerSource =
-      answerFields.length > 0
-        ? answerFields
-        : model.flds.map((f) => f.name).filter((name) => !promptFields.includes(name));
-    // back = primary (first non-empty) answer field; the rest become notes.
-    const answerParts = AnkiCollectionParser.fieldParts(answerSource, fieldMap, sanitize, media);
-    const back = answerParts.length > 0 ? answerParts[0] : "";
-    const secondaryAnswers = answerParts.slice(1);
-
+    const frontResult = AnkiSanitizer.sanitizeField(rendered.frontHtml, sanitize);
+    for (const m of frontResult.media) media.push(m);
     // A markdown header must stay a single text line, so front-side media embeds
     // are relocated into the notes rather than the `## …` heading.
-    const { text: headerText, embeds: frontEmbeds } = AnkiCollectionParser.splitEmbeds(promptText);
+    const { text: headerText, embeds: frontEmbeds } = AnkiCollectionParser.splitEmbeds(frontResult.text);
     const headerFront = AnkiCollectionParser.toHeader(headerText) || `Card ${row.nid}-${row.ord}`;
-    const notes = [...secondaryAnswers, ...frontEmbeds].filter((p) => p.trim().length > 0).join("\n\n");
 
-    if (!back.trim() && !notes.trim() && headerFront.startsWith("Card ")) return null;
+    const backResult = AnkiSanitizer.sanitizeField(rendered.answerHtml, sanitize);
+    for (const m of backResult.media) media.push(m);
+    const back = backResult.text.trim();
+
+    // Fields the template never referenced become the notes (sanitized values).
+    const extraLines: string[] = [];
+    for (const extra of rendered.extraFields) {
+      const result = AnkiSanitizer.sanitizeField(extra.value, sanitize);
+      for (const m of result.media) media.push(m);
+      if (result.text.trim()) extraLines.push(`**${extra.name}:** ${result.text.trim()}`);
+    }
+    const notes = [...extraLines, ...frontEmbeds].filter((p) => p.trim().length > 0).join("\n\n");
+
+    if (!back && !notes.trim() && headerFront.startsWith("Card ")) return null;
 
     return {
       noteId: row.nid,
@@ -272,6 +242,13 @@ export class AnkiCollectionParser {
       media,
       scheduling: row.scheduling,
     };
+  }
+
+  // Image-occlusion templates carry distinctive `io-*` element ids; the model
+  // name also conventionally contains "occlusion".
+  private static isImageOcclusion(model: AnkiModel): boolean {
+    if (/occlusion/i.test(model.name)) return true;
+    return model.tmpls.some((t) => /id=["']?io-/.test(t.qfmt) || /id=["']?io-/.test(t.afmt));
   }
 
   private static buildClozeCard(
