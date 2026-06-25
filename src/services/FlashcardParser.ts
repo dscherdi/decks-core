@@ -508,6 +508,14 @@ export class FlashcardParser {
       currentContent.length > 0 &&
       currentHeader.level === targetHeaderLevel
     ) {
+      // A header section whose only content is blank lines or a thematic break
+      // (e.g. a trailing `---` separator left after its table) is not a real card.
+      const hasRealContent = currentContent.some((line) => {
+        const t = line.trim();
+        return t !== "" && !/^(-{3,}|\*{3,}|_{3,})$/.test(t);
+      });
+      if (!hasRealContent) return;
+
       const rawFront = currentHeader.text.replace(/^#{1,6}\s+/, "");
       const { cleaned: front } = FlashcardParser.extractAndStripTags(rawFront);
       const back = currentContent.join("\n").trim();
