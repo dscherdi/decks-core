@@ -35,7 +35,9 @@ export interface ILogger {
 
 /** Minimal backup service interface — satisfied by the plugin's BackupService class. */
 export interface IBackupService {
-  createBackup(db: IDatabaseService): Promise<void>;
+  // Return value is ignored by the scheduler; widened so concrete services
+  // that return a backup path (Promise<string>) satisfy the interface.
+  createBackup(db: IDatabaseService): Promise<unknown>;
 }
 
 export interface IDatabaseService {

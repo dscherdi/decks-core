@@ -33,7 +33,7 @@ export { compileFilter } from "./services/FilterEngine";
 export type { FilterCompileOptions, CompiledFilter } from "./services/FilterEngine";
 export { evaluateFilter } from "./services/FilterEvaluator";
 export { Scheduler } from "./services/Scheduler";
-export type { SchedulerOptions, SessionProgress, NewSession } from "./services/Scheduler";
+export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession } from "./services/Scheduler";
 export { StatisticsService } from "./services/StatisticsService";
 export { CustomDeckService } from "./services/CustomDeckService";
 export { TagGroupService } from "./services/TagGroupService";

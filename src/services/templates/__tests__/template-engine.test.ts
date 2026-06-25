@@ -150,6 +150,18 @@ describe("Parsing template flashcards end-to-end", () => {
     });
   });
 
+  it("captures templateRow for table rows even when cloze is enabled (no markers)", () => {
+    // The default profile has clozeEnabled=true; a marker-less table row must
+    // still carry templateRow so it can bind a template at render time.
+    const cards = FlashcardParser.parseFlashcardsFromContent(file, 2, undefined, true);
+    expect(cards).toHaveLength(2);
+    expect(cards[0].type).toBe("table");
+    expect(cards[0].templateRow).toEqual({
+      headers: ["Word", "Reading", "Meaning"],
+      cells: ["火", "ひ", "fire"],
+    });
+  });
+
   it("does not attach templateRow to header-paragraph cards", () => {
     const md = ["## What is osmosis?", "", "Movement of solvent across a membrane."].join("\n");
     const cards = FlashcardParser.parseFlashcardsFromContent(md, 2);

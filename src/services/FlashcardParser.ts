@@ -117,7 +117,8 @@ export class FlashcardParser {
     type: "header-paragraph" | "table",
     breadcrumb: string,
     tags: string[],
-    clozeSource: string = back
+    clozeSource: string = back,
+    templateRow?: TemplateRow
   ): ParsedFlashcard[] {
     const matches: { text: string; index: number }[] = [];
     let match: RegExpExecArray | null;
@@ -128,6 +129,8 @@ export class FlashcardParser {
     }
 
     if (matches.length === 0) {
+      // No cloze markers → a regular card. For table rows, carry templateRow
+      // so tag-bound templates resolve even when the deck has cloze enabled.
       return [{
         front,
         back,
@@ -135,6 +138,7 @@ export class FlashcardParser {
         type,
         breadcrumb,
         tags: [...tags],
+        ...(templateRow ? { templateRow } : {}),
       }];
     }
 
@@ -256,22 +260,23 @@ export class FlashcardParser {
               new RegExp(FlashcardParser.CLOZE_REGEX.source).test(cells[0]);
 
             if (back.length > 0) {
+              // Capture row data so a tag-bound template can merge it at render
+              // time (binding tags come from the header).
+              const templateRow = {
+                headers: currentTableHeaders,
+                cells,
+              };
               // Standard 2-column row.
               if (clozeEnabled) {
                 flashcards.push(
                   ...FlashcardParser.expandClozes(
-                    cells[0], back, rowNotes, "table", breadcrumb, rowTags
+                    cells[0], back, rowNotes, "table", breadcrumb, rowTags, back, templateRow
                   )
                 );
               } else {
                 flashcards.push({
                   front: cells[0], back, notes: rowNotes, type: "table", breadcrumb, tags: rowTags,
-                  // Capture row data so a tag-bound template can merge it at
-                  // render time (binding tags come from the header — `rowTags`).
-                  templateRow: {
-                    headers: currentTableHeaders,
-                    cells,
-                  },
+                  templateRow,
                 });
               }
             } else if (frontIsCloze) {
