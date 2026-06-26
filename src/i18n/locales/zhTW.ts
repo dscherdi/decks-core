@@ -92,6 +92,22 @@ export const zhTW: Translations = {
     bone1: "肱骨",
     bone2: "橈骨",
     bone3: "尺骨",
+    section5: "5. Templates (custom card layouts)",
+    section5Body:
+      "Tag a table's heading and Decks renders each row through a template file from your template folder (Settings → Card templates). This table's heading is tagged #{tag}, so its rows render with the matching template — edit a row in the flashcard manager and you'll get one input per column.",
+    templatesTableHeading: "Kanji vocabulary",
+    templateTag: "vocab",
+    templateFolderName: "Decks Templates",
+    templateFileName: "Vocabulary card.md",
+    tplColWord: "Word",
+    tplColReading: "Reading",
+    tplColMeaning: "Meaning",
+    tplRow1Word: "火",
+    tplRow1Reading: "ひ",
+    tplRow1Meaning: "fire",
+    tplRow2Word: "水",
+    tplRow2Reading: "みず",
+    tplRow2Meaning: "water",
   },
   anki: {
     title: "Import from Anki",
@@ -200,9 +216,33 @@ export const zhTW: Translations = {
     cancel: "取消",
   },
 
+  occlusion: {
+    studioTitle: "編輯圖像遮擋",
+    drawHint: "在圖像上拖曳以繪製方框",
+    boxes: "方框",
+    noBoxes: "尚無方框。在圖像上拖曳以繪製一個。",
+    selectBox: "選擇一個方框以新增其答案。",
+    answerLabel: "答案（Markdown / LaTeX）",
+    answerPlaceholder: "留空表示僅遮擋的方框",
+    emptyAnswer: "空",
+    deleteBox: "刪除方框",
+    resize: "調整大小",
+    cancel: "取消",
+    save: "儲存",
+    edit: "編輯",
+    imageNotFound: "找不到圖像：{name}",
+    parseError: "圖像遮擋錯誤：{error}",
+    pickImage: "選擇要遮擋的圖像",
+    noImages: "在保管庫中找不到圖像。",
+    saveFileNotFound: "找不到用於儲存遮擋的筆記。",
+    blockMoved: "無法定位遮擋區塊——它可能已被移動。",
+    saveFailed: "儲存遮擋失敗。",
+  },
+
   commands: {
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
+    insertImageOcclusion: "在游標處建立圖像遮擋",
     showPanel: "顯示閃卡面板",
     showReleaseNotes: "顯示版本說明",
     openManager: "開啟閃卡管理器",
@@ -1218,6 +1258,8 @@ export const zhTW: Translations = {
       fieldNotes: "備註",
       fieldHint: "提示",
       fieldImage: "圖片",
+      templateColumnsHint: "This card uses a template — edit its row columns below.",
+      templateColumnFallback: "Column {n}",
     },
   },
 
@@ -1281,6 +1323,17 @@ export const zhTW: Translations = {
       folderSearchPathDesc:
         "將掃描範圍限制在特定的資料夾。選擇「掃描整個儲存庫」以掃描所有檔案。",
       folderSearchPathDefault: "掃描整個儲存庫 (預設)",
+    },
+
+    templates: {
+      heading: "Card templates",
+      folder: "Template folder",
+      folderDesc: "Folder of template files. Each file's decks-tags bind it to table rows or notes carrying a matching tag. Tables that don't match fall back to the default Front/Back/Notes columns. Leave empty to disable.",
+      folderDefault: "Disabled (no template folder)",
+      previewHeading: "Preview",
+      previewHint: "Preview uses sample row data.",
+      noTemplates: "No templates found in the selected folder yet.",
+      notesLabel: "Notes",
     },
 
     canvasDecks: {

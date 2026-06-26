@@ -26,6 +26,21 @@ export type {
 // Services
 export { FlashcardParser } from "./services/FlashcardParser";
 export type { ParsedFlashcard } from "./services/FlashcardParser";
+export {
+  isOcclusionV2,
+  serializeOcclusionBack,
+  parseOcclusionBack,
+  occlusionV2HashInput,
+  activeMaskIdForCard,
+  occlusionImageLinkpath,
+} from "./services/occlusion/OcclusionV2";
+export { OcclusionV2Parser } from "./services/occlusion/OcclusionV2Parser";
+export {
+  OCCLUSION_V2_VERSION,
+  type OcclusionMask,
+  type OcclusionDoc,
+  type OcclusionParseResult,
+} from "./services/occlusion/OcclusionV2.types";
 export { CanvasParser } from "./services/CanvasParser";
 export type { CanvasContent, CanvasTextNode } from "./services/CanvasParser";
 export { CanvasFlashcardExtractor } from "./services/CanvasFlashcardExtractor";
@@ -33,7 +48,7 @@ export { compileFilter } from "./services/FilterEngine";
 export type { FilterCompileOptions, CompiledFilter } from "./services/FilterEngine";
 export { evaluateFilter } from "./services/FilterEvaluator";
 export { Scheduler } from "./services/Scheduler";
-export type { SchedulerOptions, SessionProgress, NewSession } from "./services/Scheduler";
+export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession } from "./services/Scheduler";
 export { StatisticsService } from "./services/StatisticsService";
 export { CustomDeckService } from "./services/CustomDeckService";
 export { TagGroupService } from "./services/TagGroupService";
@@ -47,6 +62,24 @@ export type {
   RawDatabase,
   RawStatement,
 } from "./services/FlashcardSynchronizer";
+
+// Table template engine
+export {
+  extractTemplateBlocks,
+  stripTemplateBlocks,
+  mergeTemplate,
+  referencedVariables,
+  templateIsSatisfied,
+  parseTemplateFile,
+  resolveCardTemplate,
+} from "./services/templates";
+export type {
+  TemplateEngine,
+  TemplateSide,
+  TemplateField,
+  ResolvedTemplateSet,
+  ResolvedRender,
+} from "./services/templates";
 export { LegacySrMigrator } from "./services/migration/LegacySrMigrator";
 export type {
   FsrsState,
@@ -176,6 +209,7 @@ export {
   generateCustomDeckCardId,
   generateSpatialFlashcardId,
   generateSpatialClozeFlashcardId,
+  generateOcclusionV2FlashcardId,
 } from "./utils/hash";
 export {
   toLocalDateString,

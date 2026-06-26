@@ -1,15 +1,21 @@
 import { splitTableLine, unescapeTableCell } from "../utils/markdown-table";
+import type { TemplateRow } from "../database/types";
+import { OcclusionV2Parser } from "./occlusion/OcclusionV2Parser";
 
 export interface ParsedFlashcard {
   front: string;
   back: string;
   notes: string;
-  type: "header-paragraph" | "table" | "cloze" | "image-occlusion" | "spatial";
+  type: "header-paragraph" | "table" | "cloze" | "image-occlusion" | "image-occlusion-v2" | "spatial";
   breadcrumb: string;
   tags: string[];
   isReverse?: boolean;
   clozeText?: string;
   clozeOrder?: number;
+  // Occlusion V2 only: stable mask id (identity for the card's FSRS history)
+  // and the resolved image path, both folded into the card id.
+  maskId?: string;
+  imagePath?: string;
   // Canvas-only: id of the source text node this card came from. The canvas
   // extractor stamps it on each parsed card before the sync pipeline runs.
   sourceNodeId?: string;
@@ -17,6 +23,8 @@ export interface ParsedFlashcard {
   // edge label rendered as a hint on the front of the card.
   edgeId?: string;
   hint?: string;
+  // Table rows carry their headers/cells/row-tags for render-time template binding.
+  templateRow?: TemplateRow;
 }
 
 /**
@@ -32,6 +40,9 @@ export class FlashcardParser {
   private static readonly IMAGE_EMBED_REGEX =
     /^!\[\[[^\]]+\.(png|jpe?g|gif|svg|bmp|webp|avif|heic|heif|tiff?)(\|[^\]]*)?\]\]$|^!\[[^\]]*\]\([^)]+\.(png|jpe?g|gif|svg|bmp|webp|avif|heic|heif|tiff?)(\s+[^)]+)?\)$/i;
   private static readonly NUMBERED_LIST_REGEX = /^\d+\.\s+(.+)$/;
+  // Opening/closing fences for a V2 `decks-occlusion` codeblock.
+  private static readonly OCCLUSION_FENCE_OPEN_REGEX = /^(`{3,}|~{3,})\s*decks-occlusion\s*$/;
+  private static readonly CODE_FENCE_REGEX = /^(`{3,}|~{3,})/;
   // Obsidian tag syntax: must start with a letter, allows letters/digits/_/-//
   private static readonly HEADER_TAG_REGEX = /(?:^|\s)#([A-Za-z][A-Za-z0-9_\-/]*)/g;
 
@@ -103,6 +114,92 @@ export class FlashcardParser {
   }
 
   /**
+   * Pre-pass that extracts every `decks-occlusion` (V2) codeblock from the raw
+   * content before the main line loop. Each block produces one card per mask.
+   * The block's lines are blanked out (line count preserved) in the returned
+   * content so the downstream header/table parser never misreads YAML `|` block
+   * scalars or `#` comments as headings/tables.
+   *
+   * Cards are only generated when `clozeEnabled` and the block sits inside a
+   * section header at the configured `headerLevel` (mirrors legacy occlusion and
+   * header-paragraph cards). Blocks are always stripped so they can't become
+   * stray header-paragraph cards.
+   */
+  private static extractOcclusionV2Blocks(
+    content: string,
+    clozeEnabled: boolean,
+    headerLevel: number
+  ): { cards: ParsedFlashcard[]; maskedContent: string } {
+    const lines = content.split("\n");
+    const cards: ParsedFlashcard[] = [];
+    const headerStack: Array<{ text: string; level: number; tags: string[] }> = [];
+    let inFrontmatter = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (i === 0 && trimmed === "---") {
+        inFrontmatter = true;
+        continue;
+      }
+      if (inFrontmatter) {
+        if (trimmed === "---") inFrontmatter = false;
+        continue;
+      }
+
+      const headerMatch = FlashcardParser.HEADER_REGEX.exec(line);
+      if (headerMatch) {
+        const level = headerMatch[1].length;
+        const { cleaned, tags } = FlashcardParser.extractAndStripTags(
+          line.replace(/^#{1,6}\s+/, "")
+        );
+        while (
+          headerStack.length > 0 &&
+          headerStack[headerStack.length - 1].level >= level
+        ) {
+          headerStack.pop();
+        }
+        headerStack.push({ text: cleaned, level, tags });
+        continue;
+      }
+
+      if (FlashcardParser.OCCLUSION_FENCE_OPEN_REGEX.test(trimmed)) {
+        const start = i;
+        const body: string[] = [];
+        let end = -1;
+        for (let j = i + 1; j < lines.length; j++) {
+          if (FlashcardParser.CODE_FENCE_REGEX.test(lines[j].trim())) {
+            end = j;
+            break;
+          }
+          body.push(lines[j]);
+        }
+        // Unterminated fence: treat the rest of the file as the block body.
+        if (end === -1) end = lines.length - 1;
+
+        // Only parse when the block sits inside a header configured to be
+        // parsed: title mode (0) parses anywhere, otherwise the enclosing
+        // section header (stack top) must be at the configured level.
+        const top = headerStack[headerStack.length - 1];
+        const inConfiguredHeader =
+          headerLevel === 0 || (!!top && top.level === headerLevel);
+        if (clozeEnabled && inConfiguredHeader) {
+          const breadcrumb = headerStack.map((h) => h.text).join(" > ");
+          const tags = FlashcardParser.collectStackTags(headerStack);
+          cards.push(...OcclusionV2Parser.parse(body.join("\n"), breadcrumb, tags));
+        }
+
+        for (let k = start; k <= end; k++) lines[k] = "";
+        i = end;
+        continue;
+      }
+    }
+
+    return { cards, maskedContent: lines.join("\n") };
+  }
+
+  /**
    * Expand a card into cloze cards if cloze markers are found, otherwise return original card.
    * When cloze markers exist, returns N cloze cards (one per highlight) and NO regular card.
    * When no cloze markers exist, returns the original card unchanged.
@@ -114,7 +211,8 @@ export class FlashcardParser {
     type: "header-paragraph" | "table",
     breadcrumb: string,
     tags: string[],
-    clozeSource: string = back
+    clozeSource: string = back,
+    templateRow?: TemplateRow
   ): ParsedFlashcard[] {
     const matches: { text: string; index: number }[] = [];
     let match: RegExpExecArray | null;
@@ -125,6 +223,8 @@ export class FlashcardParser {
     }
 
     if (matches.length === 0) {
+      // No cloze markers → a regular card. For table rows, carry templateRow
+      // so tag-bound templates resolve even when the deck has cloze enabled.
       return [{
         front,
         back,
@@ -132,6 +232,7 @@ export class FlashcardParser {
         type,
         breadcrumb,
         tags: [...tags],
+        ...(templateRow ? { templateRow } : {}),
       }];
     }
 
@@ -161,28 +262,41 @@ export class FlashcardParser {
     fileTitle?: string,
     clozeEnabled = false
   ): ParsedFlashcard[] {
+    // Pre-pass: pull out V2 occlusion codeblocks and strip them from the
+    // content so they never reach the header/table parser below.
+    const occlusion = FlashcardParser.extractOcclusionV2Blocks(content, clozeEnabled, headerLevel);
+    content = occlusion.maskedContent;
+    const occlusionCards = occlusion.cards;
+
     if (headerLevel === 0) {
-      if (!fileTitle) return [];
+      if (!fileTitle) return occlusionCards;
       const back = FlashcardParser.stripFrontmatter(content).trim();
       if (clozeEnabled) {
-        return FlashcardParser.expandClozes(fileTitle, back, "", "header-paragraph", "", []);
+        return [
+          ...occlusionCards,
+          ...FlashcardParser.expandClozes(fileTitle, back, "", "header-paragraph", "", []),
+        ];
       }
-      return [{
-        front: fileTitle,
-        back,
-        notes: "",
-        type: "header-paragraph",
-        breadcrumb: "",
-        tags: [],
-      }];
+      return [
+        ...occlusionCards,
+        {
+          front: fileTitle,
+          back,
+          notes: "",
+          type: "header-paragraph",
+          breadcrumb: "",
+          tags: [],
+        },
+      ];
     }
 
     const lines = content.split("\n");
-    const flashcards: ParsedFlashcard[] = [];
+    const flashcards: ParsedFlashcard[] = [...occlusionCards];
 
     // Single pass through lines for both table and header parsing
     let inTable = false;
     let tableRowCount = 0;
+    let currentTableHeaders: string[] = [];
     let currentHeader: { text: string; level: number; tags: string[] } | null = null;
     let currentContent: string[] = [];
     let inFrontmatter = false;
@@ -219,12 +333,20 @@ export class FlashcardParser {
           if (!inTable) {
             inTable = true;
             tableRowCount = 0;
+            currentTableHeaders = [];
           }
 
           tableRowCount++;
 
-          // Skip first row (header) and second row (separator)
-          if (tableRowCount <= 2) {
+          // Capture the header row (row 1) for named-column template merges;
+          // skip it and the separator (row 2) from card generation.
+          if (tableRowCount === 1) {
+            currentTableHeaders = splitTableLine(trimmedLine.slice(1, -1)).map(
+              (cell) => unescapeTableCell(cell.trim()),
+            );
+            continue;
+          }
+          if (tableRowCount === 2) {
             continue;
           }
 
@@ -244,16 +366,23 @@ export class FlashcardParser {
               new RegExp(FlashcardParser.CLOZE_REGEX.source).test(cells[0]);
 
             if (back.length > 0) {
+              // Capture row data so a tag-bound template can merge it at render
+              // time (binding tags come from the header).
+              const templateRow = {
+                headers: currentTableHeaders,
+                cells,
+              };
               // Standard 2-column row.
               if (clozeEnabled) {
                 flashcards.push(
                   ...FlashcardParser.expandClozes(
-                    cells[0], back, rowNotes, "table", breadcrumb, rowTags
+                    cells[0], back, rowNotes, "table", breadcrumb, rowTags, back, templateRow
                   )
                 );
               } else {
                 flashcards.push({
                   front: cells[0], back, notes: rowNotes, type: "table", breadcrumb, tags: rowTags,
+                  templateRow,
                 });
               }
             } else if (frontIsCloze) {
@@ -485,6 +614,14 @@ export class FlashcardParser {
       currentContent.length > 0 &&
       currentHeader.level === targetHeaderLevel
     ) {
+      // A header section whose only content is blank lines or a thematic break
+      // (e.g. a trailing `---` separator left after its table) is not a real card.
+      const hasRealContent = currentContent.some((line) => {
+        const t = line.trim();
+        return t !== "" && !/^(-{3,}|\*{3,}|_{3,})$/.test(t);
+      });
+      if (!hasRealContent) return;
+
       const rawFront = currentHeader.text.replace(/^#{1,6}\s+/, "");
       const { cleaned: front } = FlashcardParser.extractAndStripTags(rawFront);
       const back = currentContent.join("\n").trim();

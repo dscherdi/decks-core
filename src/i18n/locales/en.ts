@@ -79,6 +79,22 @@ export const en = {
     bone1: "Humerus",
     bone2: "Radius",
     bone3: "Ulna",
+    section5: "5. Templates (custom card layouts)",
+    section5Body:
+      "Tag a table's heading and Decks renders each row through a template file from your template folder (Settings → Card templates). This table's heading is tagged #{tag}, so its rows render with the matching template — edit a row in the flashcard manager and you'll get one input per column.",
+    templatesTableHeading: "Kanji vocabulary",
+    templateTag: "vocab",
+    templateFolderName: "Decks Templates",
+    templateFileName: "Vocabulary card.md",
+    tplColWord: "Word",
+    tplColReading: "Reading",
+    tplColMeaning: "Meaning",
+    tplRow1Word: "火",
+    tplRow1Reading: "ひ",
+    tplRow1Meaning: "fire",
+    tplRow2Word: "水",
+    tplRow2Reading: "みず",
+    tplRow2Meaning: "water",
   },
 
   commands: {
@@ -92,6 +108,7 @@ export const en = {
     openAiGenerator: "Generate flashcards with AI",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
+    insertImageOcclusion: "Create image occlusion at cursor",
   },
   anki: {
     title: "Import from Anki",
@@ -132,6 +149,29 @@ export const en = {
     formatTableWarning:
       "Table format flattens multi-line content and media into a single cell (line breaks become <br>); complex cards may not render fully.",
     cancel: "Cancel",
+  },
+
+  occlusion: {
+    studioTitle: "Edit image occlusion",
+    drawHint: "Drag on the image to draw a box",
+    boxes: "Boxes",
+    noBoxes: "No boxes yet. Drag on the image to draw one.",
+    selectBox: "Select a box to add its answer.",
+    answerLabel: "Answer (Markdown / LaTeX)",
+    answerPlaceholder: "Leave empty for a deletion-only box",
+    emptyAnswer: "Empty",
+    deleteBox: "Delete box",
+    resize: "Resize",
+    cancel: "Cancel",
+    save: "Save",
+    edit: "Edit",
+    imageNotFound: "Image not found: {name}",
+    parseError: "Image occlusion error: {error}",
+    pickImage: "Select an image to occlude",
+    noImages: "No images found in the vault.",
+    saveFileNotFound: "Could not find the note to save the occlusion.",
+    blockMoved: "Could not locate the occlusion block — it may have moved.",
+    saveFailed: "Failed to save the occlusion.",
   },
 
   srMigration: {
@@ -1183,6 +1223,8 @@ export const en = {
       fieldNotes: "Notes",
       fieldHint: "Hint",
       fieldImage: "Image",
+      templateColumnsHint: "This card uses a template — edit its row columns below.",
+      templateColumnFallback: "Column {n}",
       cancel: "Cancel",
       save: "Save",
       saving: "Saving…",
@@ -1244,6 +1286,17 @@ export const en = {
       folderSearchPath: "Folder search path",
       folderSearchPathDesc: "Limit scanning to a specific folder. Select 'scan entire vault' to scan all files.",
       folderSearchPathDefault: "Scan entire vault (default)",
+    },
+
+    templates: {
+      heading: "Card templates",
+      folder: "Template folder",
+      folderDesc: "Folder of template files. Each file's decks-tags bind it to table rows or notes carrying a matching tag. Tables that don't match fall back to the default Front/Back/Notes columns. Leave empty to disable.",
+      folderDefault: "Disabled (no template folder)",
+      previewHeading: "Preview",
+      previewHint: "Preview uses sample row data.",
+      noTemplates: "No templates found in the selected folder yet.",
+      notesLabel: "Notes",
     },
 
     canvasDecks: {

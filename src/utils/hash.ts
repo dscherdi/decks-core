@@ -129,6 +129,19 @@ export function generateClozeFlashcardId(
 }
 
 /**
+ * Generate ID for a V2 occlusion card. Identity is keyed solely on the stable
+ * mask id (plus deck and image), so moving/resizing a box or editing its answer
+ * preserves the card's FSRS history.
+ */
+export function generateOcclusionV2FlashcardId(
+    deckId: string,
+    imagePath: string,
+    maskId: string,
+): string {
+    return `ocard_${simpleHash("occ2:" + deckId + "::" + imagePath + "::" + maskId).toString(36)}`;
+}
+
+/**
  * Generate ID for a spatial canvas card derived from a single canvas edge.
  * Deck-scoped so edge ids reused across canvases don't collide.
  */

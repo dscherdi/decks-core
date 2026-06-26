@@ -97,6 +97,22 @@ export const hi: Translations = {
     bone1: "ह्यूमरस (Humerus)",
     bone2: "रेडियस (Radius)",
     bone3: "अल्ना (Ulna)",
+    section5: "5. Templates (custom card layouts)",
+    section5Body:
+      "Tag a table's heading and Decks renders each row through a template file from your template folder (Settings → Card templates). This table's heading is tagged #{tag}, so its rows render with the matching template — edit a row in the flashcard manager and you'll get one input per column.",
+    templatesTableHeading: "Kanji vocabulary",
+    templateTag: "vocab",
+    templateFolderName: "Decks Templates",
+    templateFileName: "Vocabulary card.md",
+    tplColWord: "Word",
+    tplColReading: "Reading",
+    tplColMeaning: "Meaning",
+    tplRow1Word: "火",
+    tplRow1Reading: "ひ",
+    tplRow1Meaning: "fire",
+    tplRow2Word: "水",
+    tplRow2Reading: "みず",
+    tplRow2Meaning: "water",
   },
   anki: {
     title: "Import from Anki",
@@ -206,9 +222,33 @@ export const hi: Translations = {
     cancel: "रद्द करें",
   },
 
+  occlusion: {
+    studioTitle: "इमेज ऑक्लूज़न संपादित करें",
+    drawHint: "बॉक्स बनाने के लिए छवि पर खींचें",
+    boxes: "बॉक्स",
+    noBoxes: "अभी कोई बॉक्स नहीं। एक बनाने के लिए छवि पर खींचें।",
+    selectBox: "इसका उत्तर जोड़ने के लिए एक बॉक्स चुनें।",
+    answerLabel: "उत्तर (Markdown / LaTeX)",
+    answerPlaceholder: "केवल छिपाने वाले बॉक्स के लिए खाली छोड़ें",
+    emptyAnswer: "खाली",
+    deleteBox: "बॉक्स हटाएँ",
+    resize: "आकार बदलें",
+    cancel: "रद्द करें",
+    save: "सहेजें",
+    edit: "संपादित करें",
+    imageNotFound: "छवि नहीं मिली: {name}",
+    parseError: "इमेज ऑक्लूज़न त्रुटि: {error}",
+    pickImage: "छिपाने के लिए एक छवि चुनें",
+    noImages: "वॉल्ट में कोई छवि नहीं मिली।",
+    saveFileNotFound: "ऑक्लूज़न सहेजने के लिए नोट नहीं मिल सका।",
+    blockMoved: "ऑक्लूज़न ब्लॉक नहीं मिल सका — हो सकता है यह स्थानांतरित हो गया हो।",
+    saveFailed: "ऑक्लूज़न सहेजने में विफल।",
+  },
+
   commands: {
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
+    insertImageOcclusion: "कर्सर पर इमेज ऑक्लूज़न बनाएँ",
     showPanel: "फ़्लैशकार्ड पैनल दिखाएं",
     showReleaseNotes: "रिलीज़ नोट्स दिखाएं",
     openManager: "फ़्लैशकार्ड प्रबंधक खोलें",
@@ -1272,6 +1312,8 @@ export const hi: Translations = {
       fieldNotes: "नोट्स",
       fieldHint: "संकेत",
       fieldImage: "चित्र",
+      templateColumnsHint: "This card uses a template — edit its row columns below.",
+      templateColumnFallback: "Column {n}",
     },
   },
 
@@ -1338,6 +1380,17 @@ export const hi: Translations = {
       folderSearchPathDesc:
         "स्कैनिंग को एक विशिष्ट फ़ोल्डर तक सीमित करें। सभी फ़ाइलों को स्कैन करने के लिए 'पूरा वॉल्ट स्कैन करें' चुनें।",
       folderSearchPathDefault: "पूरा वॉल्ट स्कैन करें (डिफ़ॉल्ट)",
+    },
+
+    templates: {
+      heading: "Card templates",
+      folder: "Template folder",
+      folderDesc: "Folder of template files. Each file's decks-tags bind it to table rows or notes carrying a matching tag. Tables that don't match fall back to the default Front/Back/Notes columns. Leave empty to disable.",
+      folderDefault: "Disabled (no template folder)",
+      previewHeading: "Preview",
+      previewHint: "Preview uses sample row data.",
+      noTemplates: "No templates found in the selected folder yet.",
+      notesLabel: "Notes",
     },
 
     canvasDecks: {

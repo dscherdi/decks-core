@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 28;
+export const CURRENT_SCHEMA_VERSION = 32;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -97,7 +97,27 @@ export const CREATE_TABLES_SQL = `
     -- LOCAL-ONLY: mtime of the source markdown file when this deck was last
     -- parsed. Per-device (each device sees its own wall-clock mtime when
     -- iCloud delivers a file). Excluded from mergeRemoteIntoMain.
-    last_synced_mtime INTEGER NOT NULL DEFAULT 0
+    last_synced_mtime INTEGER NOT NULL DEFAULT 0,
+    -- JSON array of the deck file's frontmatter tags, used for file-level
+    -- (Tier 2) template binding. Nullable; absent means no tags.
+    file_tags TEXT
+  );
+
+  -- Card template cache. Templates are authored as markdown files in the
+  -- configured template folder and synced here for tag-driven render-time
+  -- binding. Rebuilt from the folder, so it is dropped & recreated on migrate.
+  CREATE TABLE IF NOT EXISTS deck_templates (
+    id TEXT PRIMARY KEY,
+    source_file TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    front_template TEXT NOT NULL DEFAULT '',
+    front_type TEXT NOT NULL DEFAULT 'md',
+    back_template TEXT NOT NULL DEFAULT '',
+    back_type TEXT NOT NULL DEFAULT 'md',
+    notes_template TEXT,
+    notes_type TEXT,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
   );
 
   -- Flashcards table
@@ -106,7 +126,7 @@ export const CREATE_TABLES_SQL = `
     deck_id TEXT NOT NULL,
     front TEXT NOT NULL,
     back TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial')),
     source_file TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     breadcrumb TEXT NOT NULL DEFAULT '',
@@ -130,6 +150,9 @@ export const CREATE_TABLES_SQL = `
     tags TEXT NOT NULL DEFAULT '',
     suspended_at TEXT,
     buried_until TEXT,
+    -- JSON { headers, cells, rowTags } captured for table rows, enabling
+    -- render-time template merge ({{ColumnName}}/{{1..N}}) + tag binding.
+    template_row TEXT,
     FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
   );
 
@@ -272,6 +295,7 @@ export const CREATE_TABLES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_tag ON profile_tag_mappings(tag);
   CREATE INDEX IF NOT EXISTS idx_decks_profile_id ON decks(profile_id);
   CREATE INDEX IF NOT EXISTS idx_decks_tag ON decks(tag);
+  CREATE INDEX IF NOT EXISTS idx_deck_templates_source ON deck_templates(source_file);
   CREATE INDEX IF NOT EXISTS idx_flashcards_deck_id ON flashcards(deck_id);
   CREATE INDEX IF NOT EXISTS idx_flashcards_due_date ON flashcards(due_date);
   CREATE INDEX IF NOT EXISTS idx_flashcards_suspended ON flashcards(suspended_at);
@@ -664,9 +688,11 @@ export function buildMigrationSQL(db: Database): string {
       deleted_at TEXT
     );
 
-    -- Drop and recreate decks/flashcards fresh (sync repopulates from vault)
+    -- Drop and recreate decks/flashcards/deck_templates fresh (all rebuilt
+    -- from the vault / template folder by sync).
     DROP TABLE IF EXISTS flashcards;
     DROP TABLE IF EXISTS decks;
+    DROP TABLE IF EXISTS deck_templates;
 
     CREATE TABLE decks (
       id TEXT PRIMARY KEY,
@@ -677,7 +703,22 @@ export function buildMigrationSQL(db: Database): string {
       profile_id TEXT NOT NULL,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
-      last_synced_mtime INTEGER NOT NULL DEFAULT 0
+      last_synced_mtime INTEGER NOT NULL DEFAULT 0,
+      file_tags TEXT
+    );
+
+    CREATE TABLE deck_templates (
+      id TEXT PRIMARY KEY,
+      source_file TEXT NOT NULL,
+      tags TEXT NOT NULL DEFAULT '[]',
+      front_template TEXT NOT NULL DEFAULT '',
+      front_type TEXT NOT NULL DEFAULT 'md',
+      back_template TEXT NOT NULL DEFAULT '',
+      back_type TEXT NOT NULL DEFAULT 'md',
+      notes_template TEXT,
+      notes_type TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
     );
 
     CREATE TABLE flashcards (
@@ -685,7 +726,7 @@ export function buildMigrationSQL(db: Database): string {
       deck_id TEXT NOT NULL,
       front TEXT NOT NULL,
       back TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial')),
       source_file TEXT NOT NULL,
       content_hash TEXT NOT NULL,
       breadcrumb TEXT NOT NULL DEFAULT '',
@@ -708,6 +749,7 @@ export function buildMigrationSQL(db: Database): string {
       tags TEXT NOT NULL DEFAULT '',
       suspended_at TEXT,
       buried_until TEXT,
+      template_row TEXT,
       FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
     );
 
@@ -767,6 +809,7 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_tag ON profile_tag_mappings(tag);
     CREATE INDEX IF NOT EXISTS idx_decks_profile_id ON decks(profile_id);
     CREATE INDEX IF NOT EXISTS idx_decks_tag ON decks(tag);
+    CREATE INDEX IF NOT EXISTS idx_deck_templates_source ON deck_templates(source_file);
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck_id ON flashcards(deck_id);
     CREATE INDEX IF NOT EXISTS idx_flashcards_due_date ON flashcards(due_date);
     CREATE INDEX IF NOT EXISTS idx_flashcards_suspended ON flashcards(suspended_at);
@@ -825,6 +868,28 @@ export const SQL_QUERIES = {
     UPDATE decks
     SET last_reviewed = ?, modified = ?
     WHERE id = ?
+  `,
+
+  UPDATE_DECK_FILE_TAGS: `
+    UPDATE decks
+    SET file_tags = ?
+    WHERE id = ?
+  `,
+
+  // Deck template cache (synced from the template folder)
+  UPSERT_DECK_TEMPLATE: `
+    INSERT OR REPLACE INTO deck_templates (
+      id, source_file, tags, front_template, front_type,
+      back_template, back_type, notes_template, notes_type, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_ALL_DECK_TEMPLATES: `SELECT * FROM deck_templates`,
+
+  DELETE_DECK_TEMPLATE_BY_FILE: `DELETE FROM deck_templates WHERE source_file = ?`,
+
+  UPDATE_DECK_TEMPLATE_SOURCE_FILE: `
+    UPDATE deck_templates SET id = ?, source_file = ?, modified = ? WHERE source_file = ?
   `,
 
   // Local-per-device: tracks file.stat.mtime of the source markdown the
@@ -1013,8 +1078,8 @@ export const SQL_QUERIES = {
       cloze_text, cloze_order, source_node_id, edge_id, hint,
       state, due_date, interval, repetitions,
       difficulty, stability, lapses, last_reviewed, created, modified, tags,
-      suspended_at, buried_until
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      suspended_at, buried_until, template_row
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   DELETE_FLASHCARD: `DELETE FROM flashcards WHERE id = ?`,

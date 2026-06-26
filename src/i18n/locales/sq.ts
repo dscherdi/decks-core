@@ -95,6 +95,22 @@ export const sq: Translations = {
     bone1: "Humerusi",
     bone2: "Rrezori (Radius)",
     bone3: "Bërrylori (Ulna)",
+    section5: "5. Templates (custom card layouts)",
+    section5Body:
+      "Tag a table's heading and Decks renders each row through a template file from your template folder (Settings → Card templates). This table's heading is tagged #{tag}, so its rows render with the matching template — edit a row in the flashcard manager and you'll get one input per column.",
+    templatesTableHeading: "Kanji vocabulary",
+    templateTag: "vocab",
+    templateFolderName: "Decks Templates",
+    templateFileName: "Vocabulary card.md",
+    tplColWord: "Word",
+    tplColReading: "Reading",
+    tplColMeaning: "Meaning",
+    tplRow1Word: "火",
+    tplRow1Reading: "ひ",
+    tplRow1Meaning: "fire",
+    tplRow2Word: "水",
+    tplRow2Reading: "みず",
+    tplRow2Meaning: "water",
   },
   anki: {
     title: "Import from Anki",
@@ -204,9 +220,33 @@ export const sq: Translations = {
     cancel: "Anulo",
   },
 
+  occlusion: {
+    studioTitle: "Modifiko okluzionin e imazhit",
+    drawHint: "Tërhiq mbi imazh për të vizatuar një kuti",
+    boxes: "Kutitë",
+    noBoxes: "Ende asnjë kuti. Tërhiq mbi imazh për të vizatuar një.",
+    selectBox: "Zgjidh një kuti për të shtuar përgjigjen e saj.",
+    answerLabel: "Përgjigja (Markdown / LaTeX)",
+    answerPlaceholder: "Lëre bosh për një kuti vetëm fshehjeje",
+    emptyAnswer: "Bosh",
+    deleteBox: "Fshi kutinë",
+    resize: "Ripërmaso",
+    cancel: "Anulo",
+    save: "Ruaj",
+    edit: "Modifiko",
+    imageNotFound: "Imazhi nuk u gjet: {name}",
+    parseError: "Gabim okluzioni imazhi: {error}",
+    pickImage: "Zgjidh një imazh për ta fshehur",
+    noImages: "Nuk u gjetën imazhe në kasafortë.",
+    saveFileNotFound: "Nuk u gjet shënimi për të ruajtur okluzionin.",
+    blockMoved: "Nuk u gjet blloku i okluzionit — mund të jetë zhvendosur.",
+    saveFailed: "Ruajtja e okluzionit dështoi.",
+  },
+
   commands: {
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
+    insertImageOcclusion: "Krijo okluzion imazhi te kursori",
     showPanel: "Shfaq panelin e kartave",
     showReleaseNotes: "Shfaq shënimet e versionit",
     openManager: "Hap menaxherin e kartave",
@@ -1286,6 +1326,8 @@ export const sq: Translations = {
       fieldNotes: "Shënime",
       fieldHint: "Aluzion",
       fieldImage: "Imazh",
+      templateColumnsHint: "This card uses a template — edit its row columns below.",
+      templateColumnFallback: "Column {n}",
     },
   },
 
@@ -1352,6 +1394,17 @@ export const sq: Translations = {
       folderSearchPathDesc:
         "Kufizo kërkimin në një dosje specifike. Zgjidh 'skano të gjithë Vault-in' për të skanuar të gjithë skedarët.",
       folderSearchPathDefault: "Skano të gjithë Vault-in (paracaktuar)",
+    },
+
+    templates: {
+      heading: "Card templates",
+      folder: "Template folder",
+      folderDesc: "Folder of template files. Each file's decks-tags bind it to table rows or notes carrying a matching tag. Tables that don't match fall back to the default Front/Back/Notes columns. Leave empty to disable.",
+      folderDefault: "Disabled (no template folder)",
+      previewHeading: "Preview",
+      previewHint: "Preview uses sample row data.",
+      noTemplates: "No templates found in the selected folder yet.",
+      notesLabel: "Notes",
     },
 
     canvasDecks: {

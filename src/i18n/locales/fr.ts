@@ -94,6 +94,22 @@ export const fr: Translations = {
     bone1: "Humérus",
     bone2: "Radius",
     bone3: "Ulna (Cubitus)",
+    section5: "5. Templates (custom card layouts)",
+    section5Body:
+      "Tag a table's heading and Decks renders each row through a template file from your template folder (Settings → Card templates). This table's heading is tagged #{tag}, so its rows render with the matching template — edit a row in the flashcard manager and you'll get one input per column.",
+    templatesTableHeading: "Kanji vocabulary",
+    templateTag: "vocab",
+    templateFolderName: "Decks Templates",
+    templateFileName: "Vocabulary card.md",
+    tplColWord: "Word",
+    tplColReading: "Reading",
+    tplColMeaning: "Meaning",
+    tplRow1Word: "火",
+    tplRow1Reading: "ひ",
+    tplRow1Meaning: "fire",
+    tplRow2Word: "水",
+    tplRow2Reading: "みず",
+    tplRow2Meaning: "water",
   },
   anki: {
     title: "Import from Anki",
@@ -203,9 +219,33 @@ export const fr: Translations = {
     cancel: "Annuler",
   },
 
+  occlusion: {
+    studioTitle: "Modifier l'occlusion d'image",
+    drawHint: "Faites glisser sur l'image pour dessiner une zone",
+    boxes: "Zones",
+    noBoxes: "Aucune zone pour l'instant. Faites glisser sur l'image pour en dessiner une.",
+    selectBox: "Sélectionnez une zone pour ajouter sa réponse.",
+    answerLabel: "Réponse (Markdown / LaTeX)",
+    answerPlaceholder: "Laissez vide pour une zone de masquage seul",
+    emptyAnswer: "Vide",
+    deleteBox: "Supprimer la zone",
+    resize: "Redimensionner",
+    cancel: "Annuler",
+    save: "Enregistrer",
+    edit: "Modifier",
+    imageNotFound: "Image introuvable : {name}",
+    parseError: "Erreur d'occlusion d'image : {error}",
+    pickImage: "Sélectionnez une image à masquer",
+    noImages: "Aucune image trouvée dans le coffre.",
+    saveFileNotFound: "Impossible de trouver la note pour enregistrer l'occlusion.",
+    blockMoved: "Impossible de localiser le bloc d'occlusion — il a peut-être été déplacé.",
+    saveFailed: "Échec de l'enregistrement de l'occlusion.",
+  },
+
   commands: {
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
+    insertImageOcclusion: "Créer une occlusion d'image au curseur",
     showPanel: "Afficher le panneau des cartes",
     showReleaseNotes: "Afficher les notes de version",
     openManager: "Ouvrir le gestionnaire de cartes",
@@ -1282,6 +1322,8 @@ export const fr: Translations = {
       fieldNotes: "Notes",
       fieldHint: "Indice",
       fieldImage: "Image",
+      templateColumnsHint: "This card uses a template — edit its row columns below.",
+      templateColumnFallback: "Column {n}",
     },
   },
 
@@ -1346,6 +1388,17 @@ export const fr: Translations = {
       folderSearchPathDesc:
         "Limite l'analyse à un dossier spécifique. Sélectionne « analyser tout le vault » pour analyser tous les fichiers.",
       folderSearchPathDefault: "Analyser tout le vault (défaut)",
+    },
+
+    templates: {
+      heading: "Card templates",
+      folder: "Template folder",
+      folderDesc: "Folder of template files. Each file's decks-tags bind it to table rows or notes carrying a matching tag. Tables that don't match fall back to the default Front/Back/Notes columns. Leave empty to disable.",
+      folderDefault: "Disabled (no template folder)",
+      previewHeading: "Preview",
+      previewHint: "Preview uses sample row data.",
+      noTemplates: "No templates found in the selected folder yet.",
+      notesLabel: "Notes",
     },
 
     canvasDecks: {

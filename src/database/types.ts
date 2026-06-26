@@ -84,6 +84,40 @@ export interface Deck {
   profileId: string;
   created: string;
   modified: string;
+  // Frontmatter tags of the deck file, used for file-level (Tier 2) template
+  // binding. Undefined for decks synced before this column existed.
+  fileTags?: string[];
+}
+
+/** Render engine for one template face. */
+export type TemplateFaceType = "md" | "html";
+
+/**
+ * A cached card template, synced from a markdown file in the template folder.
+ * Bound to flashcards by tag at render time (deck_templates table).
+ */
+export interface DeckTemplate {
+  id: string;
+  sourceFile: string;
+  tags: string[];
+  frontTemplate: string;
+  frontType: TemplateFaceType;
+  backTemplate: string;
+  backType: TemplateFaceType;
+  notesTemplate: string | null;
+  notesType: TemplateFaceType | null;
+  created: string;
+  modified: string;
+}
+
+/**
+ * Raw table-row data captured for a flashcard so its bound template can be
+ * merged at render time. Tags used for binding come from the header(s)
+ * containing the table (the card's `tags`), not from the row itself.
+ */
+export interface TemplateRow {
+  headers: string[];
+  cells: string[];
 }
 
 export interface DeckWithProfile extends Deck {
@@ -189,7 +223,13 @@ export function isCustomDeck(item: DeckOrGroup): item is CustomDeckGroup {
 
 export type FlashcardState = "new" | "review";
 
-export type FlashcardType = "header-paragraph" | "table" | "cloze" | "image-occlusion" | "spatial";
+export type FlashcardType =
+  | "header-paragraph"
+  | "table"
+  | "cloze"
+  | "image-occlusion"
+  | "image-occlusion-v2"
+  | "spatial";
 
 export interface Flashcard {
   id: string;
@@ -210,6 +250,10 @@ export interface Flashcard {
   sourceNodeId?: string | null;
   // Canvas spatial cards only: id of the canvas edge this card was generated from.
   edgeId?: string | null;
+
+  // Table rows capture their headers/cells/row-tags so a tag-bound template can
+  // be merged at render time. Null for non-table cards.
+  templateRow?: TemplateRow | null;
 
   state: FlashcardState;
   dueDate: string;

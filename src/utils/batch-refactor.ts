@@ -4,6 +4,7 @@ import type {
   RefactorProposal,
   RefactorResult,
 } from "../services/ai/types";
+import type { FlashcardType } from "../database/types";
 
 export type BatchStatus =
   | "pending"
@@ -35,12 +36,12 @@ export const SPLITTABLE: ReadonlySet<RefactorCardType> = new Set([
   "cloze",
 ]);
 
-export function isSplittable(type: RefactorCardType): boolean {
-  return SPLITTABLE.has(type);
+export function isSplittable(type: FlashcardType): boolean {
+  return SPLITTABLE.has(type as RefactorCardType);
 }
 
 /** Whether a card should actually be split: only when split is on and its type supports it. */
-export function effectiveSplit(splitOn: boolean, type: RefactorCardType): boolean {
+export function effectiveSplit(splitOn: boolean, type: FlashcardType): boolean {
   return splitOn && isSplittable(type);
 }
 

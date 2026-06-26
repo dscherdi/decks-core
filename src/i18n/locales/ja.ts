@@ -93,6 +93,22 @@ export const ja: Translations = {
     bone1: "上腕骨",
     bone2: "橈骨 (とうこつ)",
     bone3: "尺骨 (しゃっこつ)",
+    section5: "5. Templates (custom card layouts)",
+    section5Body:
+      "Tag a table's heading and Decks renders each row through a template file from your template folder (Settings → Card templates). This table's heading is tagged #{tag}, so its rows render with the matching template — edit a row in the flashcard manager and you'll get one input per column.",
+    templatesTableHeading: "Kanji vocabulary",
+    templateTag: "vocab",
+    templateFolderName: "Decks Templates",
+    templateFileName: "Vocabulary card.md",
+    tplColWord: "Word",
+    tplColReading: "Reading",
+    tplColMeaning: "Meaning",
+    tplRow1Word: "火",
+    tplRow1Reading: "ひ",
+    tplRow1Meaning: "fire",
+    tplRow2Word: "水",
+    tplRow2Reading: "みず",
+    tplRow2Meaning: "water",
   },
   anki: {
     title: "Import from Anki",
@@ -202,9 +218,33 @@ export const ja: Translations = {
     cancel: "キャンセル",
   },
 
+  occlusion: {
+    studioTitle: "画像オクルージョンを編集",
+    drawHint: "画像上をドラッグしてボックスを描画",
+    boxes: "ボックス",
+    noBoxes: "まだボックスがありません。画像上をドラッグして描画してください。",
+    selectBox: "ボックスを選択して答えを追加します。",
+    answerLabel: "答え（Markdown / LaTeX）",
+    answerPlaceholder: "空欄にすると隠すだけのボックスになります",
+    emptyAnswer: "空",
+    deleteBox: "ボックスを削除",
+    resize: "サイズ変更",
+    cancel: "キャンセル",
+    save: "保存",
+    edit: "編集",
+    imageNotFound: "画像が見つかりません: {name}",
+    parseError: "画像オクルージョンのエラー: {error}",
+    pickImage: "隠す画像を選択",
+    noImages: "保管庫に画像が見つかりません。",
+    saveFileNotFound: "オクルージョンを保存するノートが見つかりませんでした。",
+    blockMoved: "オクルージョンブロックが見つかりません。移動された可能性があります。",
+    saveFailed: "オクルージョンの保存に失敗しました。",
+  },
+
   commands: {
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
+    insertImageOcclusion: "カーソル位置に画像オクルージョンを作成",
     showPanel: "フラッシュカードパネルを表示",
     showReleaseNotes: "リリースノートを表示",
     openManager: "カード管理を開く",
@@ -1243,6 +1283,8 @@ export const ja: Translations = {
       fieldNotes: "メモ",
       fieldHint: "ヒント",
       fieldImage: "画像",
+      templateColumnsHint: "This card uses a template — edit its row columns below.",
+      templateColumnFallback: "Column {n}",
     },
   },
 
@@ -1305,6 +1347,17 @@ export const ja: Translations = {
       folderSearchPathDesc:
         "スキャンを特定のフォルダに限定します。「Vault 全体をスキャン」を選ぶとすべてのファイルがスキャンされます。",
       folderSearchPathDefault: "Vault 全体をスキャン（既定）",
+    },
+
+    templates: {
+      heading: "Card templates",
+      folder: "Template folder",
+      folderDesc: "Folder of template files. Each file's decks-tags bind it to table rows or notes carrying a matching tag. Tables that don't match fall back to the default Front/Back/Notes columns. Leave empty to disable.",
+      folderDefault: "Disabled (no template folder)",
+      previewHeading: "Preview",
+      previewHint: "Preview uses sample row data.",
+      noTemplates: "No templates found in the selected folder yet.",
+      notesLabel: "Notes",
     },
 
     canvasDecks: {
