@@ -223,7 +223,13 @@ export function isCustomDeck(item: DeckOrGroup): item is CustomDeckGroup {
 
 export type FlashcardState = "new" | "review";
 
-export type FlashcardType = "header-paragraph" | "table" | "cloze" | "image-occlusion" | "spatial";
+export type FlashcardType =
+  | "header-paragraph"
+  | "table"
+  | "cloze"
+  | "image-occlusion"
+  | "image-occlusion-v2"
+  | "spatial";
 
 export interface Flashcard {
   id: string;

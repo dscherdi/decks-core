@@ -26,6 +26,21 @@ export type {
 // Services
 export { FlashcardParser } from "./services/FlashcardParser";
 export type { ParsedFlashcard } from "./services/FlashcardParser";
+export {
+  isOcclusionV2,
+  serializeOcclusionBack,
+  parseOcclusionBack,
+  occlusionV2HashInput,
+  activeMaskIdForCard,
+  occlusionImageLinkpath,
+} from "./services/occlusion/OcclusionV2";
+export { OcclusionV2Parser } from "./services/occlusion/OcclusionV2Parser";
+export {
+  OCCLUSION_V2_VERSION,
+  type OcclusionMask,
+  type OcclusionDoc,
+  type OcclusionParseResult,
+} from "./services/occlusion/OcclusionV2.types";
 export { CanvasParser } from "./services/CanvasParser";
 export type { CanvasContent, CanvasTextNode } from "./services/CanvasParser";
 export { CanvasFlashcardExtractor } from "./services/CanvasFlashcardExtractor";
@@ -163,6 +178,7 @@ export {
   generateCustomDeckCardId,
   generateSpatialFlashcardId,
   generateSpatialClozeFlashcardId,
+  generateOcclusionV2FlashcardId,
 } from "./utils/hash";
 export {
   toLocalDateString,

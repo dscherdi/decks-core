@@ -9,7 +9,9 @@ import {
   generateClozeFlashcardId,
   generateSpatialFlashcardId,
   generateSpatialClozeFlashcardId,
+  generateOcclusionV2FlashcardId,
 } from "../utils/hash";
+import { occlusionV2HashInput } from "./occlusion/OcclusionV2";
 import { levenshteinSimilarity } from "../utils/string";
 
 export interface FlashcardUpdates {
@@ -254,6 +256,7 @@ export class FlashcardSynchronizer {
             card.back &&
             card.type !== "cloze" &&
             card.type !== "image-occlusion" &&
+            card.type !== "image-occlusion-v2" &&
             card.type !== "spatial" &&
             !card.edgeId
           ) {
@@ -384,11 +387,16 @@ export class FlashcardSynchronizer {
         // so identical fronts in different nodes produce distinct IDs. For
         // markdown cards (no sourceNodeId / no edgeId), the hash is
         // byte-identical to the pre-canvas implementation.
+        const isOcclusionV2 = parsed.type === "image-occlusion-v2";
         const isClozeType = parsed.type === "cloze" || parsed.type === "image-occlusion";
         const isSpatial = parsed.type === "spatial";
         const hasEdge = !!parsed.edgeId;
         let flashcardId: string;
-        if (isSpatial && hasEdge) {
+        if (isOcclusionV2) {
+          // Identity keyed on the stable mask id, so moving/editing a box keeps
+          // the card's FSRS history.
+          flashcardId = generateOcclusionV2FlashcardId(data.deckId, parsed.imagePath!, parsed.maskId!);
+        } else if (isSpatial && hasEdge) {
           flashcardId = generateSpatialFlashcardId(data.deckId, parsed.edgeId!);
         } else if (isClozeType && hasEdge) {
           flashcardId = generateSpatialClozeFlashcardId(
@@ -406,8 +414,12 @@ export class FlashcardSynchronizer {
         }
         // Table rows fold their full cells into the hash so editing any column
         // (even ones only a template reads) triggers a re-sync of the card.
+        // V2 occlusion hashes only the active mask, so editing one box never
+        // churns its siblings.
         const contentHash = parsed.templateRow
           ? generateContentHash(parsed.back + "::row::" + JSON.stringify(parsed.templateRow.cells))
+          : isOcclusionV2
+          ? generateContentHash(occlusionV2HashInput(parsed.back, parsed.maskId!))
           : isClozeType
           ? generateContentHash(parsed.back + "::" + parsed.clozeText)
           : generateContentHash(parsed.back);
@@ -451,9 +463,10 @@ export class FlashcardSynchronizer {
           }
         } else {
           // Card doesn't exist — route to the appropriate create list.
-          // Spatial cards (and any card derived from a canvas edge) get a
-          // deterministic id from the edge, so they skip rename fuzzy-match.
-          if (hasEdge) {
+          // Spatial cards (canvas edges) and V2 occlusion cards get a
+          // deterministic id (from the edge / mask id), so they skip rename
+          // fuzzy-match — siblings sharing a front must never cross-migrate.
+          if (hasEdge || isOcclusionV2) {
             spatialCardsToCreate.push({ parsed, flashcardId, contentHash });
           } else if (parsed.isReverse) {
             reverseCardsToCreate.push({ parsed, flashcardId, contentHash });

@@ -1,5 +1,6 @@
 import { I18n } from "../i18n/I18n";
-import type { RefactorCardType, RefactorFieldSet } from "../services/ai/types";
+import type { RefactorFieldSet } from "../services/ai/types";
+import type { FlashcardType } from "../database/types";
 
 /** A displayable field of a card, keyed by its RefactorFieldSet key. */
 export interface CardFieldDef {
@@ -9,7 +10,7 @@ export interface CardFieldDef {
 }
 
 /** The display fields (label + key + front flag) for a card type. */
-export function cardFieldDefs(type: RefactorCardType): CardFieldDef[] {
+export function cardFieldDefs(type: FlashcardType): CardFieldDef[] {
   const ef = I18n.t.modals.editFlashcard;
   switch (type) {
     case "header-paragraph":
@@ -36,6 +37,9 @@ export function cardFieldDefs(type: RefactorCardType): CardFieldDef[] {
       ];
     case "image-occlusion":
       return [{ label: ef.fieldBody, refKey: "listItem" }];
+    case "image-occlusion-v2":
+      // Edited visually in the studio — no inline text fields.
+      return [];
   }
 }
 

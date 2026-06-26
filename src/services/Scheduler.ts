@@ -900,7 +900,7 @@ export class Scheduler {
   async getClozeSiblings(card: Flashcard, now: Date): Promise<Flashcard[]> {
     const query = `
       SELECT * FROM flashcards
-      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion')
+      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
         AND id != ?
         AND ((state IN ('review', 'relearning') AND due_date <= ?) OR state = 'new')
         AND suspended_at IS NULL
@@ -920,7 +920,7 @@ export class Scheduler {
   async getClozeGroupSize(card: Flashcard): Promise<number> {
     const query = `
       SELECT COUNT(*) FROM flashcards
-      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion')
+      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
     `;
     const rows = await this.db.querySql<unknown[]>(query, [
       card.deckId,

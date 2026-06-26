@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 31;
+export const CURRENT_SCHEMA_VERSION = 32;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -126,7 +126,7 @@ export const CREATE_TABLES_SQL = `
     deck_id TEXT NOT NULL,
     front TEXT NOT NULL,
     back TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial')),
     source_file TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     breadcrumb TEXT NOT NULL DEFAULT '',
@@ -726,7 +726,7 @@ export function buildMigrationSQL(db: Database): string {
       deck_id TEXT NOT NULL,
       front TEXT NOT NULL,
       back TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial')),
       source_file TEXT NOT NULL,
       content_hash TEXT NOT NULL,
       breadcrumb TEXT NOT NULL DEFAULT '',

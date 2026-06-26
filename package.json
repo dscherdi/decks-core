@@ -38,5 +38,8 @@
     "tsup": "^8.5.0",
     "typescript": "^5.9.3"
   },
-  "license": "AGPL-3.0-or-later"
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "js-yaml": "^5.1.0"
+  }
 }
