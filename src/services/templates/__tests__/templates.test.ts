@@ -65,11 +65,31 @@ describe("TemplateMerger", () => {
     expect(mergeTemplate("{{Missing}}{{9}}", cells, headers)).toBe("");
   });
 
-  it("lists referenced variables", () => {
+  it("lists referenced variables, excluding section markers", () => {
     expect(referencedVariables("{{Word}} {{1}} {{Word}}")).toEqual([
       "Word",
       "1",
     ]);
+    expect(referencedVariables("{{#Word}}{{Definition}}{{/Word}}")).toEqual(["Definition"]);
+  });
+
+  it("evaluates {{#Field}} sections (shown only when non-empty)", () => {
+    const h = ["Word", "Extra"];
+    expect(mergeTemplate("{{#Extra}}[{{Extra}}]{{/Extra}}", ["x", "note"], h)).toBe("[note]");
+    expect(mergeTemplate("{{#Extra}}[{{Extra}}]{{/Extra}}", ["x", ""], h)).toBe("");
+  });
+
+  it("evaluates {{^Field}} sections (shown only when empty)", () => {
+    const h = ["Word", "Extra"];
+    expect(mergeTemplate("{{^Extra}}none{{/Extra}}", ["x", ""], h)).toBe("none");
+    expect(mergeTemplate("{{^Extra}}none{{/Extra}}", ["x", "y"], h)).toBe("");
+  });
+
+  it("evaluates nested sections", () => {
+    const h = ["A", "B"];
+    expect(mergeTemplate("{{#A}}a{{#B}}b{{/B}}{{/A}}", ["1", "1"], h)).toBe("ab");
+    expect(mergeTemplate("{{#A}}a{{#B}}b{{/B}}{{/A}}", ["1", ""], h)).toBe("a");
+    expect(mergeTemplate("{{#A}}a{{#B}}b{{/B}}{{/A}}", ["", "1"], h)).toBe("");
   });
 
   it("is satisfied only when front variables resolve", () => {

@@ -112,9 +112,14 @@ export type {
   AnkiTemplateResult,
   AnkiExtraField,
 } from "./services/migration/anki/AnkiTemplateEngine";
+export { AnkiTemplateExporter } from "./services/migration/anki/AnkiTemplateExporter";
+export type { AnkiTemplateFile } from "./services/migration/anki/AnkiTemplateExporter";
+export { AnkiOcclusionExtractor } from "./services/migration/anki/AnkiOcclusionExtractor";
+export type { AnkiOcclusionResult } from "./services/migration/anki/AnkiOcclusionExtractor";
 export { AnkiDeckRenderer } from "./services/migration/anki/AnkiDeckRenderer";
-export type { AnkiRenderedDeck, AnkiFormat } from "./services/migration/anki/AnkiDeckRenderer";
+export type { AnkiRenderedDeck } from "./services/migration/anki/AnkiDeckRenderer";
 export { AnkiHistoryImporter } from "./services/migration/anki/AnkiHistoryImporter";
+export { parseMediaManifest, isZstd } from "./services/migration/anki/AnkiMediaManifest";
 export type {
   AnkiRevlogRow,
   AnkiDeckItem,
@@ -128,6 +133,8 @@ export type {
   AnkiScheduling,
   AnkiParsedCard,
   AnkiParseResult,
+  AnkiCardKind,
+  AnkiTemplateRow,
 } from "./services/migration/anki/AnkiTypes";
 export * from "./services/HLC";
 export type {

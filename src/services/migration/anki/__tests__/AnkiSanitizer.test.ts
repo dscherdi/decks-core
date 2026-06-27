@@ -23,6 +23,13 @@ describe("AnkiSanitizer", () => {
     expect(result.text).toBe("Ich ==gehe== (hint: verb) nach Hause.");
   });
 
+  it("splits a multi-line cloze answer into one highlight per line", () => {
+    expect(AnkiSanitizer.sanitizeField("{{c1::A<br>B<br>C}}").text).toBe("==A==\n==B==\n==C==");
+    expect(AnkiSanitizer.sanitizeField("{{c1::A\nB}}").text).toBe("==A==\n==B==");
+    // Single-line answers are unchanged.
+    expect(AnkiSanitizer.sanitizeField("{{c1::x}}").text).toBe("==x==");
+  });
+
   it("converts MathJax delimiters to LaTeX dollar syntax", () => {
     expect(AnkiSanitizer.sanitizeField("\\(a^2 + b^2\\)").text).toBe("$a^2 + b^2$");
     expect(AnkiSanitizer.sanitizeField("\\[E=mc^2\\]").text).toBe("$$E=mc^2$$");

@@ -245,6 +245,7 @@ export class FlashcardParser {
       tags: [...tags],
       clozeText: m.text,
       clozeOrder: m.index,
+      ...(templateRow ? { templateRow } : {}),
     }));
   }
 
@@ -365,14 +366,23 @@ export class FlashcardParser {
               clozeEnabled &&
               new RegExp(FlashcardParser.CLOZE_REGEX.source).test(cells[0]);
 
-            if (back.length > 0) {
-              // Capture row data so a tag-bound template can merge it at render
-              // time (binding tags come from the header).
-              const templateRow = {
-                headers: currentTableHeaders,
-                cells,
-              };
-              // Standard 2-column row.
+            // Capture row data so a tag-bound template can merge it at render
+            // time (binding tags come from the header).
+            const templateRow = {
+              headers: currentTableHeaders,
+              cells,
+            };
+            if (frontIsCloze) {
+              // The cloze lives in the front cell → a front-only cloze (blanked on
+              // the front). Other columns stay available to a bound template; the
+              // row still carries templateRow so the template can render them.
+              flashcards.push(
+                ...FlashcardParser.expandClozes(
+                  cells[0], "", rowNotes, "table", breadcrumb, rowTags, cells[0], templateRow
+                )
+              );
+            } else if (back.length > 0) {
+              // Standard 2-column row (front + back; the back may hold a cloze).
               if (clozeEnabled) {
                 flashcards.push(
                   ...FlashcardParser.expandClozes(
@@ -385,13 +395,6 @@ export class FlashcardParser {
                   templateRow,
                 });
               }
-            } else if (frontIsCloze) {
-              // 1-column / empty-back cloze: the cloze lives in the front.
-              flashcards.push(
-                ...FlashcardParser.expandClozes(
-                  cells[0], "", rowNotes, "table", breadcrumb, rowTags, cells[0]
-                )
-              );
             }
             // else: a non-cloze row with no back is an incomplete row — ignore.
           }

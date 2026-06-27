@@ -3,6 +3,9 @@ import { AnkiSanitizer } from "./AnkiSanitizer";
 import type { HtmlToMarkdown, SanitizeOptions } from "./AnkiSanitizer";
 import { AnkiTemplateEngine } from "./AnkiTemplateEngine";
 import type { AnkiTemplateData } from "./AnkiTemplateEngine";
+import { AnkiTemplateExporter } from "./AnkiTemplateExporter";
+import type { AnkiTemplateFile } from "./AnkiTemplateExporter";
+import { AnkiOcclusionExtractor } from "./AnkiOcclusionExtractor";
 import type { AnkiRevlogRow } from "./AnkiHistoryImporter";
 import type {
   AnkiDeckMeta,
@@ -12,18 +15,28 @@ import type {
   AnkiScheduling,
   AnkiTemplate,
 } from "./AnkiTypes";
+import type { OcclusionMask } from "../../occlusion/OcclusionV2.types";
 
 // Anki joins a note's field values with the unit separator.
 const FIELD_SEPARATOR = "\x1f";
 
 // Field-name match for picking a readable header on cloze notes.
-const CLOZE_HEADER_FIELD = /trans|back|mean|english|answer|definition|hint/i;
 // Field names that are bookkeeping ids, never used as content.
 const ID_FIELD = /^(id|guid|uid|key)$/i;
 
 export interface AnkiParseOptions {
   hintLabel?: string;
   htmlToMarkdown?: HtmlToMarkdown;
+  // Reads a media file's text content (used for image-occlusion mask SVGs).
+  // Without it, image-occlusion notes are skipped.
+  getMediaText?: (filename: string) => string | undefined;
+}
+
+interface RowContext {
+  row: RawCardNote;
+  model: AnkiModel;
+  deckName: string;
+  fieldMap: Map<string, string>;
 }
 
 /**
@@ -43,28 +56,44 @@ export class AnkiCollectionParser {
     const cards: AnkiParsedCard[] = [];
     const noteIds = new Set<number>();
     const mediaFiles = new Set<string>();
+    const templateFiles = new Map<string, AnkiTemplateFile>();
     let withHistory = 0;
+    const collect = (card: AnkiParsedCard): void => {
+      noteIds.add(card.noteId);
+      for (const m of card.media) mediaFiles.add(m);
+      if (!AnkiCollectionParser.isNew(card.scheduling)) withHistory++;
+      cards.push(card);
+    };
+
+    const templateRows: RowContext[] = [];
+    const ioRows: RowContext[] = [];
 
     const rows = AnkiCollectionParser.readCardNoteRows(db);
     for (const row of rows) {
       const model = models.get(row.mid);
       if (!model) continue;
-      // Image-occlusion note types have no front/back equivalent in Decks.
-      if (AnkiCollectionParser.isImageOcclusion(model)) continue;
       const deckName = decks.get(row.did) ?? "Default";
-      const fieldValues = AnkiCollectionParser.splitFields(row.flds);
-      const fieldMap = AnkiCollectionParser.mapFields(model, fieldValues);
+      const fieldMap = AnkiCollectionParser.mapFields(model, AnkiCollectionParser.splitFields(row.flds));
+      const ctx: RowContext = { row, model, deckName, fieldMap };
 
-      const parsed =
-        model.type === 1
-          ? AnkiCollectionParser.buildClozeCard(row, model, fieldMap, deckName, sanitize)
-          : AnkiCollectionParser.buildBasicCard(row, model, fieldMap, deckName, sanitize);
-      if (!parsed) continue;
+      if (AnkiCollectionParser.isImageOcclusion(model)) {
+        ioRows.push(ctx);
+      } else if (model.type === 1) {
+        const c = AnkiCollectionParser.buildClozeCard(row, model, fieldMap, deckName, sanitize, templateFiles);
+        if (c) collect(c);
+      } else if (model.flds.length > 2) {
+        templateRows.push(ctx); // multi-field → template-bound table row
+      } else {
+        const c = AnkiCollectionParser.buildBasicCard(row, model, fieldMap, deckName, sanitize);
+        if (c) collect(c);
+      }
+    }
 
-      noteIds.add(row.nid);
-      for (const m of parsed.media) mediaFiles.add(m);
-      if (!AnkiCollectionParser.isNew(parsed.scheduling)) withHistory++;
-      cards.push(parsed);
+    for (const card of AnkiCollectionParser.buildTemplateCards(templateRows, sanitize, templateFiles)) {
+      collect(card);
+    }
+    for (const card of AnkiCollectionParser.buildOcclusionCards(ioRows, options.getMediaText)) {
+      collect(card);
     }
 
     const deckNames = Array.from(new Set(cards.map((c) => c.deckName))).sort();
@@ -75,6 +104,7 @@ export class AnkiCollectionParser {
       cardCount: cards.length,
       withHistory,
       mediaFiles: Array.from(mediaFiles).sort(),
+      templateFiles: Array.from(templateFiles.values()),
     };
   }
 
@@ -137,7 +167,14 @@ export class AnkiCollectionParser {
             afmt: String(t.afmt ?? ""),
           }))
       : [];
-    return { id, name: String(obj.name ?? ""), type: typeof obj.type === "number" ? obj.type : 0, flds, tmpls };
+    return {
+      id,
+      name: String(obj.name ?? ""),
+      type: typeof obj.type === "number" ? obj.type : 0,
+      flds,
+      tmpls,
+      css: typeof obj.css === "string" ? obj.css : undefined,
+    };
   }
 
   // --- cards ⋈ notes ---
@@ -211,9 +248,10 @@ export class AnkiCollectionParser {
     const frontResult = AnkiSanitizer.sanitizeField(rendered.frontHtml, sanitize);
     for (const m of frontResult.media) media.push(m);
     // A markdown header must stay a single text line, so front-side media embeds
-    // are relocated into the notes rather than the `## …` heading.
+    // are separated; for a real front they relocate into the notes, for a
+    // front-less card they become the table's front cell instead.
     const { text: headerText, embeds: frontEmbeds } = AnkiCollectionParser.splitEmbeds(frontResult.text);
-    const headerFront = AnkiCollectionParser.toHeader(headerText) || `Card ${row.nid}-${row.ord}`;
+    const header = AnkiCollectionParser.toHeader(headerText);
 
     const backResult = AnkiSanitizer.sanitizeField(rendered.answerHtml, sanitize);
     for (const m of backResult.media) media.push(m);
@@ -226,22 +264,48 @@ export class AnkiCollectionParser {
       for (const m of result.media) media.push(m);
       if (result.text.trim()) extraLines.push(`**${extra.name}:** ${result.text.trim()}`);
     }
-    const notes = [...extraLines, ...frontEmbeds].filter((p) => p.trim().length > 0).join("\n\n");
 
-    if (!back && !notes.trim() && headerFront.startsWith("Card ")) return null;
+    // Layout escalation: default to header-paragraph; promote to an aggregated
+    // table when the card is compact enough (single-paragraph back + notes), or
+    // when there is no real front text (avoids an ugly `## Card <id>` header —
+    // the front media becomes the front cell instead).
+    let front: string;
+    let notes: string;
+    let tableLayout: boolean;
+    if (header) {
+      front = header;
+      notes = [...extraLines, ...frontEmbeds].filter((p) => p.trim().length > 0).join("\n\n");
+      tableLayout =
+        back.length > 0 &&
+        AnkiCollectionParser.isSingleParagraph(back) &&
+        (!notes.trim() || AnkiCollectionParser.isSingleParagraph(notes));
+    } else {
+      front = frontEmbeds.join("\n") || `Card ${row.nid}-${row.ord}`;
+      notes = extraLines.filter((p) => p.trim().length > 0).join("\n\n");
+      tableLayout = back.length > 0;
+    }
+
+    if (!back && !notes.trim() && front.startsWith("Card ")) return null;
 
     return {
       noteId: row.nid,
       cardId: row.cid,
       ord: row.ord,
+      kind: "basic",
       isCloze: false,
       deckName,
-      front: headerFront,
+      front,
       back,
       notes,
+      tableLayout,
       media,
       scheduling: row.scheduling,
     };
+  }
+
+  // A single paragraph has no blank-line break; soft `\n` breaks stay in-cell.
+  private static isSingleParagraph(text: string): boolean {
+    return !/\n[ \t]*\n/.test(text.trim());
   }
 
   // Image-occlusion templates carry distinctive `io-*` element ids; the model
@@ -251,12 +315,203 @@ export class AnkiCollectionParser {
     return model.tmpls.some((t) => /id=["']?io-/.test(t.qfmt) || /id=["']?io-/.test(t.afmt));
   }
 
+  // --- Multi-field template cards ---
+
+  // Multi-field notes become template-bound table rows. Columns are ordered by
+  // how often each field is filled (so cells[0]/cells[1] are non-empty — the
+  // Decks parser drops rows with an empty second cell). Each (model, ord) gets
+  // one generated HTML template file, bound by tag.
+  private static buildTemplateCards(
+    rows: RowContext[],
+    sanitize: SanitizeOptions,
+    templateFiles: Map<string, AnkiTemplateFile>
+  ): AnkiParsedCard[] {
+    if (rows.length === 0) return [];
+    const cellSanitize: SanitizeOptions = { ...sanitize, keepHtml: true };
+    const byModel = new Map<string, RowContext[]>();
+    for (const ctx of rows) {
+      const group = byModel.get(ctx.model.id);
+      if (group) group.push(ctx);
+      else byModel.set(ctx.model.id, [ctx]);
+    }
+
+    const cards: AnkiParsedCard[] = [];
+    for (const group of byModel.values()) {
+      const model = group[0].model;
+      const orderedFields = AnkiCollectionParser.fieldOrderByFill(model, group);
+      for (const { row, deckName, fieldMap } of group) {
+        const media: string[] = [];
+        const cells = orderedFields.map((name) => {
+          const result = AnkiSanitizer.sanitizeField(fieldMap.get(name) ?? "", cellSanitize);
+          for (const m of result.media) media.push(m);
+          return result.text;
+        });
+        // Need a non-empty front + second cell for the row to carry templateRow.
+        if (!cells[0]?.trim() || !cells[1]?.trim()) continue;
+
+        const tmpl = model.tmpls.find((t) => t.ord === row.ord) ?? model.tmpls[0];
+        if (!tmpl) continue;
+        const tag = AnkiTemplateExporter.tagFor(model, tmpl.ord ?? row.ord);
+        if (!templateFiles.has(tag)) templateFiles.set(tag, AnkiTemplateExporter.build(model, tmpl));
+
+        cards.push({
+          noteId: row.nid,
+          cardId: row.cid,
+          ord: row.ord,
+          kind: "template",
+          isCloze: false,
+          deckName,
+          front: cells[0],
+          back: cells[1],
+          notes: "",
+          templateRow: { headers: orderedFields, cells },
+          templateTag: tag,
+          media,
+          scheduling: row.scheduling,
+        });
+      }
+    }
+    return cards;
+  }
+
+  // Keep Anki's field 0 first (its primary/sort field → the card front), then
+  // order the rest by fill count (desc) so the second cell is rarely empty (the
+  // Decks parser drops rows with an empty second cell).
+  private static fieldOrderByFill(model: AnkiModel, group: RowContext[]): string[] {
+    const names = model.flds.map((f) => f.name);
+    if (names.length <= 1) return names;
+    const counts = new Map<string, number>(names.map((n) => [n, 0]));
+    for (const { fieldMap } of group) {
+      for (const name of names) {
+        if ((fieldMap.get(name) ?? "").trim()) counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+    }
+    const rest = names
+      .map((name, idx) => ({ name, idx }))
+      .slice(1)
+      .sort((a, b) => (counts.get(b.name) ?? 0) - (counts.get(a.name) ?? 0) || a.idx - b.idx)
+      .map((entry) => entry.name);
+    return [names[0], ...rest];
+  }
+
+  // --- Image occlusion ---
+
+  // Group IO notes by their shared base image and emit one occlusion card per
+  // note (carrying all of the image's masks + this note's mask id). The renderer
+  // collapses a group into a single `decks-occlusion` block.
+  private static buildOcclusionCards(
+    rows: RowContext[],
+    getMediaText: ((filename: string) => string | undefined) | undefined
+  ): AnkiParsedCard[] {
+    if (rows.length === 0 || !getMediaText) return [];
+    const byImage = new Map<string, RowContext[]>();
+    for (const ctx of rows) {
+      const image = AnkiCollectionParser.occlusionBaseImage(ctx);
+      if (!image) continue;
+      const group = byImage.get(image);
+      if (group) group.push(ctx);
+      else byImage.set(image, [ctx]);
+    }
+
+    const cards: AnkiParsedCard[] = [];
+    for (const [image, group] of byImage) {
+      const masks = AnkiCollectionParser.occlusionMasks(group, getMediaText);
+      if (!masks || masks.length === 0) continue;
+      const maskIds = new Set(masks.map((m) => m.id));
+      group.forEach((ctx, i) => {
+        const noteMaskId = AnkiCollectionParser.occlusionNoteMaskId(ctx);
+        const maskId = noteMaskId && maskIds.has(noteMaskId) ? noteMaskId : masks[i % masks.length].id;
+        cards.push({
+          noteId: ctx.row.nid,
+          cardId: ctx.row.cid,
+          ord: ctx.row.ord,
+          kind: "occlusion",
+          isCloze: false,
+          deckName: ctx.deckName,
+          front: `![[${image}]]`,
+          back: "",
+          notes: "",
+          imageRef: `[[${image}]]`,
+          imagePath: image,
+          masks,
+          maskId,
+          media: [image],
+          scheduling: ctx.row.scheduling,
+        });
+      });
+    }
+    return cards;
+  }
+
+  // The non-SVG `<img src>` across the note's fields (the base picture).
+  private static occlusionBaseImage(ctx: RowContext): string | null {
+    for (const value of ctx.fieldMap.values()) {
+      for (const src of AnkiCollectionParser.imgSrcs(value)) {
+        if (!/\.svg$/i.test(src)) return src;
+      }
+    }
+    return null;
+  }
+
+  // This note's mask id — its `…-oa-N` field value (the SVG rect id).
+  private static occlusionNoteMaskId(ctx: RowContext): string | null {
+    for (const value of ctx.fieldMap.values()) {
+      const trimmed = value.trim();
+      if (/-oa-\d+$/.test(trimmed)) return trimmed;
+    }
+    return null;
+  }
+
+  // Extract masks from the group's Original Mask SVG (`…-oa-O.svg`), falling back
+  // to the union of per-note Question Mask SVGs.
+  private static occlusionMasks(
+    group: RowContext[],
+    getMediaText: (filename: string) => string | undefined
+  ): OcclusionMask[] | null {
+    for (const ctx of group) {
+      for (const value of ctx.fieldMap.values()) {
+        const match = /-oa-O\.svg/i.exec(value);
+        if (!match) continue;
+        const svgName = AnkiCollectionParser.imgSrcs(value).find((s) => /-oa-O\.svg$/i.test(s));
+        const svg = svgName ? getMediaText(svgName) : undefined;
+        const extracted = svg ? AnkiOcclusionExtractor.extract(svg) : null;
+        if (extracted) return extracted.masks;
+      }
+    }
+    // Fallback: union each note's Question Mask rects (deduped by id).
+    const masks: OcclusionMask[] = [];
+    const seen = new Set<string>();
+    for (const ctx of group) {
+      for (const value of ctx.fieldMap.values()) {
+        const svgName = AnkiCollectionParser.imgSrcs(value).find((s) => /-Q\.svg$/i.test(s));
+        const svg = svgName ? getMediaText(svgName) : undefined;
+        const extracted = svg ? AnkiOcclusionExtractor.extract(svg) : null;
+        if (!extracted) continue;
+        for (const mask of extracted.masks) {
+          if (seen.has(mask.id)) continue;
+          seen.add(mask.id);
+          masks.push(mask);
+        }
+      }
+    }
+    return masks.length > 0 ? masks : null;
+  }
+
+  private static imgSrcs(value: string): string[] {
+    const result: string[] = [];
+    const regex = /<img\b[^>]*?\bsrc\s*=\s*["']?([^"'>\s]+)["']?[^>]*>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(value)) !== null) result.push(decodeURIComponent(match[1].trim()));
+    return result;
+  }
+
   private static buildClozeCard(
     row: RawCardNote,
     model: AnkiModel,
     fieldMap: Map<string, string>,
     deckName: string,
-    sanitize: SanitizeOptions
+    sanitize: SanitizeOptions,
+    templateFiles: Map<string, AnkiTemplateFile>
   ): AnkiParsedCard | null {
     const fieldNames = new Set(model.flds.map((f) => f.name));
     const clozeFieldName = AnkiCollectionParser.findClozeField(model, fieldNames);
@@ -267,34 +522,47 @@ export class AnkiCollectionParser {
     for (const m of bodyResult.media) media.push(m);
     const clozeBody = bodyResult.text;
 
-    // The header field doubles as the card title, so keep it out of the notes.
-    const headerFieldName = model.flds.find((f) => CLOZE_HEADER_FIELD.test(f.name))?.name;
-    const header =
-      AnkiCollectionParser.clozeHeader(headerFieldName, fieldMap, sanitize) || `Cloze ${row.nid}`;
-
-    // Remaining answer-side fields (image, audio, other text) become the notes.
-    const extras = model.flds
+    // Extra (non-cloze, non-id) fields → a bound template's notes face (the
+    // Notes button). Sanitized to markdown so media/embeds resolve.
+    const extraFields = model.flds
       .map((f) => f.name)
-      .filter((name) => name !== clozeFieldName && name !== headerFieldName && !ID_FIELD.test(name));
-    const notes = AnkiCollectionParser.joinFields(extras, fieldMap, sanitize, media);
+      .filter((name) => name !== clozeFieldName && !ID_FIELD.test(name));
+    const extraValues = extraFields.map((name) => {
+      const result = AnkiSanitizer.sanitizeField(fieldMap.get(name) ?? "", sanitize);
+      for (const m of result.media) media.push(m);
+      return result.text;
+    });
+    const hasExtras = extraValues.some((v) => v.trim().length > 0);
 
     const answers = AnkiCollectionParser.highlightAnswers(clozeBody);
-
-    return {
+    const card: AnkiParsedCard = {
       noteId: row.nid,
       cardId: row.cid,
       ord: row.ord,
+      kind: "cloze",
       isCloze: true,
       deckName,
-      front: header,
+      front: clozeBody, // the cloze sentence drives the card id
       back: clozeBody,
-      notes,
+      notes: extraValues.filter((v) => v.trim()).join("\n\n"),
       clozeBody,
       clozeText: answers[row.ord],
       clozeOrder: row.ord,
       media,
       scheduling: row.scheduling,
     };
+
+    if (hasExtras) {
+      // A tag-bound markdown template renders the cloze (front) + extras (notes).
+      const tag = AnkiTemplateExporter.clozeTagFor(model);
+      card.templateRow = { headers: [clozeFieldName, ...extraFields], cells: [clozeBody, ...extraValues] };
+      card.templateTag = tag;
+      if (!templateFiles.has(tag)) {
+        templateFiles.set(tag, AnkiTemplateExporter.buildCloze(model, clozeFieldName, extraFields));
+      }
+    }
+
+    return card;
   }
 
   private static findClozeField(model: AnkiModel, fieldNames: Set<string>): string | null {
@@ -310,16 +578,6 @@ export class AnkiCollectionParser {
     return model.flds[0]?.name ?? null;
   }
 
-  private static clozeHeader(
-    headerFieldName: string | undefined,
-    fieldMap: Map<string, string>,
-    sanitize: SanitizeOptions
-  ): string {
-    const value = headerFieldName ? fieldMap.get(headerFieldName) ?? "" : "";
-    const { text } = AnkiCollectionParser.splitEmbeds(AnkiSanitizer.sanitizeField(value, sanitize).text);
-    return AnkiCollectionParser.toHeader(text);
-  }
-
   // Inner text of each ==highlight== in document order (matches Decks' parser).
   private static highlightAnswers(clozeBody: string): string[] {
     const regex = /==((?:(?!==).)+)==/g;
@@ -327,33 +585,6 @@ export class AnkiCollectionParser {
     let match: RegExpExecArray | null;
     while ((match = regex.exec(clozeBody)) !== null) answers.push(match[1].trim());
     return answers;
-  }
-
-  // Sanitized, non-empty text per field (collecting media), preserving order.
-  private static fieldParts(
-    names: string[],
-    fieldMap: Map<string, string>,
-    sanitize: SanitizeOptions,
-    media: string[]
-  ): string[] {
-    const parts: string[] = [];
-    for (const name of names) {
-      const raw = fieldMap.get(name);
-      if (!raw) continue;
-      const result = AnkiSanitizer.sanitizeField(raw, sanitize);
-      for (const m of result.media) media.push(m);
-      if (result.text.trim()) parts.push(result.text.trim());
-    }
-    return parts;
-  }
-
-  private static joinFields(
-    names: string[],
-    fieldMap: Map<string, string>,
-    sanitize: SanitizeOptions,
-    media: string[]
-  ): string {
-    return AnkiCollectionParser.fieldParts(names, fieldMap, sanitize, media).join("\n\n");
   }
 
   // A markdown header must be a single line; collapse newlines so multi-field

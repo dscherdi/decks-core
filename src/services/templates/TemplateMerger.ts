@@ -28,25 +28,52 @@ function resolveVariable(
   return headerIdx >= 0 ? cells[headerIdx] : undefined;
 }
 
-/** Merge a template body with a row's cells, resolving every `{{…}}` reference. */
+// A Mustache-style section: `{{#Field}}…{{/Field}}` (shown when the field is
+// non-empty) or `{{^Field}}…{{/Field}}` (shown when empty). The body matches the
+// innermost section (it contains no further section markers), so a loop collapses
+// nested sections from the inside out.
+const SECTION = /\{\{\s*([#^])\s*([^}]+?)\s*\}\}((?:(?!\{\{\s*[#^/])[\s\S])*?)\{\{\s*\/\s*\2\s*\}\}/;
+
+function resolveSections(template: string, cells: string[], headers: string[]): string {
+  let result = template;
+  let match = SECTION.exec(result);
+  let guard = 0;
+  while (match && guard++ < 10000) {
+    const [whole, kind, token, body] = match;
+    const value = resolveVariable(token.trim(), cells, headers);
+    const filled = value !== undefined && value.trim().length > 0;
+    const keep = kind === "#" ? filled : !filled;
+    result = result.slice(0, match.index) + (keep ? body : "") + result.slice(match.index + whole.length);
+    match = SECTION.exec(result);
+  }
+  return result;
+}
+
+/** Merge a template body with a row's cells, resolving sections then `{{…}}` refs. */
 export function mergeTemplate(
   template: string,
   cells: string[],
   headers: string[]
 ): string {
-  return template.replace(VARIABLE, (_match, token: string) => {
+  const withoutSections = resolveSections(template, cells, headers);
+  return withoutSections.replace(VARIABLE, (_match, token: string) => {
     const value = resolveVariable(token, cells, headers);
     return value ?? "";
   });
 }
 
-/** List the distinct `{{…}}` tokens referenced by a template body. */
+/**
+ * List the distinct `{{…}}` variable tokens referenced by a template body.
+ * Section markers (`{{#F}}`/`{{^F}}`/`{{/F}}`) are not variables and are skipped.
+ */
 export function referencedVariables(template: string): string[] {
   const out: string[] = [];
   let match: RegExpExecArray | null;
   const re = new RegExp(VARIABLE.source, "g");
   while ((match = re.exec(template)) !== null) {
-    out.push(match[1].trim());
+    const token = match[1].trim();
+    if (/^[#^/]/.test(token)) continue;
+    out.push(token);
   }
   return Array.from(new Set(out));
 }

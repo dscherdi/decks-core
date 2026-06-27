@@ -140,13 +140,6 @@ export const zhTW: Translations = {
       "Imported {cards} card(s) into {decks} deck(s); history for {history}.",
     doneSummary:
       "Done: {decks} deck(s), {cards} card(s), {media} media, {history} with history.",
-    formatName: "Card format",
-    formatDesc:
-      "How imported cards are laid out. Header-paragraph keeps rich/multi-line content; tables are compact.",
-    formatHeaderParagraph: "Header + paragraph (recommended)",
-    formatTable: "Table",
-    formatTableWarning:
-      "Table format flattens multi-line content and media into a single cell (line breaks become <br>); complex cards may not render fully.",
     cancel: "Cancel",
   },
 

@@ -8,12 +8,12 @@ import {
   generateClozeFlashcardId,
   generateContentHash,
   generateFlashcardId,
+  generateOcclusionV2FlashcardId,
 } from "../../../utils/hash";
 import type { FsrsState } from "../LegacySrMigrator";
 import { SrHistoryImporter } from "../SrHistoryImporter";
 import type { HistoryDb, MigrationProfileFsrs } from "../SrHistoryImporter";
 import type { AnkiParsedCard, AnkiScheduling } from "./AnkiTypes";
-import type { AnkiFormat } from "./AnkiDeckRenderer";
 
 const MS_PER_DAY = 86_400_000;
 const SECONDS_PER_DAY = 86_400;
@@ -40,9 +40,6 @@ export interface AnkiImportHistoryOptions {
   collectionCreatedMs?: number;
   // Real Anki review rows, grouped by card id, imported as a review timeline.
   revlogByCard?: Map<number, AnkiRevlogRow[]>;
-  // The format the markdown was rendered in — determines a cloze card's front
-  // (and thus its id): the sentence cell in a table, the `##` header otherwise.
-  format?: AnkiFormat;
 }
 
 const RATING_LABELS: Record<number, ReviewLog["ratingLabel"]> = {
@@ -164,7 +161,7 @@ export class AnkiHistoryImporter {
         const fsrs = AnkiHistoryImporter.buildFsrsState(card.scheduling, options.collectionCreatedMs, now);
         if (!fsrs) continue;
 
-        const cardId = AnkiHistoryImporter.decksCardId(card, item.deckId, options.format);
+        const cardId = AnkiHistoryImporter.decksCardId(card, item.deckId);
         const contentHash = generateContentHash(card.back);
 
         const logId = `log_migrate_anki_${cardId}`;
@@ -198,11 +195,14 @@ export class AnkiHistoryImporter {
     return { injected, reviews };
   }
 
-  private static decksCardId(card: AnkiParsedCard, deckId: string, format?: AnkiFormat): string {
+  private static decksCardId(card: AnkiParsedCard, deckId: string): string {
+    if (card.kind === "occlusion" && card.imagePath && card.maskId) {
+      return generateOcclusionV2FlashcardId(deckId, card.imagePath, card.maskId);
+    }
     if (card.isCloze) {
-      // In a 1-col table the cloze sentence (clozeBody) is the cell → the Decks
-      // card front; in header-paragraph the `##` header text is the front.
-      const front = format === "table" ? (card.clozeBody ?? card.back).trim() : card.front;
+      // Cloze cards always render in a table → the parser's front is the cloze
+      // sentence cell (clozeBody).
+      const front = (card.clozeBody ?? card.back).trim();
       return generateClozeFlashcardId(
         front,
         card.clozeText ?? "",

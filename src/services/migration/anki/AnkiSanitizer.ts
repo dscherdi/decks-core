@@ -10,8 +10,12 @@
 const SOUND_TAG = /\[sound:([^\]]+)\]/g;
 const IMG_TAG = /<img\b[^>]*?\bsrc\s*=\s*["']?([^"'>\s]+)["']?[^>]*>/gi;
 // {{c1::answer}} or {{c1::answer::hint}} — the cloze number is ignored; Decks
-// derives card order from document position of each ==highlight==.
-const CLOZE_TAG = /\{\{c\d+::((?:(?!::|\}\}).)*)(?:::((?:(?!\}\}).)*))?\}\}/g;
+// derives card order from document position of each ==highlight==. `[\s\S]`
+// (not `.`) so a multi-line answer is captured.
+const CLOZE_TAG = /\{\{c\d+::((?:(?!::|\}\})[\s\S])*)(?:::((?:(?!\}\})[\s\S])*))?\}\}/g;
+// Line breaks inside a cloze answer (HTML or real newlines), used to split a
+// multi-line answer into one highlight per line.
+const CLOZE_LINE_BREAK = /<br\s*\/?>|<\/?div[^>]*>|\r?\n/gi;
 const MATHJAX_INLINE = /\\\(([\s\S]*?)\\\)/g;
 const MATHJAX_BLOCK = /\\\[([\s\S]*?)\\\]/g;
 
@@ -36,6 +40,10 @@ export type HtmlToMarkdown = (html: string) => string;
 export interface SanitizeOptions {
   hintLabel?: string;
   htmlToMarkdown?: HtmlToMarkdown;
+  // Media-only mode: apply the Anki token transforms (media → ![[…]], cloze,
+  // MathJax) but keep the surrounding HTML (no markdown conversion). Used for
+  // HTML-template cells/bodies where the HTML render resolves ![[…]] embeds.
+  keepHtml?: boolean;
 }
 
 export class AnkiSanitizer {
@@ -65,16 +73,29 @@ export class AnkiSanitizer {
       return `![[${name}]]`;
     });
 
-    // {{c1::answer::hint}} → ==answer== (hint: hint)
+    // {{c1::answer::hint}} → ==answer== (hint: hint). A multi-line answer becomes
+    // one ==highlight== per line (Decks' cloze regex can't span newlines).
     text = text.replace(CLOZE_TAG, (_match, answer: string, hint?: string) => {
-      const inner = answer.trim();
+      const lines = answer
+        .split(CLOZE_LINE_BREAK)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      const highlighted = (lines.length > 1 ? lines : [answer.trim()])
+        .map((line) => `==${line}==`)
+        .join("\n");
       const suffix = hint && hint.trim() ? ` (${hintLabel}: ${hint.trim()})` : "";
-      return `==${inner}==${suffix}`;
+      return `${highlighted}${suffix}`;
     });
 
     // MathJax \( … \) → $ … $   and   \[ … \] → $$ … $$
     text = text.replace(MATHJAX_BLOCK, (_m, body: string) => `$$${body.trim()}$$`);
     text = text.replace(MATHJAX_INLINE, (_m, body: string) => `$${body.trim()}$`);
+
+    // Media-only mode keeps the HTML intact (the render layer handles it);
+    // otherwise convert to markdown via the injected turndown / regex fallback.
+    if (options.keepHtml) {
+      return { text: text.trim(), media };
+    }
 
     // Generic tag conversion: injected turndown, else the DOM-free regex strip.
     text = options.htmlToMarkdown ? options.htmlToMarkdown(text) : AnkiSanitizer.stripHtml(text);

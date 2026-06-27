@@ -3,6 +3,11 @@
  * the normalized output the renderer/history-importer consume.
  */
 
+import type { OcclusionMask } from "../../occlusion/OcclusionV2.types";
+import type { AnkiTemplateFile } from "./AnkiTemplateExporter";
+
+export type { AnkiTemplateFile };
+
 export interface AnkiModelField {
   name: string;
   ord?: number;
@@ -22,6 +27,7 @@ export interface AnkiModel {
   type: number;
   flds: AnkiModelField[];
   tmpls: AnkiTemplate[];
+  css?: string; // model-level stylesheet applied to all the model's cards
 }
 
 /** A deck from the `col.decks` JSON. `name` uses `::` for hierarchy. */
@@ -48,18 +54,35 @@ export interface AnkiScheduling {
  * kept as its own card carrying the cloze it schedules, while the renderer
  * collapses a cloze note's cards into one markdown entry.
  */
+export type AnkiCardKind = "basic" | "cloze" | "template" | "occlusion";
+
+export interface AnkiTemplateRow {
+  headers: string[]; // field names
+  cells: string[]; // field values (sanitized, HTML kept)
+}
+
 export interface AnkiParsedCard {
   noteId: number;
   cardId: number;
   ord: number;
-  isCloze: boolean;
+  kind: AnkiCardKind;
+  isCloze: boolean; // kept for back-compat; equals kind === "cloze"
   deckName: string; // full "Parent::Child" path
   front: string; // sanitized; used as the markdown header AND for id generation
   back: string; // sanitized primary answer (or the cloze sentence)
   notes: string; // secondary answer fields + relocated front-side media
+  tableLayout?: boolean; // basic cards only: escalate from header-paragraph to an aggregated table
   clozeBody?: string; // cloze only: full sentence with every {{cN::…}} → ==…==
   clozeText?: string; // cloze only: this ord's answer (the ==highlight== text)
   clozeOrder?: number; // cloze only: 0-based document order of this ord's highlight
+  // template cards (multi-field models)
+  templateRow?: AnkiTemplateRow;
+  templateTag?: string; // binding tag (no leading #)
+  // occlusion cards
+  imageRef?: string; // e.g. "![[base.png]]"
+  imagePath?: string; // bare image path (for the occlusion card id)
+  masks?: OcclusionMask[];
+  maskId?: string; // this Anki IO note's specific mask (for history)
   media: string[]; // referenced media filenames
   scheduling: AnkiScheduling;
 }
@@ -71,4 +94,5 @@ export interface AnkiParseResult {
   cardCount: number;
   withHistory: number; // cards carrying scheduling state (not new)
   mediaFiles: string[]; // distinct referenced media filenames
+  templateFiles: AnkiTemplateFile[]; // per-model HTML templates to write
 }
