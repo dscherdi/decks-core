@@ -40,4 +40,14 @@ describe("AnkiTemplateExporter", () => {
     expect(styleBlocks).toBe(2); // front + back
     expect(file.content).toContain("<style>\n.card { display: grid; }\n</style>");
   });
+
+  it("hasRichCss flags genuine layout CSS, not centering or size", () => {
+    expect(AnkiTemplateExporter.hasRichCss(undefined)).toBe(false);
+    expect(AnkiTemplateExporter.hasRichCss(".card { font-family: arial; }")).toBe(false);
+    expect(AnkiTemplateExporter.hasRichCss(".card { display: flex; }")).toBe(false); // centering, not layout
+    expect(AnkiTemplateExporter.hasRichCss("a".repeat(400))).toBe(false); // size alone isn't layout
+    expect(AnkiTemplateExporter.hasRichCss(".g { display: grid; grid-template-columns: 1fr 1fr; }")).toBe(true);
+    expect(AnkiTemplateExporter.hasRichCss(".x { float: left; }")).toBe(true);
+    expect(AnkiTemplateExporter.hasRichCss(".x { position: absolute; }")).toBe(true);
+  });
 });

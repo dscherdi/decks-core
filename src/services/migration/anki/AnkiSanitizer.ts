@@ -7,6 +7,8 @@
  * falls back to a regex strip so it stays DOM-free for tests and mobile.
  */
 
+import { convertAnkiLatexMarkup } from "./AnkiLatex";
+
 const SOUND_TAG = /\[sound:([^\]]+)\]/g;
 // Captures the full src: double-quoted, single-quoted (both allow spaces), or an
 // unquoted token. A whitespace-truncating capture loses filenames with spaces.
@@ -20,6 +22,8 @@ const CLOZE_TAG = /\{\{c\d+::((?:(?!::|\}\})[\s\S])*)(?:::((?:(?!\}\})[\s\S])*))
 const CLOZE_LINE_BREAK = /<br\s*\/?>|<\/?div[^>]*>|\r?\n/gi;
 const MATHJAX_INLINE = /\\\(([\s\S]*?)\\\)/g;
 const MATHJAX_BLOCK = /\\\[([\s\S]*?)\\\]/g;
+// Absolute URLs that are not vault media (rendered as plain markdown images).
+const EXTERNAL_URL = /^(?:https?:|data:|app:|capacitor:)/i;
 
 const HTML_ENTITIES: Record<string, string> = {
   "&nbsp;": " ",
@@ -68,11 +72,13 @@ export class AnkiSanitizer {
       return `![[${name}]]`;
     });
 
-    // <img src="file.jpg"> → ![[file.jpg]] (handles filenames with spaces)
+    // <img src="file.jpg"> → ![[file.jpg]] (handles filenames with spaces).
+    // External URLs aren't vault media → a plain markdown image, not an embed.
     text = text.replace(IMG_TAG, (_match, dq?: string, sq?: string, uq?: string) => {
       const raw = (dq ?? sq ?? uq ?? "").trim();
       if (!raw) return "";
       const name = AnkiSanitizer.decodeSrc(raw);
+      if (EXTERNAL_URL.test(name)) return `![](${name})`;
       media.push(name);
       return `![[${name}]]`;
     });
@@ -98,14 +104,16 @@ export class AnkiSanitizer {
     // Media-only mode keeps the HTML intact (the render layer handles it);
     // otherwise convert to markdown via the injected turndown / regex fallback.
     if (options.keepHtml) {
-      return { text: text.trim(), media };
+      return { text: convertAnkiLatexMarkup(text.trim()), media };
     }
 
     // Generic tag conversion: injected turndown, else the DOM-free regex strip.
     text = options.htmlToMarkdown ? options.htmlToMarkdown(text) : AnkiSanitizer.stripHtml(text);
     text = AnkiSanitizer.decodeEntities(text);
-
-    return { text: AnkiSanitizer.collapseWhitespace(text), media };
+    text = AnkiSanitizer.collapseWhitespace(text);
+    // Anki LaTeX markup → markdown LAST: it emits tables/lists that turndown's
+    // whitespace-collapsing would otherwise destroy.
+    return { text: convertAnkiLatexMarkup(text), media };
   }
 
   // Percent-decode an `<img>`/media src, tolerating filenames that contain a

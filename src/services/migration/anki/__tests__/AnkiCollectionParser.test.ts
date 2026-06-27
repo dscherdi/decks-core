@@ -1,7 +1,7 @@
 import { AnkiCollectionParser } from "../AnkiCollectionParser";
 import type { RawDatabase, RawStatement } from "../../../FlashcardSynchronizer";
 
-type Row = Record<string, string | number>;
+type Row = Record<string, string | number | Uint8Array>;
 
 // Minimal RawDatabase that answers the parser's prepared statements from
 // in-memory tables, matching on a substring of the SQL.
@@ -11,6 +11,11 @@ function makeFakeDb(tables: {
   cardNotes: Row[];
   crt?: number;
   revlog?: Row[];
+  // Schema-18 normalized tables (used when models/decks JSON is empty).
+  notetypes?: Row[];
+  templates?: Row[];
+  fieldRows?: Row[];
+  deckRows?: Row[];
 }): RawDatabase {
   const rowsFor = (sql: string): Row[] => {
     if (sql.includes("models AS value")) return [{ value: JSON.stringify(tables.models) }];
@@ -18,6 +23,10 @@ function makeFakeDb(tables: {
     if (sql.includes("crt AS crt")) return [{ crt: tables.crt ?? 0 }];
     if (sql.includes("FROM cards c JOIN notes")) return tables.cardNotes;
     if (sql.includes("FROM revlog")) return tables.revlog ?? [];
+    if (sql.includes("FROM fields")) return tables.fieldRows ?? [];
+    if (sql.includes("FROM templates")) return tables.templates ?? [];
+    if (sql.includes("FROM notetypes")) return tables.notetypes ?? [];
+    if (sql.includes("FROM decks")) return tables.deckRows ?? [];
     return [];
   };
   return {
@@ -35,6 +44,33 @@ function makeFakeDb(tables: {
     },
     run: () => undefined,
   };
+}
+
+// Tiny protobuf encoders to build schema-18 config blobs in tests.
+function pbVarint(n: number): number[] {
+  const out: number[] = [];
+  let v = n;
+  while (v > 0x7f) {
+    out.push((v & 0x7f) | 0x80);
+    v = Math.floor(v / 128);
+  }
+  out.push(v & 0x7f);
+  return out;
+}
+function pbStr(field: number, value: string): number[] {
+  const bytes = [...new TextEncoder().encode(value)];
+  return [(field << 3) | 2, ...pbVarint(bytes.length), ...bytes];
+}
+function pbInt(field: number, value: number): number[] {
+  return [(field << 3) | 0, ...pbVarint(value)];
+}
+// CardTemplateConfig: f1 = qfmt, f2 = afmt.
+function tmplConfig(qfmt: string, afmt: string): Uint8Array {
+  return new Uint8Array([...pbStr(1, qfmt), ...pbStr(2, afmt)]);
+}
+// NotetypeConfig: f1 = kind (1 = cloze), f3 = css.
+function notetypeConfig(kind: number, css: string): Uint8Array {
+  return new Uint8Array([...(kind ? pbInt(1, kind) : []), ...pbStr(3, css)]);
 }
 
 const SEP = "\x1f";
@@ -191,7 +227,7 @@ describe("AnkiCollectionParser", () => {
     expect(card.tableLayout).toBe(true);
   });
 
-  it("imports a >2-field model as a template-bound table row", () => {
+  it("imports a >2-field model WITHOUT layout CSS as a basic card (no template)", () => {
     const db = makeFakeDb({
       models: { m1: MULTI_MODEL },
       decks: DECKS,
@@ -199,18 +235,45 @@ describe("AnkiCollectionParser", () => {
     });
     const result = AnkiCollectionParser.parse(db);
     const card = result.cards[0];
-    expect(card.kind).toBe("template");
-    expect(card.templateRow?.headers).toEqual(["Word", "Reading", "Meaning"]);
-    expect(card.templateRow?.cells).toEqual(["火", "ひ", "fire"]);
-    expect(card.templateTag).toBe("anki-tpl/vocabulary-0");
+    expect(card.kind).toBe("basic"); // no rich CSS → basic (markdown), not a template
+    expect(card.front).toBe("火"); // qfmt {{Word}}
+    expect(card.back).toContain("ひ"); // afmt {{Reading}} — {{Meaning}}
+    expect(card.back).toContain("fire");
+    expect(result.templateFiles).toHaveLength(0);
+  });
 
-    // A template file is generated for the model, keeping {{Field}} refs.
-    expect(result.templateFiles).toHaveLength(1);
+  it("routes a >2-field model whose answer is a markdown table to header-paragraph", () => {
+    const db = makeFakeDb({
+      models: { m1: MULTI_MODEL },
+      decks: DECKS,
+      cardNotes: [
+        cardNote({
+          cid: 1,
+          nid: 1,
+          ord: 0,
+          mid: "m1",
+          flds: ["Q", "[latex]\\begin{tabular}{c|c} $a$ & $b$ \\\\ $w$ & $f$ \\end{tabular}[/latex]", "x"],
+        }),
+      ],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.kind).toBe("basic");
+    expect(card.back).toContain("| --- |"); // converted markdown table
+    expect(card.tableLayout).toBe(false); // block content → header-paragraph, not a cell
+  });
+
+  it("uses an HTML template for a multi-field model with CSS layout", () => {
+    const richModel = { ...MULTI_MODEL, css: ".card { display: grid; grid-template-columns: 1fr 1fr; }" };
+    const db = makeFakeDb({
+      models: { m1: richModel },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, did: "10", ord: 0, mid: "m1", flds: ["火", "ひ", "fire"] })],
+    });
+    const result = AnkiCollectionParser.parse(db);
+    expect(result.cards[0].kind).toBe("template");
     const tpl = result.templateFiles[0];
-    expect(tpl.tag).toBe("anki-tpl/vocabulary-0");
     expect(tpl.content).toContain("```decks-html-front");
-    expect(tpl.content).toContain("<b>{{Word}}</b>");
-    expect(tpl.content).toContain("{{Reading}} — {{Meaning}}");
+    expect(tpl.content).toContain("<style>");
   });
 
   it("skips image-occlusion notes when no media reader is provided", () => {
@@ -358,6 +421,42 @@ describe("AnkiCollectionParser", () => {
     expect(card.clozeBody).toContain("==Mono==");
     expect(card.clozeBody).toContain("==Oligo==");
     expect(result.templateFiles).toHaveLength(0);
+  });
+
+  it("reads models/decks from schema-18 tables when col JSON is empty", () => {
+    // Schema 18: col.models/col.decks are empty; data lives in normalized tables.
+    const db = makeFakeDb({
+      models: {},
+      decks: {},
+      notetypes: [
+        { id: 100, name: "Basic", config: notetypeConfig(0, ".card{color:black}") },
+        { id: 200, name: "Cloze", config: notetypeConfig(1, ".cloze{color:blue}") },
+      ],
+      fieldRows: [
+        { ntid: 100, ord: 0, name: "Front" },
+        { ntid: 100, ord: 1, name: "Back" },
+        { ntid: 200, ord: 0, name: "Text" },
+      ],
+      templates: [
+        { ntid: 100, ord: 0, name: "Card 1", config: tmplConfig("{{Front}}", "{{FrontSide}}<hr id=answer>{{Back}}") },
+        { ntid: 200, ord: 0, name: "Cloze", config: tmplConfig("{{cloze:Text}}", "{{cloze:Text}}") },
+      ],
+      deckRows: [{ id: 10, name: "Parent\x1fChild" }],
+      cardNotes: [
+        cardNote({ cid: 1, nid: 1, did: "10", ord: 0, mid: "100", flds: ["Hund", "dog"] }),
+        cardNote({ cid: 2, nid: 2, did: "10", ord: 0, mid: "200", flds: ["Du trinkst {{c1::jeden Tag}} Bier."] }),
+      ],
+    });
+    const result = AnkiCollectionParser.parse(db);
+    expect(result.cardCount).toBe(2);
+
+    const basic = result.cards.find((c) => c.kind === "basic");
+    expect(basic?.front).toBe("Hund");
+    expect(basic?.back).toBe("dog");
+    expect(basic?.deckName).toBe("Parent::Child"); // \x1f → ::
+
+    const cloze = result.cards.find((c) => c.isCloze);
+    expect(cloze?.clozeBody).toBe("Du trinkst ==jeden Tag== Bier.");
   });
 
   it("resolves deck names and counts notes", () => {

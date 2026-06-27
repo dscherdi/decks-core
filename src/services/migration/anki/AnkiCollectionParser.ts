@@ -6,16 +6,20 @@ import type { AnkiTemplateData } from "./AnkiTemplateEngine";
 import { AnkiTemplateExporter } from "./AnkiTemplateExporter";
 import type { AnkiTemplateFile } from "./AnkiTemplateExporter";
 import { AnkiOcclusionExtractor } from "./AnkiOcclusionExtractor";
+import { readProtoScalars } from "./proto";
+import { hasBlockMarkdown } from "../../../utils/markdown-table";
 import type { AnkiRevlogRow } from "./AnkiHistoryImporter";
 import type {
   AnkiDeckMeta,
   AnkiModel,
+  AnkiModelField,
   AnkiParseResult,
   AnkiParsedCard,
   AnkiScheduling,
   AnkiTemplate,
 } from "./AnkiTypes";
 import type { OcclusionMask } from "../../occlusion/OcclusionV2.types";
+import type { SqlJsValue } from "../../../database/sql-types";
 
 // Anki joins a note's field values with the unit separator.
 const FIELD_SEPARATOR = "\x1f";
@@ -85,8 +89,8 @@ export class AnkiCollectionParser {
       } else if (model.type === 1) {
         const c = AnkiCollectionParser.buildClozeCard(row, model, fieldMap, deckName, sanitize, templateFiles);
         if (c) collect(c);
-      } else if (model.flds.length > 2) {
-        templateRows.push(ctx); // multi-field → template-bound table row
+      } else if (model.flds.length > 2 && AnkiTemplateExporter.hasRichCss(model.css)) {
+        templateRows.push(ctx); // CSS-layout multi-field → HTML template-bound table row
       } else {
         const c = AnkiCollectionParser.buildBasicCard(row, model, fieldMap, deckName, sanitize);
         if (c) collect(c);
@@ -124,6 +128,9 @@ export class AnkiCollectionParser {
         if (model) result.set(id, model);
       }
     }
+    // Schema 18 (`collection.anki21b`) leaves `col.models` empty — note types live
+    // in normalized tables instead.
+    if (result.size === 0) return AnkiCollectionParser.readModelsV18(db);
     return result;
   }
 
@@ -139,7 +146,83 @@ export class AnkiCollectionParser {
         }
       }
     }
+    // Schema 18 leaves `col.decks` empty — decks live in the `decks` table, with
+    // `\x1f` (not `::`) separating the hierarchy.
+    if (result.size === 0) return AnkiCollectionParser.readDecksV18(db);
     return result;
+  }
+
+  // --- Schema 18 (collection.anki21b): models/decks in normalized tables ---
+
+  private static readModelsV18(db: RawDatabase): Map<string, AnkiModel> {
+    const result = new Map<string, AnkiModel>();
+    try {
+      const fieldsByNt = new Map<string, AnkiModelField[]>();
+      for (const row of AnkiCollectionParser.queryRows(db, "SELECT ntid, ord, name FROM fields ORDER BY ntid, ord")) {
+        const ntid = String(row.ntid);
+        const list = fieldsByNt.get(ntid) ?? [];
+        list.push({ name: typeof row.name === "string" ? row.name : "", ord: Number(row.ord) });
+        fieldsByNt.set(ntid, list);
+      }
+
+      const tmplsByNt = new Map<string, AnkiTemplate[]>();
+      for (const row of AnkiCollectionParser.queryRows(db, "SELECT ntid, ord, name, config FROM templates ORDER BY ntid, ord")) {
+        const ntid = String(row.ntid);
+        const cfg = readProtoScalars(AnkiCollectionParser.asBytes(row.config));
+        const list = tmplsByNt.get(ntid) ?? [];
+        list.push({
+          name: typeof row.name === "string" ? row.name : "",
+          ord: Number(row.ord),
+          qfmt: cfg.string(1) ?? "",
+          afmt: cfg.string(2) ?? "",
+        });
+        tmplsByNt.set(ntid, list);
+      }
+
+      for (const row of AnkiCollectionParser.queryRows(db, "SELECT id, name, config FROM notetypes")) {
+        const id = String(row.id);
+        const cfg = readProtoScalars(AnkiCollectionParser.asBytes(row.config));
+        result.set(id, {
+          id,
+          name: typeof row.name === "string" ? row.name : "",
+          type: cfg.uint(1) ?? 0, // NotetypeConfig.kind: 1 = cloze, absent ⇒ 0 normal
+          flds: fieldsByNt.get(id) ?? [],
+          tmpls: tmplsByNt.get(id) ?? [],
+          css: cfg.string(3),
+        });
+      }
+    } catch {
+      // Tables absent / unexpected shape — leave empty (cards then skip cleanly).
+    }
+    return result;
+  }
+
+  private static readDecksV18(db: RawDatabase): Map<string, string> {
+    const result = new Map<string, string>();
+    try {
+      for (const row of AnkiCollectionParser.queryRows(db, "SELECT id, name FROM decks")) {
+        const name = typeof row.name === "string" ? row.name.split(FIELD_SEPARATOR).join("::") : "";
+        result.set(String(row.id), name);
+      }
+    } catch {
+      // No `decks` table — leave empty.
+    }
+    return result;
+  }
+
+  private static queryRows(db: RawDatabase, sql: string): Array<Record<string, SqlJsValue>> {
+    const stmt = db.prepare(sql);
+    const rows: Array<Record<string, SqlJsValue>> = [];
+    try {
+      while (stmt.step()) rows.push(stmt.getAsObject());
+    } finally {
+      stmt.free();
+    }
+    return rows;
+  }
+
+  private static asBytes(value: SqlJsValue): Uint8Array {
+    return value instanceof Uint8Array ? value : new Uint8Array();
   }
 
   private static readColField(db: RawDatabase, column: "models" | "decks"): string {
@@ -314,8 +397,7 @@ export class AnkiCollectionParser {
     if (t.length === 0 || t.length > AnkiCollectionParser.MAX_TABLE_CHARS) return false;
     if (/\n[ \t]*\n/.test(t)) return false; // blank-line paragraph break
     if (t.split("\n").length > AnkiCollectionParser.MAX_TABLE_LINES) return false;
-    if (t.includes("$$")) return false; // block math ($$…$$); inline $…$ is fine
-    if (t.includes("```") || t.includes("~~~")) return false; // code block
+    if (hasBlockMarkdown(t)) return false; // tables/lists/$$/code can't live in a cell
     return true;
   }
 
@@ -330,15 +412,14 @@ export class AnkiCollectionParser {
 
   // Multi-field notes become template-bound table rows. Columns are ordered by
   // how often each field is filled (so cells[0]/cells[1] are non-empty — the
-  // Decks parser drops rows with an empty second cell). Each (model, ord) gets
-  // one generated HTML template file, bound by tag.
+  // Decks parser drops rows with an empty second cell). Each (model, ord) gets one
+  // generated template file (markdown by default; HTML for CSS-layout models).
   private static buildTemplateCards(
     rows: RowContext[],
     sanitize: SanitizeOptions,
     templateFiles: Map<string, AnkiTemplateFile>
   ): AnkiParsedCard[] {
     if (rows.length === 0) return [];
-    const cellSanitize: SanitizeOptions = { ...sanitize, keepHtml: true };
     const byModel = new Map<string, RowContext[]>();
     for (const ctx of rows) {
       const group = byModel.get(ctx.model.id);
@@ -346,6 +427,9 @@ export class AnkiCollectionParser {
       else byModel.set(ctx.model.id, [ctx]);
     }
 
+    // Only CSS-layout models reach here (see parse()); their HTML template renders
+    // the layout, so cells keep their HTML.
+    const cellSanitize: SanitizeOptions = { ...sanitize, keepHtml: true };
     const cards: AnkiParsedCard[] = [];
     for (const group of byModel.values()) {
       const model = group[0].model;

@@ -149,6 +149,19 @@ describe("AnkiDeckRenderer", () => {
     expect(deck.content).not.toContain("| Front | Back |");
   });
 
+  it("does not promote block-markdown cards in the volume fallback", () => {
+    const cards = Array.from({ length: 50 }, (_, i) =>
+      basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "ans", tableLayout: false })
+    );
+    cards.push(
+      basic({ noteId: 999, cardId: 999, front: "Truth table", back: "| A | B |\n| --- | --- |\n| w | f |", tableLayout: false })
+    );
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+    expect(deck.content).toContain("| Front | Back |"); // the 50 plain cards aggregated
+    expect(deck.content).toContain("## Truth table"); // the table card stays header-paragraph
+    expect(deck.content).toContain("| A | B |\n| --- | --- |\n| w | f |"); // its table renders intact
+  });
+
   it("keeps empty-back cards header-paragraph even above the volume threshold", () => {
     const cards = Array.from({ length: 50 }, (_, i) =>
       basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "ans", tableLayout: false })
@@ -193,6 +206,13 @@ describe("AnkiDeckRenderer", () => {
     const cards = [basic({ front: "a|b", back: "line1\nline2", tableLayout: true })];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
     expect(deck.content).toContain("| a\\|b | line1<br>line2 |");
+  });
+
+  it("trims trailing whitespace in table cells (no padded columns)", () => {
+    const cards = [basic({ front: "Q   ", back: "answer line   \n   more   ", tableLayout: true })];
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+    expect(deck.content).toContain("| Q | answer line<br>   more |");
+    expect(deck.content).not.toContain("  |"); // no padded trailing whitespace before a pipe
   });
 
   it("renders template cards as a tag-bound multi-field table", () => {

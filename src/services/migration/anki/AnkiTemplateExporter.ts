@@ -52,6 +52,21 @@ export class AnkiTemplateExporter {
     return { tag, relativePath: `${slug(model.name) || model.id}-cloze.md`, content };
   }
 
+  /**
+   * A model carries a deliberate CSS layout (grid/flex/positioned/etc.) that only
+   * the HTML render can reproduce — such models keep an `decks-html` template;
+   * everything else uses a `decks-md` template so card data renders as markdown.
+   */
+  static hasRichCss(css: string | undefined): boolean {
+    if (!css) return false;
+    // Only genuine page-layout signals — not size, and not `display:flex` /
+    // `position:relative` (commonly just centering), which would misclassify
+    // ordinary text cards (their data must stay markdown).
+    return /grid-template|display\s*:\s*(grid|inline-grid)|float\s*:\s*(left|right)|position\s*:\s*(absolute|fixed)|@media|column-count|columns\s*:/i.test(
+      css
+    );
+  }
+
   static build(model: AnkiModel, tmpl: AnkiTemplate): AnkiTemplateFile {
     const tag = AnkiTemplateExporter.tagFor(model, ord(tmpl));
     const front = AnkiTemplateExporter.prepare(tmpl.qfmt, model.css);

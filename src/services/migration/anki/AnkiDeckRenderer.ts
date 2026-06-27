@@ -1,5 +1,5 @@
 import type { AnkiParsedCard } from "./AnkiTypes";
-import { escapeTableCell } from "../../../utils/markdown-table";
+import { escapeTableCell, hasBlockMarkdown } from "../../../utils/markdown-table";
 import { OcclusionV2Parser } from "../../occlusion/OcclusionV2Parser";
 import { OCCLUSION_V2_VERSION } from "../../occlusion/OcclusionV2.types";
 
@@ -12,6 +12,15 @@ export interface AnkiRenderedDeck {
 }
 
 const ILLEGAL_PATH = /[\\/:*?"<>|#^[\]]/g;
+
+// Tidy a table cell value: drop trailing whitespace per line and collapse blank
+// runs so cells don't pad columns with stray whitespace.
+function cleanCell(s: string): string {
+  return s
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 // A deck with at least this many header-paragraph basic cards collapses them all
 // into the aggregated table instead of a long wall of `## …` sections.
@@ -75,11 +84,13 @@ export class AnkiDeckRenderer {
     let hpBasic = basic.filter((c) => !c.tableLayout);
     // Volume fallback: a deck dominated by header-paragraph cards becomes an
     // unwieldy wall of sections — collapse them all into the aggregated table
-    // (even non-compact ones; they flatten with <br>). Empty-back cards stay
-    // header-paragraph (a Decks table row needs a non-empty back cell).
+    // (even non-compact ones; they flatten with <br>). Cards with an empty back or
+    // block markdown (tables/lists) stay header-paragraph — they can't be a cell.
     if (hpBasic.length >= HEADER_PARAGRAPH_TABLE_THRESHOLD) {
-      tableBasic = [...tableBasic, ...hpBasic.filter((c) => c.back.trim().length > 0)];
-      hpBasic = hpBasic.filter((c) => c.back.trim().length === 0);
+      const promotable = (c: AnkiParsedCard): boolean =>
+        c.back.trim().length > 0 && !hasBlockMarkdown(`${c.back}\n${c.notes}`);
+      tableBasic = [...tableBasic, ...hpBasic.filter(promotable)];
+      hpBasic = hpBasic.filter((c) => !promotable(c));
     }
 
     const sections = [
@@ -120,12 +131,12 @@ export class AnkiDeckRenderer {
       const headerRow = `| ${headers.map((h) => escapeTableCell(h)).join(" | ")} |`;
       const separator = `| ${headers.map(() => "---").join(" | ")} |`;
       const rows = group.map(
-        (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cell)).join(" | ")} |`
+        (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cleanCell(cell))).join(" | ")} |`
       );
       sections.push(`${hashes} ${label} #${tag}\n\n${headerRow}\n${separator}\n${rows.join("\n")}`);
     }
     if (plain.length > 0) {
-      const rows = plain.map((c) => `| ${escapeTableCell((c.clozeBody ?? c.back).trim())} |`);
+      const rows = plain.map((c) => `| ${escapeTableCell(cleanCell(c.clozeBody ?? c.back))} |`);
       sections.push(`${hashes} ${label}\n\n| Front |\n| --- |\n${rows.join("\n")}`);
     }
     return sections;
@@ -151,7 +162,7 @@ export class AnkiDeckRenderer {
       const headerRow = `| ${headers.map((h) => escapeTableCell(h)).join(" | ")} |`;
       const separator = `| ${headers.map(() => "---").join(" | ")} |`;
       const rows = group.map(
-        (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cell)).join(" | ")} |`
+        (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cleanCell(cell))).join(" | ")} |`
       );
       sections.push(`${hashes} ${label} #${tag}\n\n${headerRow}\n${separator}\n${rows.join("\n")}`);
     }
@@ -215,14 +226,14 @@ export class AnkiDeckRenderer {
     const sections: string[] = [];
     if (withoutNotes.length > 0) {
       const rows = withoutNotes.map(
-        (c) => `| ${escapeTableCell(c.front.trim())} | ${escapeTableCell(c.back.trim())} |`
+        (c) => `| ${escapeTableCell(cleanCell(c.front))} | ${escapeTableCell(cleanCell(c.back))} |`
       );
       sections.push(`${hashes} ${label}\n\n| Front | Back |\n| --- | --- |\n${rows.join("\n")}`);
     }
     if (withNotes.length > 0) {
       const rows = withNotes.map(
         (c) =>
-          `| ${escapeTableCell(c.front.trim())} | ${escapeTableCell(c.back.trim())} | ${escapeTableCell(c.notes.trim())} |`
+          `| ${escapeTableCell(cleanCell(c.front))} | ${escapeTableCell(cleanCell(c.back))} | ${escapeTableCell(cleanCell(c.notes))} |`
       );
       sections.push(
         `${hashes} ${label}\n\n| Front | Back | Notes |\n| --- | --- | --- |\n${rows.join("\n")}`

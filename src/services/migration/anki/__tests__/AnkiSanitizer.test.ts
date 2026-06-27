@@ -32,6 +32,30 @@ describe("AnkiSanitizer", () => {
     expect(result.media).toEqual(["1st Order Rate Law.png", "1st Order Integrated Rate Law.png"]);
   });
 
+  it("renders external <img> URLs as plain markdown images (not vault embeds)", () => {
+    const result = AnkiSanitizer.sanitizeField('<img src="http://example.com/logo.gif">');
+    expect(result.text).toBe("![](http://example.com/logo.gif)");
+    expect(result.media).toEqual([]); // not a vault file → not copied
+  });
+
+  it("strips [latex] wrappers and keeps the inner text + $…$", () => {
+    const result = AnkiSanitizer.sanitizeField("[latex]Bestimmen Sie $A=(a_{ij})$.[/latex]");
+    expect(result.text).toBe("Bestimmen Sie $A=(a_{ij})$.");
+  });
+
+  it("converts Anki [$] and [$$] math delimiters", () => {
+    expect(AnkiSanitizer.sanitizeField("[$]a+b[/$]").text).toBe("$a+b$");
+    expect(AnkiSanitizer.sanitizeField("[$$]\\sum_i x_i[/$$]").text).toBe("$$\\sum_i x_i$$");
+  });
+
+  it("converts [latex] accents and enumerate end-to-end", () => {
+    const result = AnkiSanitizer.sanitizeField(
+      '[latex]\\begin{enumerate}\\item Eintr\\"age unterhalb \\item \\textbf{Z}eilen\\end{enumerate}[/latex]'
+    );
+    expect(result.text).toContain("1. Einträge unterhalb");
+    expect(result.text).toContain("2. **Z**eilen");
+  });
+
   it("converts cloze deletions to ==highlight==", () => {
     const result = AnkiSanitizer.sanitizeField("Du trinkst {{c1::jeden Tag}} Bier.");
     expect(result.text).toBe("Du trinkst ==jeden Tag== Bier.");
