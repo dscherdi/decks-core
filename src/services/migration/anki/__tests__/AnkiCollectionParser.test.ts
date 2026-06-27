@@ -141,6 +141,40 @@ describe("AnkiCollectionParser", () => {
     expect(card.tableLayout).toBe(false);
   });
 
+  it("keeps a back with a block-math ($$) answer as header-paragraph", () => {
+    const db = makeFakeDb({
+      models: { m1: BASIC_MODEL },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, ord: 0, mid: "m1", flds: ["Prove f=R/2", "Then \\[f=R/2\\] holds."] })],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.back).toContain("$$"); // MathJax \[…\] → $$…$$ block
+    expect(card.tableLayout).toBe(false);
+  });
+
+  it("keeps a long single-paragraph answer (> 300 chars) as header-paragraph", () => {
+    const long = "word ".repeat(80).trim(); // ~400 chars, one line
+    const db = makeFakeDb({
+      models: { m1: BASIC_MODEL },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, ord: 0, mid: "m1", flds: ["Q", long] })],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.back.length).toBeGreaterThan(300);
+    expect(card.tableLayout).toBe(false);
+  });
+
+  it("keeps a many-line (> 4) soft-wrapped answer as header-paragraph", () => {
+    const db = makeFakeDb({
+      models: { m1: BASIC_MODEL },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, ord: 0, mid: "m1", flds: ["Q", "a<br>b<br>c<br>d<br>e<br>f"] })],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.back.split("\n").length).toBeGreaterThan(4);
+    expect(card.tableLayout).toBe(false);
+  });
+
   it("uses the front media as the front (no synthetic 'Card <id>' header) for a front-less card", () => {
     const db = makeFakeDb({
       models: { m1: BASIC_MODEL },
@@ -227,6 +261,29 @@ describe("AnkiCollectionParser", () => {
     expect(result.mediaFiles).toContain("b.png");
   });
 
+  it("resolves an occlusion base image whose filename has spaces", () => {
+    const ioModel = {
+      id: "m4",
+      name: "Image Occlusion Enhanced",
+      type: 0,
+      flds: [{ name: "ID" }, { name: "Image" }, { name: "Question Mask" }, { name: "Original Mask" }],
+      tmpls: [{ name: "IO", ord: 0, qfmt: '<div id="io-overlay">x</div>', afmt: "{{FrontSide}}" }],
+    };
+    const svg =
+      '<svg width="100" height="50"><g><title>Masks</title><rect id="x-oa-1" x="10" y="5" width="20" height="10"/></g></svg>';
+    const db = makeFakeDb({
+      models: { m4: ioModel },
+      decks: DECKS,
+      cardNotes: [
+        cardNote({ cid: 1, nid: 1, did: "10", ord: 0, mid: "m4", flds: ["x-oa-1", '<img src="S Block Diagram.png">', '<img src="x-oa-1-Q.svg">', '<img src="x-oa-O.svg">'] }),
+      ],
+    });
+    const getMediaText = (name: string): string | undefined => (name === "x-oa-O.svg" ? svg : undefined);
+    const card = AnkiCollectionParser.parse(db, { getMediaText }).cards[0];
+    expect(card.kind).toBe("occlusion");
+    expect(card.imagePath).toBe("S Block Diagram.png");
+  });
+
   it("converts cloze notes to ==highlight== bodies", () => {
     const db = makeFakeDb({
       models: { m2: CLOZE_MODEL },
@@ -255,6 +312,27 @@ describe("AnkiCollectionParser", () => {
     const tpl = result.templateFiles.find((t) => t.tag === "anki-tpl-cloze/cloze");
     expect(tpl?.content).toContain("```decks-md-front\n{{Text}}\n```");
     expect(tpl?.content).toContain("```decks-md-notes\n{{Translation}}\n```");
+  });
+
+  it("collects spaced-filename images inside cloze answers + extras (full names)", () => {
+    const db = makeFakeDb({
+      models: { m2: CLOZE_MODEL },
+      decks: DECKS,
+      cardNotes: [
+        cardNote({
+          cid: 1,
+          nid: 7,
+          did: "10",
+          ord: 0,
+          mid: "m2",
+          flds: ["id-7", 'Rate Law: {{c1::<img src="1st Order Rate Law.png">}}', '<img src="Rate Law Chart (1).png">'],
+        }),
+      ],
+    });
+    const result = AnkiCollectionParser.parse(db);
+    expect(result.cards[0].clozeBody).toBe("Rate Law: ==![[1st Order Rate Law.png]]==");
+    expect(result.mediaFiles).toContain("1st Order Rate Law.png");
+    expect(result.mediaFiles).toContain("Rate Law Chart (1).png");
   });
 
   it("emits a pure cloze (no extras) without a template, multi-line per line", () => {

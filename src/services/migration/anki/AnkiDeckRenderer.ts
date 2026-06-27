@@ -13,6 +13,10 @@ export interface AnkiRenderedDeck {
 
 const ILLEGAL_PATH = /[\\/:*?"<>|#^[\]]/g;
 
+// A deck with at least this many header-paragraph basic cards collapses them all
+// into the aggregated table instead of a long wall of `## …` sections.
+const HEADER_PARAGRAPH_TABLE_THRESHOLD = 50;
+
 /**
  * Turns parsed Anki cards into one Decks markdown file per Anki deck. Cloze notes
  * collapse to a single entry (Decks expands the `==highlights==` into per-cloze
@@ -67,8 +71,16 @@ export class AnkiDeckRenderer {
     const occlusionCards = cards.filter((c) => c.kind === "occlusion");
 
     // Basic cards default to header-paragraph; those that fit escalate to a table.
-    const tableBasic = basic.filter((c) => c.tableLayout);
-    const hpBasic = basic.filter((c) => !c.tableLayout);
+    let tableBasic = basic.filter((c) => c.tableLayout);
+    let hpBasic = basic.filter((c) => !c.tableLayout);
+    // Volume fallback: a deck dominated by header-paragraph cards becomes an
+    // unwieldy wall of sections — collapse them all into the aggregated table
+    // (even non-compact ones; they flatten with <br>). Empty-back cards stay
+    // header-paragraph (a Decks table row needs a non-empty back cell).
+    if (hpBasic.length >= HEADER_PARAGRAPH_TABLE_THRESHOLD) {
+      tableBasic = [...tableBasic, ...hpBasic.filter((c) => c.back.trim().length > 0)];
+      hpBasic = hpBasic.filter((c) => c.back.trim().length === 0);
+    }
 
     const sections = [
       ...AnkiDeckRenderer.renderTableSections(tableBasic, deckName, level),

@@ -8,7 +8,9 @@
  */
 
 const SOUND_TAG = /\[sound:([^\]]+)\]/g;
-const IMG_TAG = /<img\b[^>]*?\bsrc\s*=\s*["']?([^"'>\s]+)["']?[^>]*>/gi;
+// Captures the full src: double-quoted, single-quoted (both allow spaces), or an
+// unquoted token. A whitespace-truncating capture loses filenames with spaces.
+const IMG_TAG = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi;
 // {{c1::answer}} or {{c1::answer::hint}} — the cloze number is ignored; Decks
 // derives card order from document position of each ==highlight==. `[\s\S]`
 // (not `.`) so a multi-line answer is captured.
@@ -66,10 +68,12 @@ export class AnkiSanitizer {
       return `![[${name}]]`;
     });
 
-    // <img src="file.jpg"> → ![[file.jpg]]
-    text = text.replace(IMG_TAG, (_match, src: string) => {
-      const name = decodeURIComponent(src.trim());
-      if (name) media.push(name);
+    // <img src="file.jpg"> → ![[file.jpg]] (handles filenames with spaces)
+    text = text.replace(IMG_TAG, (_match, dq?: string, sq?: string, uq?: string) => {
+      const raw = (dq ?? sq ?? uq ?? "").trim();
+      if (!raw) return "";
+      const name = AnkiSanitizer.decodeSrc(raw);
+      media.push(name);
       return `![[${name}]]`;
     });
 
@@ -102,6 +106,16 @@ export class AnkiSanitizer {
     text = AnkiSanitizer.decodeEntities(text);
 
     return { text: AnkiSanitizer.collapseWhitespace(text), media };
+  }
+
+  // Percent-decode an `<img>`/media src, tolerating filenames that contain a
+  // stray `%` (which would make decodeURIComponent throw).
+  static decodeSrc(src: string): string {
+    try {
+      return decodeURIComponent(src);
+    } catch {
+      return src;
+    }
   }
 
   // Convert structural HTML to newlines and drop everything else, leaving the

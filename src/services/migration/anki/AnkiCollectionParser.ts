@@ -45,6 +45,10 @@ interface RowContext {
  * unzipping and instantiating the database.
  */
 export class AnkiCollectionParser {
+  // Compactness caps for escalating a basic card to a table cell (see fitsTable).
+  private static readonly MAX_TABLE_LINES = 4;
+  private static readonly MAX_TABLE_CHARS = 300;
+
   static parse(db: RawDatabase, options: AnkiParseOptions = {}): AnkiParseResult {
     const sanitize: SanitizeOptions = {
       hintLabel: options.hintLabel ?? "hint",
@@ -276,9 +280,8 @@ export class AnkiCollectionParser {
       front = header;
       notes = [...extraLines, ...frontEmbeds].filter((p) => p.trim().length > 0).join("\n\n");
       tableLayout =
-        back.length > 0 &&
-        AnkiCollectionParser.isSingleParagraph(back) &&
-        (!notes.trim() || AnkiCollectionParser.isSingleParagraph(notes));
+        AnkiCollectionParser.fitsTable(back) &&
+        (!notes.trim() || AnkiCollectionParser.fitsTable(notes));
     } else {
       front = frontEmbeds.join("\n") || `Card ${row.nid}-${row.ord}`;
       notes = extraLines.filter((p) => p.trim().length > 0).join("\n\n");
@@ -303,9 +306,17 @@ export class AnkiCollectionParser {
     };
   }
 
-  // A single paragraph has no blank-line break; soft `\n` breaks stay in-cell.
-  private static isSingleParagraph(text: string): boolean {
-    return !/\n[ \t]*\n/.test(text.trim());
+  // A back/notes value is "compact" enough for a table cell: a single short
+  // paragraph with no block content. Long answers, multi-paragraph text, or block
+  // math/code stay header-paragraph (a table cell flattens newlines to <br>).
+  private static fitsTable(text: string): boolean {
+    const t = text.trim();
+    if (t.length === 0 || t.length > AnkiCollectionParser.MAX_TABLE_CHARS) return false;
+    if (/\n[ \t]*\n/.test(t)) return false; // blank-line paragraph break
+    if (t.split("\n").length > AnkiCollectionParser.MAX_TABLE_LINES) return false;
+    if (t.includes("$$")) return false; // block math ($$…$$); inline $…$ is fine
+    if (t.includes("```") || t.includes("~~~")) return false; // code block
+    return true;
   }
 
   // Image-occlusion templates carry distinctive `io-*` element ids; the model
@@ -498,10 +509,15 @@ export class AnkiCollectionParser {
   }
 
   private static imgSrcs(value: string): string[] {
+    // Captures the full src (quoted values may contain spaces); a whitespace-
+    // truncating capture loses filenames with spaces.
     const result: string[] = [];
-    const regex = /<img\b[^>]*?\bsrc\s*=\s*["']?([^"'>\s]+)["']?[^>]*>/gi;
+    const regex = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi;
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(value)) !== null) result.push(decodeURIComponent(match[1].trim()));
+    while ((match = regex.exec(value)) !== null) {
+      const raw = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+      if (raw) result.push(AnkiSanitizer.decodeSrc(raw));
+    }
     return result;
   }
 

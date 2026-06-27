@@ -13,6 +13,25 @@ describe("AnkiSanitizer", () => {
     expect(result.media).toEqual(["Firetongues-0082.jpg"]);
   });
 
+  it("keeps the full filename when the <img src> contains spaces", () => {
+    const result = AnkiSanitizer.sanitizeField('<img src="1st Order Rate Law.png" />');
+    expect(result.text).toBe("![[1st Order Rate Law.png]]");
+    expect(result.media).toEqual(["1st Order Rate Law.png"]);
+  });
+
+  it("handles single-quoted and unquoted src", () => {
+    expect(AnkiSanitizer.sanitizeField("<img src='a b.png'>").text).toBe("![[a b.png]]");
+    expect(AnkiSanitizer.sanitizeField("<img src=z.png>").text).toBe("![[z.png]]");
+  });
+
+  it("gives two different spaced-filename images distinct embeds", () => {
+    const result = AnkiSanitizer.sanitizeField(
+      '<img src="1st Order Rate Law.png"> <img src="1st Order Integrated Rate Law.png">'
+    );
+    expect(result.text).toBe("![[1st Order Rate Law.png]] ![[1st Order Integrated Rate Law.png]]");
+    expect(result.media).toEqual(["1st Order Rate Law.png", "1st Order Integrated Rate Law.png"]);
+  });
+
   it("converts cloze deletions to ==highlight==", () => {
     const result = AnkiSanitizer.sanitizeField("Du trinkst {{c1::jeden Tag}} Bier.");
     expect(result.text).toBe("Du trinkst ==jeden Tag== Bier.");

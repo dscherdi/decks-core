@@ -131,6 +131,34 @@ describe("AnkiDeckRenderer", () => {
     expect(deck.content).toContain("| ![[img1.jpg]] | ![[img2.jpg]] |");
   });
 
+  it("collapses a deck with >= 50 header-paragraph basics into a table", () => {
+    const cards = Array.from({ length: 50 }, (_, i) =>
+      basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "line a\nline b\nline c", tableLayout: false })
+    );
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+    expect(deck.content).toContain("| Front | Back |");
+    expect(deck.content).not.toContain("## Q0"); // no header-paragraph sections
+  });
+
+  it("keeps < 50 header-paragraph basics as header-paragraph sections", () => {
+    const cards = Array.from({ length: 49 }, (_, i) =>
+      basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "line a\nline b", tableLayout: false })
+    );
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+    expect(deck.content).toContain("## Q0");
+    expect(deck.content).not.toContain("| Front | Back |");
+  });
+
+  it("keeps empty-back cards header-paragraph even above the volume threshold", () => {
+    const cards = Array.from({ length: 50 }, (_, i) =>
+      basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "ans", tableLayout: false })
+    );
+    cards.push(basic({ noteId: 999, cardId: 999, front: "OnlyFront", back: "", notes: "a note", tableLayout: false }));
+    const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+    expect(deck.content).toContain("| Front | Back |"); // the 50 went into a table
+    expect(deck.content).toContain("## OnlyFront"); // the empty-back one stayed header-paragraph
+  });
+
   it("renders a templated cloze (with extras) as a tag-bound table", () => {
     const cloze = basic({
       isCloze: true,
