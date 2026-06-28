@@ -1,7 +1,33 @@
-import { AnkiCollectionParser } from "../AnkiCollectionParser";
+import { AnkiCollectionParser, parseAnkiTags } from "../AnkiCollectionParser";
 import type { RawDatabase, RawStatement } from "../../../FlashcardSynchronizer";
 
 type Row = Record<string, string | number | Uint8Array>;
+
+describe("parseAnkiTags", () => {
+  it("splits on whitespace and trims Anki's surrounding spaces", () => {
+    expect(parseAnkiTags(" math science ")).toEqual(["math", "science"]);
+  });
+  it("converts :: hierarchy to /", () => {
+    expect(parseAnkiTags("subject::algebra::groups")).toEqual(["subject/algebra/groups"]);
+  });
+  it("keeps tags that start with a digit", () => {
+    expect(parseAnkiTags("09-Courbes-en-representation-parametrique")).toEqual([
+      "09-Courbes-en-representation-parametrique",
+    ]);
+  });
+  it("drops all-numeric tags (invalid in Obsidian)", () => {
+    expect(parseAnkiTags("123 2024")).toEqual([]);
+  });
+  it("keeps Unicode (accented) letters", () => {
+    expect(parseAnkiTags("00-Trigonométrie Algèbre")).toEqual(["00-Trigonométrie", "Algèbre"]);
+  });
+  it("sanitizes illegal characters to - and de-dupes", () => {
+    expect(parseAnkiTags("a!b a!b")).toEqual(["a-b"]);
+  });
+  it("returns an empty array for empty input", () => {
+    expect(parseAnkiTags("")).toEqual([]);
+  });
+});
 
 // Minimal RawDatabase that answers the parser's prepared statements from
 // in-memory tables, matching on a substring of the SQL.

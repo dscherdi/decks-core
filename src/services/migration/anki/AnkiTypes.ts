@@ -71,6 +71,7 @@ export interface AnkiParsedCard {
   front: string; // sanitized; used as the markdown header AND for id generation
   back: string; // sanitized primary answer (or the cloze sentence)
   notes: string; // secondary answer fields + relocated front-side media
+  tags?: string[]; // Obsidian tags from the Anki note (no leading #)
   tableLayout?: boolean; // basic cards only: escalate from header-paragraph to an aggregated table
   clozeBody?: string; // cloze only: full sentence with every {{cN::…}} → ==…==
   clozeText?: string; // cloze only: this ord's answer (the ==highlight== text)

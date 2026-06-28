@@ -898,9 +898,12 @@ export class Scheduler {
   }
 
   async getClozeSiblings(card: Flashcard, now: Date): Promise<Flashcard[]> {
+    // Siblings share the same note: same front AND back (all of a note's clozes
+    // carry identical front/back, only cloze_order/text differ). Matching on
+    // front alone would merge unrelated notes that happen to share a header.
     const query = `
       SELECT * FROM flashcards
-      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
+      WHERE deck_id = ? AND front = ? AND back = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
         AND id != ?
         AND ((state IN ('review', 'relearning') AND due_date <= ?) OR state = 'new')
         AND suspended_at IS NULL
@@ -910,6 +913,7 @@ export class Scheduler {
     const rows = await this.db.querySql<unknown[]>(query, [
       card.deckId,
       card.front,
+      card.back,
       card.id,
       now.toISOString(),
       now.toISOString(),
@@ -920,11 +924,12 @@ export class Scheduler {
   async getClozeGroupSize(card: Flashcard): Promise<number> {
     const query = `
       SELECT COUNT(*) FROM flashcards
-      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
+      WHERE deck_id = ? AND front = ? AND back = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
     `;
     const rows = await this.db.querySql<unknown[]>(query, [
       card.deckId,
       card.front,
+      card.back,
     ]);
     if (rows.length === 0) return 1;
     const count = Number((rows[0] as unknown[])[0]);

@@ -253,4 +253,91 @@ describe("AnkiDeckRenderer", () => {
     // One block for the shared image (not one per mask).
     expect(deck.content.split("```decks-occlusion").length - 1).toBe(1);
   });
+
+  describe("note tags (grouped by tag-set)", () => {
+    it("appends a card's tags to its header-paragraph header", () => {
+      const cards = [basic({ front: "Hallo", back: "Hello", tags: ["greetings", "01-basics"] })];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      // Sorted, each prefixed with #.
+      expect(deck.content).toContain("## Hallo #01-basics #greetings\n\nHello");
+    });
+
+    it("splits a table into one section per tag-set, tags on the header", () => {
+      const cards = [
+        basic({ front: "A", back: "1", tableLayout: true, tags: ["x"] }),
+        basic({ noteId: 2, cardId: 11, front: "B", back: "2", tableLayout: true, tags: ["x"] }),
+        basic({ noteId: 3, cardId: 12, front: "C", back: "3", tableLayout: true, tags: ["y"] }),
+      ];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      // Two tables — #x groups A+B, #y has C.
+      expect(deck.content).toContain("## Deck #x\n\n| Front | Back |\n| --- | --- |\n| A | 1 |\n| B | 2 |");
+      expect(deck.content).toContain("## Deck #y\n\n| Front | Back |\n| --- | --- |\n| C | 3 |");
+    });
+
+    it("aggregates same-tag cards into a single table", () => {
+      const cards = [
+        basic({ front: "A", back: "1", tableLayout: true, tags: ["x"] }),
+        basic({ noteId: 2, cardId: 11, front: "B", back: "2", tableLayout: true, tags: ["x"] }),
+      ];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(deck.content.match(/\| Front \| Back \|/g) ?? []).toHaveLength(1);
+    });
+  });
+
+  describe("section ordering (by tag, then A–Z)", () => {
+    it("orders untagged first, then tag groups A–Z, headers A–Z within each", () => {
+      const cards = [
+        basic({ noteId: 1, cardId: 1, front: "Zebra", back: "z" }),
+        basic({ noteId: 2, cardId: 2, front: "Beta", back: "b", tags: ["alpha"] }),
+        basic({ noteId: 3, cardId: 3, front: "Apple", back: "a", tags: ["alpha"] }),
+        basic({ noteId: 4, cardId: 4, front: "Mango", back: "m" }),
+        basic({ noteId: 5, cardId: 5, front: "Kiwi", back: "k", tags: ["beta"] }),
+      ];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      const at = (h: string): number => deck.content.indexOf(`## ${h}`);
+      // Untagged (Mango, Zebra) come before any tagged section.
+      expect(at("Mango")).toBeLessThan(at("Apple #alpha"));
+      expect(at("Zebra")).toBeLessThan(at("Apple #alpha"));
+      // Untagged sorted A–Z.
+      expect(at("Mango")).toBeLessThan(at("Zebra"));
+      // Within #alpha, A–Z.
+      expect(at("Apple #alpha")).toBeLessThan(at("Beta #alpha"));
+      // Tag groups A–Z: all #alpha before #beta.
+      expect(at("Beta #alpha")).toBeLessThan(at("Kiwi #beta"));
+    });
+  });
+
+  describe("multi-line cloze layout", () => {
+    const longCloze = (over: Partial<AnkiParsedCard> = {}): AnkiParsedCard => {
+      const body =
+        "Plan d'étude d'un arc paramétré\n\na) ==Réduction de l'intervalle==\n\nb) ==Etude aux bornes==";
+      return basic({ isCloze: true, front: body, back: body, clozeBody: body, clozeOrder: 0, ...over });
+    };
+
+    it("renders a multi-paragraph cloze with a title line as header-paragraph", () => {
+      const [deck] = AnkiDeckRenderer.render([longCloze()], "decks/anki", 2);
+      expect(deck.content).toContain(
+        "## Plan d'étude d'un arc paramétré\n\na) ==Réduction de l'intervalle==\n\nb) ==Etude aux bornes=="
+      );
+      // No flattened table row for this card.
+      expect(deck.content).not.toContain("<br><br>");
+    });
+
+    it("puts the cloze's tags on its header-paragraph header", () => {
+      const [deck] = AnkiDeckRenderer.render([longCloze({ tags: ["09-courbes"] })], "decks/anki", 2);
+      expect(deck.content).toContain("## Plan d'étude d'un arc paramétré #09-courbes\n\n");
+    });
+
+    it("keeps a short single-paragraph cloze in the 1-col table", () => {
+      const short = basic({
+        isCloze: true,
+        front: "Du trinkst ==Bier==.",
+        back: "Du trinkst ==Bier==.",
+        clozeBody: "Du trinkst ==Bier==.",
+        clozeOrder: 0,
+      });
+      const [deck] = AnkiDeckRenderer.render([short], "decks/anki", 2);
+      expect(deck.content).toContain("| Front |\n| --- |\n| Du trinkst ==Bier==. |");
+    });
+  });
 });

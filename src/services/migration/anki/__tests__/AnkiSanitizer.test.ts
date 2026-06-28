@@ -38,6 +38,24 @@ describe("AnkiSanitizer", () => {
     expect(result.media).toEqual([]); // not a vault file → not copied
   });
 
+  it("adds a width hint from the image's intrinsic size", () => {
+    const result = AnkiSanitizer.sanitizeField('<img src="render (44).png">', {
+      getMediaSize: (name) => (name === "render (44).png" ? { width: 29, height: 26 } : undefined),
+    });
+    expect(result.text).toBe("![[render (44).png|29]]");
+  });
+
+  it("prefers an explicit <img width> attribute over the intrinsic size", () => {
+    const result = AnkiSanitizer.sanitizeField('<img src="a.png" width="120">', {
+      getMediaSize: () => ({ width: 600, height: 400 }),
+    });
+    expect(result.text).toBe("![[a.png|120]]");
+  });
+
+  it("emits a bare embed when no size information is available", () => {
+    expect(AnkiSanitizer.sanitizeField('<img src="a.png">').text).toBe("![[a.png]]");
+  });
+
   it("strips [latex] wrappers and keeps the inner text + $…$", () => {
     const result = AnkiSanitizer.sanitizeField("[latex]Bestimmen Sie $A=(a_{ij})$.[/latex]");
     expect(result.text).toBe("Bestimmen Sie $A=(a_{ij})$.");
@@ -71,6 +89,25 @@ describe("AnkiSanitizer", () => {
     expect(AnkiSanitizer.sanitizeField("{{c1::A\nB}}").text).toBe("==A==\n==B==");
     // Single-line answers are unchanged.
     expect(AnkiSanitizer.sanitizeField("{{c1::x}}").text).toBe("==x==");
+  });
+
+  it("strips whitespace inside cloze markers introduced by &nbsp;", () => {
+    // &nbsp; decodes to a space after the cloze's own trim → must not touch the ==.
+    const result = AnkiSanitizer.sanitizeField("Soit&nbsp;{{c1::&nbsp;[$]f(x)[/$]}}, ok");
+    expect(result.text).toBe("Soit ==$f(x)$==, ok"); // no space inside the markers
+  });
+
+  it("keeps a single space between two adjacent clozes (both stay valid)", () => {
+    const result = AnkiSanitizer.sanitizeField("{{c1::note}}&nbsp;{{c2:: [$]y[/$]}}");
+    expect(result.text).toBe("==note== ==$y$==");
+  });
+
+  it("collapses a block-wrapped cloze to a single-line ==…==", () => {
+    // A cloze wrapping <div>/<br> block content must not put == on separate lines
+    // (the single-line cloze regex can't match a multi-line ==…==).
+    const result = AnkiSanitizer.sanitizeField("Si <div>{{c1::<div><br /></div><div>[$]\\forall x[/$]</div>}}</div>");
+    expect(result.text).toContain("==$\\forall x$==");
+    expect(result.text).not.toMatch(/==\n/); // no marker on its own line
   });
 
   it("converts MathJax delimiters to LaTeX dollar syntax", () => {

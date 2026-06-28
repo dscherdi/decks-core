@@ -1,5 +1,6 @@
 import type { AnkiParsedCard } from "./AnkiTypes";
 import { escapeTableCell, hasBlockMarkdown } from "../../../utils/markdown-table";
+import { splitClozeHeader } from "./ClozeLayout";
 import { OcclusionV2Parser } from "../../occlusion/OcclusionV2Parser";
 import { OCCLUSION_V2_VERSION } from "../../occlusion/OcclusionV2.types";
 
@@ -9,6 +10,13 @@ export interface AnkiRenderedDeck {
   tag: string; // deck tag for the file's frontmatter (no leading #)
   content: string; // full markdown file content
   cards: AnkiParsedCard[]; // every card for this deck (each cloze ord kept, for history)
+}
+
+// A rendered section plus the keys it's ordered by within a deck file.
+interface RenderedSection {
+  sortTag: string; // joined note tags ("" = untagged → sorts first)
+  sortHeader: string; // header text (no tags) for the secondary A–Z sort
+  content: string; // the full `## …` markdown section
 }
 
 const ILLEGAL_PATH = /[\\/:*?"<>|#^[\]]/g;
@@ -101,14 +109,22 @@ export class AnkiDeckRenderer {
       ...AnkiDeckRenderer.renderOcclusionSections(occlusionCards, deckName, level),
     ];
 
-    return frontmatter + sections.join("\n\n") + "\n";
+    // Order sections by tag (untagged first), then header A–Z. Stable + accent/
+    // case-insensitive + natural numeric so "Card 2" precedes "Card 10".
+    sections.sort(
+      (a, b) =>
+        a.sortTag.localeCompare(b.sortTag) ||
+        a.sortHeader.localeCompare(b.sortHeader, undefined, { sensitivity: "base", numeric: true })
+    );
+
+    return frontmatter + sections.map((s) => s.content).join("\n\n") + "\n";
   }
 
   // Cloze cards: one table per (deck, cloze-model tag). With extras → a tag-bound
   // table whose columns are the cloze field + extra fields (cloze in column 0);
   // pure cloze (no template) → a 1-col `| Front |` table (cell = the sentence).
   // Aggregated per note (dedup by note).
-  private static renderClozeSections(cards: AnkiParsedCard[], deckName: string, level: number): string[] {
+  private static renderClozeSections(cards: AnkiParsedCard[], deckName: string, level: number): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
     const deduped = AnkiDeckRenderer.dedupeClozeByNote(cards);
@@ -125,19 +141,51 @@ export class AnkiDeckRenderer {
       }
     }
 
-    const sections: string[] = [];
+    const sections: RenderedSection[] = [];
     for (const [tag, group] of tagged) {
-      const headers = group[0].templateRow?.headers ?? [];
-      const headerRow = `| ${headers.map((h) => escapeTableCell(h)).join(" | ")} |`;
-      const separator = `| ${headers.map(() => "---").join(" | ")} |`;
-      const rows = group.map(
-        (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cleanCell(cell))).join(" | ")} |`
-      );
-      sections.push(`${hashes} ${label} #${tag}\n\n${headerRow}\n${separator}\n${rows.join("\n")}`);
+      for (const { tags, cards: sub } of AnkiDeckRenderer.partitionByTags(group)) {
+        const headers = sub[0].templateRow?.headers ?? [];
+        const headerRow = `| ${headers.map((h) => escapeTableCell(h)).join(" | ")} |`;
+        const separator = `| ${headers.map(() => "---").join(" | ")} |`;
+        const rows = sub.map(
+          (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cleanCell(cell))).join(" | ")} |`
+        );
+        sections.push(
+          AnkiDeckRenderer.section(
+            tags,
+            label,
+            `${hashes} ${label} #${tag}${AnkiDeckRenderer.tagSuffix(tags)}\n\n${headerRow}\n${separator}\n${rows.join("\n")}`
+          )
+        );
+      }
     }
-    if (plain.length > 0) {
-      const rows = plain.map((c) => `| ${escapeTableCell(cleanCell(c.clozeBody ?? c.back))} |`);
-      sections.push(`${hashes} ${label}\n\n| Front |\n| --- |\n${rows.join("\n")}`);
+
+    // Multi-paragraph/long clozes with a plain title line render as header-
+    // paragraph (newlines preserved); the rest aggregate into a 1-col table.
+    const tablePlain: AnkiParsedCard[] = [];
+    for (const card of plain) {
+      const split = splitClozeHeader(card.clozeBody ?? card.back);
+      if (split) {
+        sections.push(
+          AnkiDeckRenderer.section(
+            card.tags,
+            split.header,
+            `${hashes} ${split.header}${AnkiDeckRenderer.tagSuffix(card.tags)}\n\n${split.body}`
+          )
+        );
+      } else {
+        tablePlain.push(card);
+      }
+    }
+    for (const { tags, cards: sub } of AnkiDeckRenderer.partitionByTags(tablePlain)) {
+      const rows = sub.map((c) => `| ${escapeTableCell(cleanCell(c.clozeBody ?? c.back))} |`);
+      sections.push(
+        AnkiDeckRenderer.section(
+          tags,
+          label,
+          `${hashes} ${label}${AnkiDeckRenderer.tagSuffix(tags)}\n\n| Front |\n| --- |\n${rows.join("\n")}`
+        )
+      );
     }
     return sections;
   }
@@ -145,7 +193,7 @@ export class AnkiDeckRenderer {
   // Multi-field cards: one markdown table per binding tag, header row = field
   // names, each row = the card's cells. A tag on the `## …` header binds the
   // per-model template that merges these cells at render time.
-  private static renderTemplateSections(cards: AnkiParsedCard[], deckName: string, level: number): string[] {
+  private static renderTemplateSections(cards: AnkiParsedCard[], deckName: string, level: number): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
     const byTag = new Map<string, AnkiParsedCard[]>();
@@ -156,21 +204,29 @@ export class AnkiDeckRenderer {
       else byTag.set(card.templateTag, [card]);
     }
 
-    const sections: string[] = [];
+    const sections: RenderedSection[] = [];
     for (const [tag, group] of byTag) {
-      const headers = group[0].templateRow?.headers ?? [];
-      const headerRow = `| ${headers.map((h) => escapeTableCell(h)).join(" | ")} |`;
-      const separator = `| ${headers.map(() => "---").join(" | ")} |`;
-      const rows = group.map(
-        (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cleanCell(cell))).join(" | ")} |`
-      );
-      sections.push(`${hashes} ${label} #${tag}\n\n${headerRow}\n${separator}\n${rows.join("\n")}`);
+      for (const { tags, cards: sub } of AnkiDeckRenderer.partitionByTags(group)) {
+        const headers = sub[0].templateRow?.headers ?? [];
+        const headerRow = `| ${headers.map((h) => escapeTableCell(h)).join(" | ")} |`;
+        const separator = `| ${headers.map(() => "---").join(" | ")} |`;
+        const rows = sub.map(
+          (c) => `| ${(c.templateRow?.cells ?? []).map((cell) => escapeTableCell(cleanCell(cell))).join(" | ")} |`
+        );
+        sections.push(
+          AnkiDeckRenderer.section(
+            tags,
+            label,
+            `${hashes} ${label} #${tag}${AnkiDeckRenderer.tagSuffix(tags)}\n\n${headerRow}\n${separator}\n${rows.join("\n")}`
+          )
+        );
+      }
     }
     return sections;
   }
 
   // Occlusion cards: one `decks-occlusion` codeblock per base image (all masks).
-  private static renderOcclusionSections(cards: AnkiParsedCard[], deckName: string, level: number): string[] {
+  private static renderOcclusionSections(cards: AnkiParsedCard[], deckName: string, level: number): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
     const byImage = new Map<string, AnkiParsedCard>();
@@ -179,21 +235,27 @@ export class AnkiDeckRenderer {
       if (!byImage.has(card.imagePath)) byImage.set(card.imagePath, card);
     }
 
-    const sections: string[] = [];
+    const sections: RenderedSection[] = [];
     for (const card of byImage.values()) {
       const yaml = OcclusionV2Parser.toYaml({
         __v: OCCLUSION_V2_VERSION,
         image: card.imageRef ?? `[[${card.imagePath}]]`,
         masks: card.masks ?? [],
       }).trimEnd();
-      sections.push(`${hashes} ${label}\n\n\`\`\`decks-occlusion\n${yaml}\n\`\`\``);
+      sections.push(
+        AnkiDeckRenderer.section(
+          card.tags,
+          label,
+          `${hashes} ${label}${AnkiDeckRenderer.tagSuffix(card.tags)}\n\n\`\`\`decks-occlusion\n${yaml}\n\`\`\``
+        )
+      );
     }
     return sections;
   }
 
-  private static renderHeaderParagraphSections(cards: AnkiParsedCard[], level: number): string[] {
+  private static renderHeaderParagraphSections(cards: AnkiParsedCard[], level: number): RenderedSection[] {
     const hashes = "#".repeat(level);
-    const sections: string[] = [];
+    const sections: RenderedSection[] = [];
     for (const card of cards) {
       const front = card.front.trim() || `Card ${card.noteId}-${card.ord}`;
       // An empty back with notes present would leave a dangling `---`; promote.
@@ -204,7 +266,9 @@ export class AnkiDeckRenderer {
         notes = "";
       }
       const body = notes ? `${back}\n\n---\n\n${notes}` : back;
-      sections.push(`${hashes} ${front}\n\n${body}`);
+      sections.push(
+        AnkiDeckRenderer.section(card.tags, front, `${hashes} ${front}${AnkiDeckRenderer.tagSuffix(card.tags)}\n\n${body}`)
+      );
     }
     return sections;
   }
@@ -216,30 +280,75 @@ export class AnkiDeckRenderer {
     cards: AnkiParsedCard[],
     deckName: string,
     level: number
-  ): string[] {
+  ): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
 
-    const withoutNotes = cards.filter((c) => !c.notes.trim());
-    const withNotes = cards.filter((c) => c.notes.trim().length > 0);
-
-    const sections: string[] = [];
-    if (withoutNotes.length > 0) {
-      const rows = withoutNotes.map(
-        (c) => `| ${escapeTableCell(cleanCell(c.front))} | ${escapeTableCell(cleanCell(c.back))} |`
-      );
-      sections.push(`${hashes} ${label}\n\n| Front | Back |\n| --- | --- |\n${rows.join("\n")}`);
-    }
-    if (withNotes.length > 0) {
-      const rows = withNotes.map(
-        (c) =>
-          `| ${escapeTableCell(cleanCell(c.front))} | ${escapeTableCell(cleanCell(c.back))} | ${escapeTableCell(cleanCell(c.notes))} |`
-      );
-      sections.push(
-        `${hashes} ${label}\n\n| Front | Back | Notes |\n| --- | --- | --- |\n${rows.join("\n")}`
-      );
+    const sections: RenderedSection[] = [];
+    for (const { tags, cards: group } of AnkiDeckRenderer.partitionByTags(cards)) {
+      const suffix = AnkiDeckRenderer.tagSuffix(tags);
+      const withoutNotes = group.filter((c) => !c.notes.trim());
+      const withNotes = group.filter((c) => c.notes.trim().length > 0);
+      if (withoutNotes.length > 0) {
+        const rows = withoutNotes.map(
+          (c) => `| ${escapeTableCell(cleanCell(c.front))} | ${escapeTableCell(cleanCell(c.back))} |`
+        );
+        sections.push(
+          AnkiDeckRenderer.section(
+            tags,
+            label,
+            `${hashes} ${label}${suffix}\n\n| Front | Back |\n| --- | --- |\n${rows.join("\n")}`
+          )
+        );
+      }
+      if (withNotes.length > 0) {
+        const rows = withNotes.map(
+          (c) =>
+            `| ${escapeTableCell(cleanCell(c.front))} | ${escapeTableCell(cleanCell(c.back))} | ${escapeTableCell(cleanCell(c.notes))} |`
+        );
+        sections.push(
+          AnkiDeckRenderer.section(
+            tags,
+            label,
+            `${hashes} ${label}${suffix}\n\n| Front | Back | Notes |\n| --- | --- | --- |\n${rows.join("\n")}`
+          )
+        );
+      }
     }
     return sections;
+  }
+
+  // Build a section carrying its sort keys: tag-set (note tags, "" when untagged)
+  // then the header text. renderFile sorts by these before joining.
+  private static section(tags: string[] | undefined, header: string, content: string): RenderedSection {
+    return { sortTag: AnkiDeckRenderer.sortedTags(tags).join(" "), sortHeader: header, content };
+  }
+
+  // Sorted, de-duped Obsidian tags for a card (no leading #).
+  private static sortedTags(tags?: string[]): string[] {
+    return tags && tags.length ? [...new Set(tags)].sort() : [];
+  }
+
+  // A trailing ` #a #b` suffix for a section/card header (empty when no tags).
+  private static tagSuffix(tags?: string[]): string {
+    const sorted = AnkiDeckRenderer.sortedTags(tags);
+    return sorted.length ? " " + sorted.map((t) => `#${t}`).join(" ") : "";
+  }
+
+  // Partition cards by their tag-set so each set gets its own section/table whose
+  // header carries those tags (cards under a header inherit its tags in Decks).
+  private static partitionByTags(
+    cards: AnkiParsedCard[]
+  ): Array<{ tags: string[]; cards: AnkiParsedCard[] }> {
+    const groups = new Map<string, { tags: string[]; cards: AnkiParsedCard[] }>();
+    for (const card of cards) {
+      const tags = AnkiDeckRenderer.sortedTags(card.tags);
+      const key = tags.join("|");
+      const group = groups.get(key);
+      if (group) group.cards.push(card);
+      else groups.set(key, { tags, cards: [card] });
+    }
+    return [...groups.values()];
   }
 
   private static dedupeClozeByNote(cards: AnkiParsedCard[]): AnkiParsedCard[] {

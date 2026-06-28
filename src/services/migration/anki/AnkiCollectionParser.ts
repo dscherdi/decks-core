@@ -28,12 +28,37 @@ const FIELD_SEPARATOR = "\x1f";
 // Field names that are bookkeeping ids, never used as content.
 const ID_FIELD = /^(id|guid|uid|key)$/i;
 
+/**
+ * Normalize Anki's space-separated note tags into Obsidian tags: `::` hierarchy
+ * becomes `/`, characters outside letters/digits/`_`/`/`/`-` collapse to `-`
+ * (Unicode letters are kept, so accented tags survive), and all-numeric tags
+ * (invalid in Obsidian) are dropped. De-duped, order preserved.
+ */
+export function parseAnkiTags(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/\s+/)) {
+    if (!part) continue;
+    const tag = part
+      .replace(/::/g, "/")
+      .replace(/[^\p{L}\p{N}_/-]+/gu, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^[-/]+|[-/]+$/g, "");
+    if (!tag || !/\D/.test(tag) || seen.has(tag)) continue;
+    seen.add(tag);
+    out.push(tag);
+  }
+  return out;
+}
+
 export interface AnkiParseOptions {
   hintLabel?: string;
   htmlToMarkdown?: HtmlToMarkdown;
   // Reads a media file's text content (used for image-occlusion mask SVGs).
   // Without it, image-occlusion notes are skipped.
   getMediaText?: (filename: string) => string | undefined;
+  // Reads an image's intrinsic pixel size so embeds can carry a width hint.
+  getMediaSize?: (filename: string) => { width: number; height: number } | undefined;
 }
 
 interface RowContext {
@@ -57,6 +82,7 @@ export class AnkiCollectionParser {
     const sanitize: SanitizeOptions = {
       hintLabel: options.hintLabel ?? "hint",
       htmlToMarkdown: options.htmlToMarkdown,
+      getMediaSize: options.getMediaSize,
     };
     const models = AnkiCollectionParser.readModels(db);
     const decks = AnkiCollectionParser.readDecks(db);
@@ -271,7 +297,7 @@ export class AnkiCollectionParser {
       "SELECT c.id AS cid, c.nid AS nid, c.did AS did, c.ord AS ord, " +
       "c.type AS ctype, c.queue AS queue, c.due AS due, c.ivl AS ivl, " +
       "c.factor AS factor, c.reps AS reps, c.lapses AS lapses, c.data AS data, " +
-      "n.mid AS mid, n.flds AS flds " +
+      "n.mid AS mid, n.flds AS flds, n.tags AS tags " +
       "FROM cards c JOIN notes n ON c.nid = n.id";
     const stmt = db.prepare(sql);
     const rows: RawCardNote[] = [];
@@ -285,6 +311,7 @@ export class AnkiCollectionParser {
           ord: Number(r.ord),
           mid: String(r.mid),
           flds: typeof r.flds === "string" ? r.flds : "",
+          tags: typeof r.tags === "string" ? r.tags : "",
           scheduling: {
             type: Number(r.ctype) || 0,
             queue: Number(r.queue) || 0,
@@ -383,6 +410,7 @@ export class AnkiCollectionParser {
       front,
       back,
       notes,
+      tags: parseAnkiTags(row.tags),
       tableLayout,
       media,
       scheduling: row.scheduling,
@@ -459,6 +487,7 @@ export class AnkiCollectionParser {
           front: cells[0],
           back: cells[1],
           notes: "",
+          tags: parseAnkiTags(row.tags),
           templateRow: { headers: orderedFields, cells },
           templateTag: tag,
           media,
@@ -526,6 +555,7 @@ export class AnkiCollectionParser {
           front: `![[${image}]]`,
           back: "",
           notes: "",
+          tags: parseAnkiTags(ctx.row.tags),
           imageRef: `[[${image}]]`,
           imagePath: image,
           masks,
@@ -645,6 +675,7 @@ export class AnkiCollectionParser {
       front: clozeBody, // the cloze sentence drives the card id
       back: clozeBody,
       notes: extraValues.filter((v) => v.trim()).join("\n\n"),
+      tags: parseAnkiTags(row.tags),
       clozeBody,
       clozeText: answers[row.ord],
       clozeOrder: row.ord,
@@ -757,5 +788,6 @@ interface RawCardNote {
   ord: number;
   mid: string;
   flds: string;
+  tags: string; // Anki's space-separated note tags
   scheduling: AnkiScheduling;
 }

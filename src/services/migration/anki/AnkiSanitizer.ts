@@ -13,6 +13,8 @@ const SOUND_TAG = /\[sound:([^\]]+)\]/g;
 // Captures the full src: double-quoted, single-quoted (both allow spaces), or an
 // unquoted token. A whitespace-truncating capture loses filenames with spaces.
 const IMG_TAG = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi;
+// An explicit width attribute on an `<img>` (px count; ignores `%`/units).
+const WIDTH_ATTR = /\bwidth\s*=\s*(?:"(\d+)"|'(\d+)'|(\d+))/i;
 // {{c1::answer}} or {{c1::answer::hint}} — the cloze number is ignored; Decks
 // derives card order from document position of each ==highlight==. `[\s\S]`
 // (not `.`) so a multi-line answer is captured.
@@ -50,6 +52,9 @@ export interface SanitizeOptions {
   // MathJax) but keep the surrounding HTML (no markdown conversion). Used for
   // HTML-template cells/bodies where the HTML render resolves ![[…]] embeds.
   keepHtml?: boolean;
+  // Reads an image's intrinsic pixel size so an embed can carry a width hint
+  // (`![[name|width]]`) — keeps small images from being blown up to fill space.
+  getMediaSize?: (filename: string) => { width: number; height: number } | undefined;
 }
 
 export class AnkiSanitizer {
@@ -74,13 +79,16 @@ export class AnkiSanitizer {
 
     // <img src="file.jpg"> → ![[file.jpg]] (handles filenames with spaces).
     // External URLs aren't vault media → a plain markdown image, not an embed.
-    text = text.replace(IMG_TAG, (_match, dq?: string, sq?: string, uq?: string) => {
+    // A width hint (explicit attr, else the image's intrinsic size) keeps small
+    // images from being scaled up to fill a table cell.
+    text = text.replace(IMG_TAG, (match: string, dq?: string, sq?: string, uq?: string) => {
       const raw = (dq ?? sq ?? uq ?? "").trim();
       if (!raw) return "";
       const name = AnkiSanitizer.decodeSrc(raw);
       if (EXTERNAL_URL.test(name)) return `![](${name})`;
       media.push(name);
-      return `![[${name}]]`;
+      const width = AnkiSanitizer.embedWidth(match, name, options.getMediaSize);
+      return width ? `![[${name}|${width}]]` : `![[${name}]]`;
     });
 
     // {{c1::answer::hint}} → ==answer== (hint: hint). A multi-line answer becomes
@@ -90,7 +98,11 @@ export class AnkiSanitizer {
         .split(CLOZE_LINE_BREAK)
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
-      const highlighted = (lines.length > 1 ? lines : [answer.trim()])
+      // Use the cleaned, line-break-stripped lines (so a cloze wrapping block
+      // content like `<div>$…$</div>` collapses to a single-line `==$…$==` the
+      // single-line cloze regex can match). Fall back to the raw answer only when
+      // the split is entirely empty.
+      const highlighted = (lines.length > 0 ? lines : [answer.trim()])
         .map((line) => `==${line}==`)
         .join("\n");
       const suffix = hint && hint.trim() ? ` (${hintLabel}: ${hint.trim()})` : "";
@@ -104,7 +116,7 @@ export class AnkiSanitizer {
     // Media-only mode keeps the HTML intact (the render layer handles it);
     // otherwise convert to markdown via the injected turndown / regex fallback.
     if (options.keepHtml) {
-      return { text: convertAnkiLatexMarkup(text.trim()), media };
+      return { text: AnkiSanitizer.normalizeClozeMarkers(convertAnkiLatexMarkup(text.trim())), media };
     }
 
     // Generic tag conversion: injected turndown, else the DOM-free regex strip.
@@ -113,7 +125,17 @@ export class AnkiSanitizer {
     text = AnkiSanitizer.collapseWhitespace(text);
     // Anki LaTeX markup → markdown LAST: it emits tables/lists that turndown's
     // whitespace-collapsing would otherwise destroy.
-    return { text: convertAnkiLatexMarkup(text), media };
+    return { text: AnkiSanitizer.normalizeClozeMarkers(convertAnkiLatexMarkup(text)), media };
+  }
+
+  // Trim whitespace just inside each `==…==` cloze. Entity decoding (e.g. &nbsp;)
+  // runs after the cloze conversion's own trim, so a space can land inside the
+  // markers — and Obsidian only renders a highlight when nothing touches the `==`.
+  private static normalizeClozeMarkers(text: string): string {
+    return text.replace(/==((?:(?!==).)+)==/g, (whole, inner: string) => {
+      const trimmed = inner.trim();
+      return trimmed ? `==${trimmed}==` : whole;
+    });
   }
 
   // Percent-decode an `<img>`/media src, tolerating filenames that contain a
@@ -124,6 +146,22 @@ export class AnkiSanitizer {
     } catch {
       return src;
     }
+  }
+
+  // Width for an `![[…|width]]` embed: an explicit `<img width>` attribute wins;
+  // otherwise the image's intrinsic width (so tiny images aren't upscaled).
+  private static embedWidth(
+    tag: string,
+    name: string,
+    getMediaSize?: (filename: string) => { width: number; height: number } | undefined
+  ): number | undefined {
+    const attr = WIDTH_ATTR.exec(tag);
+    if (attr) {
+      const w = Math.round(Number(attr[1] ?? attr[2] ?? attr[3]));
+      if (Number.isFinite(w) && w > 0) return w;
+    }
+    const size = getMediaSize?.(name);
+    return size && size.width > 0 ? Math.round(size.width) : undefined;
   }
 
   // Convert structural HTML to newlines and drop everything else, leaving the

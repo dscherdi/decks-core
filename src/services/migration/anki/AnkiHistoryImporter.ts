@@ -10,6 +10,7 @@ import {
   generateFlashcardId,
   generateOcclusionV2FlashcardId,
 } from "../../../utils/hash";
+import { splitClozeHeader } from "./ClozeLayout";
 import type { FsrsState } from "../LegacySrMigrator";
 import { SrHistoryImporter } from "../SrHistoryImporter";
 import type { HistoryDb, MigrationProfileFsrs } from "../SrHistoryImporter";
@@ -200,9 +201,13 @@ export class AnkiHistoryImporter {
       return generateOcclusionV2FlashcardId(deckId, card.imagePath, card.maskId);
     }
     if (card.isCloze) {
-      // Cloze cards always render in a table → the parser's front is the cloze
-      // sentence cell (clozeBody).
-      const front = (card.clozeBody ?? card.back).trim();
+      // The parser hashes the rendered front: a compact cloze stays a table cell
+      // (front = the whole sentence); a multi-paragraph one becomes header-
+      // paragraph (front = the title line). The leading line carries no highlight,
+      // so cloze order/text are unchanged either way.
+      const full = (card.clozeBody ?? card.back).trim();
+      const split = splitClozeHeader(full);
+      const front = split ? split.header : full;
       return generateClozeFlashcardId(
         front,
         card.clozeText ?? "",

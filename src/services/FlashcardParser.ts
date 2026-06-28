@@ -43,8 +43,11 @@ export class FlashcardParser {
   // Opening/closing fences for a V2 `decks-occlusion` codeblock.
   private static readonly OCCLUSION_FENCE_OPEN_REGEX = /^(`{3,}|~{3,})\s*decks-occlusion\s*$/;
   private static readonly CODE_FENCE_REGEX = /^(`{3,}|~{3,})/;
-  // Obsidian tag syntax: must start with a letter, allows letters/digits/_/-//
-  private static readonly HEADER_TAG_REGEX = /(?:^|\s)#([A-Za-z][A-Za-z0-9_\-/]*)/g;
+  // Obsidian tag syntax: Unicode letters/digits/_/-//, with at least one non-digit
+  // character (so "#09-foo" and "#Trigonométrie" are tags but a pure number
+  // "#123" is not).
+  private static readonly HEADER_TAG_REGEX =
+    /(?:^|\s)#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu;
 
   /**
    * Extract Obsidian-style tags from header text and return cleaned text.

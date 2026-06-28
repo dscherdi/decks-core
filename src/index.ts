@@ -244,6 +244,8 @@ export {
 } from "./utils/markdown-table";
 export { cardFieldDefs, fieldSetValue } from "./utils/card-fields";
 export type { CardFieldDef } from "./utils/card-fields";
+export { prepareClozeMath } from "./utils/clozeMath";
+export type { PreparedClozeMath } from "./utils/clozeMath";
 export {
   SPLITTABLE,
   isSplittable,
