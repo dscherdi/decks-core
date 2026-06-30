@@ -1,6 +1,16 @@
 import { AnkiSanitizer } from "../AnkiSanitizer";
 
 describe("AnkiSanitizer", () => {
+  it("neutralizes Anki [[…]] so it isn't a broken wikilink (drops a leading tag::)", () => {
+    expect(AnkiSanitizer.sanitizeField("[[r::{{c1::Paris}}]]").text).toBe("==Paris==");
+    expect(AnkiSanitizer.sanitizeField("see [[Some Note]] here").text).toBe("see Some Note here");
+    expect(AnkiSanitizer.sanitizeField("[[r::[$]\\Omega[/$]]] {{c1::x}}").text).toBe("$\\Omega$ ==x==");
+  });
+
+  it("leaves real media embeds (![[…]]) untouched by the wikilink guard", () => {
+    expect(AnkiSanitizer.sanitizeField('<img src="a.png">').text).toBe("![[a.png]]");
+  });
+
   it("converts [sound:…] to an embed and collects the media", () => {
     const result = AnkiSanitizer.sanitizeField("[sound:Firetongues-0082.mp3]");
     expect(result.text).toBe("![[Firetongues-0082.mp3]]");

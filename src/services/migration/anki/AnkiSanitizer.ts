@@ -10,6 +10,9 @@
 import { convertAnkiLatexMarkup } from "./AnkiLatex";
 
 const SOUND_TAG = /\[sound:([^\]]+)\]/g;
+// `[[…]]` in an Anki field (incl. Closet `[[tag::content]]`) → keep the inner content,
+// dropping an optional leading `tag::`. `(?<!!)` skips real embeds (`![[…]]`).
+const WIKILINK_WRAPPER = /(?<!!)\[\[(?:[A-Za-z][\w-]*::)?([\s\S]*?)\]\]/g;
 // Captures the full src: double-quoted, single-quoted (both allow spaces), or an
 // unquoted token. A whitespace-truncating capture loses filenames with spaces.
 const IMG_TAG = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>/gi;
@@ -69,6 +72,12 @@ export class AnkiSanitizer {
     if (!value) return { text: "", media };
 
     let text = value;
+
+    // Anki fields sometimes contain `[[…]]` (e.g. the Closet addon's `[[tag::content]]`);
+    // Obsidian would render these as wikilinks and hide the content. Neutralize them: drop
+    // the brackets and any leading `tag::`. Runs first, before media embeds (`![[…]]`) are
+    // created, and `(?<!!)` leaves any literal embed alone; `…*?` stops at the first `]]`.
+    text = text.replace(WIKILINK_WRAPPER, (_match, inner: string) => inner);
 
     // [sound:file.mp3] → ![[file.mp3]]
     text = text.replace(SOUND_TAG, (_match, file: string) => {

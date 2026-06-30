@@ -164,4 +164,24 @@ describe("AnkiHistoryImporter.importHistory", () => {
     const id = generateClozeFlashcardId("Du trinkst ==jeden Tag== Bier.", "jeden Tag", 0, "deck_x");
     expect(db.updates[0].id).toBe(id);
   });
+
+  it("reports progress with non-decreasing done up to the card total", async () => {
+    const db = new MockHistoryDb();
+    const cards = Array.from({ length: 5 }, (_, i) =>
+      card({ noteId: i + 1, cardId: 100 + i, front: `q${i}`, scheduling: sched({ type: 2, ivl: 10, reps: 2 }) })
+    );
+    const calls: Array<[number, number]> = [];
+    await AnkiHistoryImporter.importHistory(
+      db,
+      [{ deckId: "deck_x", profileFsrs: PROFILE, cards }],
+      { onProgress: (done, total) => calls.push([done, total]) },
+      now
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every(([, total]) => total === cards.length)).toBe(true);
+    // Monotonic non-decreasing done, ending exactly at total.
+    const dones = calls.map(([done]) => done);
+    expect(dones).toEqual([...dones].sort((a, b) => a - b));
+    expect(dones[dones.length - 1]).toBe(cards.length);
+  });
 });

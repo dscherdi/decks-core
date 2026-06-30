@@ -41,6 +41,8 @@ export interface AnkiImportHistoryOptions {
   collectionCreatedMs?: number;
   // Real Anki review rows, grouped by card id, imported as a review timeline.
   revlogByCard?: Map<number, AnkiRevlogRow[]>;
+  // Reports progress as cards are processed (for the import modal's progress bar).
+  onProgress?: (done: number, total: number) => void;
 }
 
 const RATING_LABELS: Record<number, ReviewLog["ratingLabel"]> = {
@@ -154,11 +156,14 @@ export class AnkiHistoryImporter {
   ): Promise<{ injected: number; reviews: number }> {
     let injected = 0;
     let reviews = 0;
+    const total = items.reduce((sum, item) => sum + item.cards.length, 0);
+    let done = 0;
 
     for (const item of items) {
       const updates: Array<{ id: string; updates: Partial<Flashcard> }> = [];
 
       for (const card of item.cards) {
+        if (++done % 200 === 0) options.onProgress?.(done, total);
         const fsrs = AnkiHistoryImporter.buildFsrsState(card.scheduling, options.collectionCreatedMs, now);
         if (!fsrs) continue;
 
@@ -193,6 +198,7 @@ export class AnkiHistoryImporter {
       if (updates.length) await db.batchUpdateFlashcards(updates);
     }
 
+    options.onProgress?.(total, total);
     return { injected, reviews };
   }
 

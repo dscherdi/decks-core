@@ -34,6 +34,13 @@ function cleanCell(s: string): string {
 // into the aggregated table instead of a long wall of `## …` sections.
 const HEADER_PARAGRAPH_TABLE_THRESHOLD = 50;
 
+// A deck is split into subfoldered part-files so each file stays openable in
+// Obsidian and under the per-deck sync limit. A file is capped on card count AND
+// on media-embed count (whichever is hit first): a file with thousands of
+// audio/image embeds lags reading view even with a modest row count.
+const CARDS_PER_FILE = 1000;
+const MEDIA_PER_FILE = 500;
+
 /**
  * Turns parsed Anki cards into one Decks markdown file per Anki deck. Cloze notes
  * collapse to a single entry (Decks expands the `==highlights==` into per-cloze
@@ -61,15 +68,82 @@ export class AnkiDeckRenderer {
 
     const decks: AnkiRenderedDeck[] = [];
     for (const [deckName, deckCards] of byDeck) {
-      decks.push({
-        deckName,
-        relativePath: AnkiDeckRenderer.deckPath(deckName),
-        tag: AnkiDeckRenderer.deckTag(baseTag, deckName),
-        content: AnkiDeckRenderer.renderFile(deckCards, baseTag, deckName, headerLevel),
-        cards: deckCards,
+      const tag = AnkiDeckRenderer.deckTag(baseTag, deckName);
+      // Always run the chunker: it returns a single chunk when the deck fits both
+      // caps (output unchanged), else multiple subfoldered parts so each file stays
+      // openable in Obsidian — capped on card count AND media embeds, since a file
+      // with thousands of audio/image embeds lags reading view even under the card
+      // cap.
+      const chunks = AnkiDeckRenderer.chunkByNote(deckCards, CARDS_PER_FILE, MEDIA_PER_FILE);
+      if (chunks.length === 1) {
+        decks.push({
+          deckName,
+          relativePath: AnkiDeckRenderer.deckPath(deckName),
+          tag,
+          content: AnkiDeckRenderer.renderFile(deckCards, baseTag, deckName, headerLevel),
+          cards: deckCards,
+        });
+        continue;
+      }
+      const width = Math.max(2, String(chunks.length).length);
+      const path = AnkiDeckRenderer.deckPath(deckName);
+      const leaf = AnkiDeckRenderer.leafLabel(deckName);
+      chunks.forEach((chunkCards, i) => {
+        const nn = String(i + 1).padStart(width, "0");
+        decks.push({
+          deckName,
+          relativePath: `${path}/${leaf} ${nn}`,
+          tag,
+          content: AnkiDeckRenderer.renderFile(chunkCards, baseTag, deckName, headerLevel),
+          cards: chunkCards,
+        });
       });
     }
     return decks.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  }
+
+  // Split a deck's cards into chunks capped by both card count and media-embed
+  // count (whichever is hit first), WITHOUT ever splitting a note (all cards of a
+  // note must share one file → one deckId → consistent history ids). Note-groups
+  // are ordered by their smallest cardId so chunk membership is deterministic
+  // regardless of the parser's row order (re-imports stay stable). A single
+  // note-group that alone exceeds a cap forms its own chunk.
+  private static chunkByNote(
+    cards: AnkiParsedCard[],
+    cardCap: number,
+    mediaCap: number
+  ): AnkiParsedCard[][] {
+    const byNote = new Map<number, AnkiParsedCard[]>();
+    for (const card of cards) {
+      const group = byNote.get(card.noteId);
+      if (group) group.push(card);
+      else byNote.set(card.noteId, [card]);
+    }
+    const groups = [...byNote.values()].sort(
+      (a, b) =>
+        Math.min(...a.map((c) => c.cardId)) - Math.min(...b.map((c) => c.cardId))
+    );
+    const mediaCount = (group: AnkiParsedCard[]): number =>
+      group.reduce((sum, c) => sum + c.media.length, 0);
+
+    const chunks: AnkiParsedCard[][] = [];
+    let current: AnkiParsedCard[] = [];
+    let currentMedia = 0;
+    for (const group of groups) {
+      const groupMedia = mediaCount(group);
+      if (
+        current.length > 0 &&
+        (current.length + group.length > cardCap || currentMedia + groupMedia > mediaCap)
+      ) {
+        chunks.push(current);
+        current = [];
+        currentMedia = 0;
+      }
+      current.push(...group);
+      currentMedia += groupMedia;
+    }
+    if (current.length > 0) chunks.push(current);
+    return chunks;
   }
 
   private static renderFile(

@@ -137,6 +137,7 @@ export const en = {
     progressWriting: "Writing {deck}…",
     progressSyncing: "Syncing decks…",
     progressImporting: "Importing review history…",
+    progressCopyingMedia: "Copying media {done}/{total}…",
     successNotice:
       "Imported {cards} card(s) into {decks} deck(s); history for {history}.",
     doneSummary:

@@ -340,4 +340,130 @@ describe("AnkiDeckRenderer", () => {
       expect(deck.content).toContain("| Front |\n| --- |\n| Du trinkst ==Bier==. |");
     });
   });
+
+  describe("splitting large decks", () => {
+    const CAP = 1000;
+    // One single-card note per index (distinct noteId/cardId/front).
+    const manyNotes = (count: number, deckName = "Spanish"): AnkiParsedCard[] =>
+      Array.from({ length: count }, (_, i) =>
+        basic({ noteId: i + 1, cardId: 1000 + i, deckName, front: `q${i}`, back: `a${i}` })
+      );
+
+    const cardIds = (decks: { cards: AnkiParsedCard[] }[]): number[] =>
+      decks.flatMap((d) => d.cards.map((c) => c.cardId)).sort((a, b) => a - b);
+
+    it("keeps a deck at the cap as a single unsuffixed file", () => {
+      const decks = AnkiDeckRenderer.render(manyNotes(CAP), "decks/anki", 2);
+      expect(decks).toHaveLength(1);
+      expect(decks[0].relativePath).toBe("Spanish");
+    });
+
+    it("splits a deck over the cap into subfoldered, padded part-files", () => {
+      const decks = AnkiDeckRenderer.render(manyNotes(CAP + 1), "decks/anki", 2);
+      expect(decks).toHaveLength(2);
+      expect(decks.map((d) => d.relativePath)).toEqual(["Spanish/Spanish 01", "Spanish/Spanish 02"]);
+      // Same tag across chunks (identity is the path, not the tag).
+      expect(new Set(decks.map((d) => d.tag))).toEqual(new Set(["decks/anki/spanish"]));
+    });
+
+    it("partitions every card exactly once across chunks", () => {
+      const input = manyNotes(CAP + 1);
+      const decks = AnkiDeckRenderer.render(input, "decks/anki", 2);
+      const ids = cardIds(decks);
+      expect(ids).toHaveLength(input.length);
+      expect(new Set(ids).size).toBe(input.length); // no dupes
+      expect(ids).toEqual(input.map((c) => c.cardId).sort((a, b) => a - b));
+    });
+
+    it("never splits a note across chunks (forward+reverse stay together)", () => {
+      // 999 single-card notes, then one 2-card note straddling the cap boundary.
+      const cards = [
+        ...manyNotes(999),
+        basic({ noteId: 5000, cardId: 9000, ord: 0, front: "fwd", back: "rev" }),
+        basic({ noteId: 5000, cardId: 9001, ord: 1, front: "rev", back: "fwd" }),
+      ];
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      const chunkWith = (id: number) => decks.findIndex((d) => d.cards.some((c) => c.cardId === id));
+      const a = chunkWith(9000);
+      expect(a).toBeGreaterThanOrEqual(0);
+      expect(chunkWith(9001)).toBe(a); // both halves of the note in one chunk
+    });
+
+    it("keeps all ords of a cloze note in one chunk with a single deduped entry", () => {
+      const cloze = (ord: number, clozeText: string): AnkiParsedCard =>
+        basic({
+          noteId: 5000,
+          cardId: 9000 + ord,
+          ord,
+          isCloze: true,
+          front: "Ich ==trinke== ==Bier==.",
+          back: "Ich ==trinke== ==Bier==.",
+          clozeBody: "Ich ==trinke== ==Bier==.",
+          clozeText,
+          clozeOrder: ord,
+        });
+      const cards = [...manyNotes(999), cloze(0, "trinke"), cloze(1, "Bier")];
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      const idx = decks.findIndex((d) => d.cards.some((c) => c.cardId === 9000));
+      expect(decks[idx].cards.filter((c) => c.cardId >= 9000)).toHaveLength(2);
+      // The deduped cloze entry renders exactly once in that chunk.
+      const occurrences = decks[idx].content.split("Ich ==trinke== ==Bier==.").length - 1;
+      expect(occurrences).toBe(1);
+    });
+
+    it("is deterministic regardless of input order", () => {
+      const input = manyNotes(CAP + 5);
+      const shuffled = [...input].reverse();
+      const map = (decks: ReturnType<typeof AnkiDeckRenderer.render>) =>
+        decks.map((d) => `${d.relativePath}:${d.cards.map((c) => c.cardId).sort((a, b) => a - b).join(",")}`);
+      expect(map(AnkiDeckRenderer.render(shuffled, "decks/anki", 2))).toEqual(
+        map(AnkiDeckRenderer.render(input, "decks/anki", 2))
+      );
+    });
+
+    it("never splits a single oversized note", () => {
+      const cards = Array.from({ length: CAP + 50 }, (_, i) =>
+        basic({ noteId: 7, cardId: 100 + i, ord: i, front: `c${i}`, back: `b${i}` })
+      );
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(decks).toHaveLength(1);
+      expect(decks[0].cards).toHaveLength(CAP + 50);
+    });
+
+    const MEDIA_CAP = 500;
+    const embeds = (decks: { cards: AnkiParsedCard[] }[]): number[] =>
+      decks.map((d) => d.cards.reduce((s, c) => s + c.media.length, 0));
+
+    it("splits on the media-embed budget even under the card cap", () => {
+      // 600 single-card notes × 2 embeds = 1200 embeds > 500, but 600 ≤ 1000 cards.
+      const cards = Array.from({ length: 600 }, (_, i) =>
+        basic({ noteId: i + 1, cardId: 1000 + i, deckName: "Audio", front: `q${i}`, media: ["a.mp3", "b.mp3"] })
+      );
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(decks.length).toBeGreaterThan(1);
+      expect(decks[0].relativePath).toBe("Audio/Audio 01"); // subfoldered, not single file
+      // Each file's embed total respects the budget (single notes are small).
+      expect(Math.max(...embeds(decks))).toBeLessThanOrEqual(MEDIA_CAP);
+      // Still partitions every card exactly once.
+      expect(decks.flatMap((d) => d.cards).length).toBe(600);
+    });
+
+    it("keeps a media-light deck as one file (media cap inert)", () => {
+      const cards = Array.from({ length: 300 }, (_, i) =>
+        basic({ noteId: i + 1, cardId: 1000 + i, deckName: "Audio", front: `q${i}`, media: ["a.mp3"] })
+      );
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(decks).toHaveLength(1); // 300 embeds ≤ 500, 300 cards ≤ 1000
+      expect(decks[0].relativePath).toBe("Audio");
+    });
+
+    it("never splits a single note that alone exceeds the media budget", () => {
+      const cards = Array.from({ length: 400 }, (_, i) =>
+        basic({ noteId: 7, cardId: 100 + i, ord: i, front: `c${i}`, media: ["x.mp3", "y.mp3"] })
+      );
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(decks).toHaveLength(1); // 800 embeds but one atomic note
+      expect(decks[0].cards).toHaveLength(400);
+    });
+  });
 });
