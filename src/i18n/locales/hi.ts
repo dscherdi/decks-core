@@ -341,6 +341,7 @@ export const hi: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "Anki से आयात करें",
     moreActions: "More actions",
     exportToAnki: "Anki में निर्यात करें",
     title: "डेक्स",

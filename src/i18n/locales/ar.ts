@@ -329,6 +329,7 @@ export const ar: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "الاستيراد من Anki",
     moreActions: "More actions",
     exportToAnki: "تصدير إلى Anki",
     title: "الرزم",

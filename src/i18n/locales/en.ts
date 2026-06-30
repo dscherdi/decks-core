@@ -314,6 +314,7 @@ export const en = {
     moreActions: "More actions",
     exportToAnki: "Export to Anki",
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "Import from Anki",
     title: "Decks",
     emptyNoDecks: "No decks found.",
     emptyNoFilterMatch: "No decks match your filter.",

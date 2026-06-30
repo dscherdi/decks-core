@@ -334,6 +334,7 @@ export const ja: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "Anki からインポート",
     moreActions: "More actions",
     exportToAnki: "Anki にエクスポート",
     title: "デッキ",

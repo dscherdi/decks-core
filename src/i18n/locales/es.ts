@@ -345,6 +345,7 @@ export const es: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "Importar desde Anki",
     moreActions: "More actions",
     exportToAnki: "Exportar a Anki",
     title: "Mazos",

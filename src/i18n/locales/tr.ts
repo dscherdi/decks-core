@@ -338,6 +338,7 @@ export const tr: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "Anki'den içe aktar",
     moreActions: "More actions",
     exportToAnki: "Anki'ye Aktar",
     title: "Desteler",

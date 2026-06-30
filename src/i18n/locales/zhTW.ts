@@ -320,6 +320,7 @@ export const zhTW: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "從 Anki 匯入",
     moreActions: "More actions",
     exportToAnki: "匯出至 Anki",
     title: "牌組",

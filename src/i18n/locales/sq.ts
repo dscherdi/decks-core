@@ -345,6 +345,7 @@ export const sq: Translations = {
 
   deckList: {
     srMigration: "Migrate from Spaced Repetition",
+    ankiImport: "Importo nga Anki",
     moreActions: "More actions",
     exportToAnki: "Eksporto në Anki",
     title: "Pakot",
