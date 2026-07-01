@@ -233,6 +233,8 @@ export interface IDatabaseService {
   getDeckReviewCountRange(deckId: string, startDate: string, endDate: string): Promise<number>;
   countNewCardsToday(deckId: string, nextDayStartsAt?: number): Promise<number>;
   countReviewCardsToday(deckId: string, nextDayStartsAt?: number): Promise<number>;
+  // Distinct cards (new + review) studied today across ALL decks (global daily cap).
+  countCardsStudiedTodayAllDecks(nextDayStartsAt?: number): Promise<number>;
 
   purgeDatabase(): Promise<void>;
   resetDeckProgress(deckId: string): Promise<void>;

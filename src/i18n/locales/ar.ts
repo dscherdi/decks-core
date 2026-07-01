@@ -404,6 +404,7 @@ export const ar: Translations = {
       "{count} بطاقات مراجعة متاحة اليوم (الحد: {limit})",
     reviewCardsDueTooltip: "{count} بطاقات مراجعة مستحقة",
     studiedSummary: "درست {cards} بطاقات في {hours} اليوم ({pace})",
+    statCardsToday: "بطاقات اليوم",
   },
 
   review: {
@@ -1309,6 +1310,11 @@ export const ar: Translations = {
       studyDayStartsAt: "يبدأ يوم الدراسة الساعة",
       studyDayStartsAtDesc:
         "الساعة التي يبدأ فيها يوم جديد (0-23، الافتراضي 4). المراجعات قبلها تُحسب لليوم السابق.",
+      enableGlobalReviewCap: "الحد اليومي العام للبطاقات",
+      enableGlobalReviewCapDesc: "تحديد إجمالي البطاقات (جديدة + مراجعة) يوميًا عبر جميع المجموعات معًا (بالإضافة إلى حدود كل مجموعة).",
+      globalReviewCap: "البطاقات يوميًا (كل المجموعات)",
+      globalReviewCapDesc: "الحد الأقصى للبطاقات (جديدة + مراجعة) المعروضة يوميًا عبر جميع المجموعات معًا.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "حد البطاقات الصعبة (Leech)",
       leechThresholdDesc:
         "تُعتبر البطاقة صعبة عند وصول عدد الهفوات لهذا الرقم (الافتراضي 8).",

@@ -381,6 +381,7 @@ export const en = {
     reviewCardsLimitTooltip: "{count} review cards available today (limit: {limit})",
     reviewCardsDueTooltip: "{count} review cards due",
     studiedSummary: "Studied {cards} cards in {hours} today ({pace})",
+    statCardsToday: "Cards today",
   },
 
   review: {
@@ -1267,6 +1268,11 @@ export const en = {
       sessionDurationPlaceholder: "25",
       studyDayStartsAt: "Study day starts at",
       studyDayStartsAtDesc: "Hour when the study day rolls over (0-23, default is 4). Reviews done before this hour count toward the previous day's statistics and daily limits.",
+      enableGlobalReviewCap: "Global daily card cap",
+      enableGlobalReviewCapDesc: "Limit total cards (new + review) per day across all decks combined (in addition to per-deck limits).",
+      globalReviewCap: "Cards per day (all decks)",
+      globalReviewCapDesc: "Maximum cards (new + review) shown per day across all decks combined.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Leech threshold",
       leechThresholdDesc: "A card is flagged as a leech once its lapse count reaches this number (default 8). Leeches are repeatedly forgotten and likely need rewriting.",
       leechThresholdPlaceholder: "8",

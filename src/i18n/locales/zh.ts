@@ -389,6 +389,7 @@ export const zh: Translations = {
     reviewCardsLimitTooltip: "今日可用 {count} 张复习卡片（限额：{limit}）",
     reviewCardsDueTooltip: "{count} 张到期复习卡片",
     studiedSummary: "今日在 {hours} 内学习了 {cards} 张卡片（{pace}）",
+    statCardsToday: "今日卡片",
   },
 
   review: {
@@ -1273,6 +1274,11 @@ export const zh: Translations = {
       studyDayStartsAt: "学习日开始于",
       studyDayStartsAtDesc:
         "学习日切换的小时数（0-23，默认 4）。该时刻之前的复习会计入前一天的统计与每日限额。",
+      enableGlobalReviewCap: "全局每日卡片上限",
+      enableGlobalReviewCapDesc: "限制所有牌组每天的卡片总数（新卡 + 复习）（在每个牌组的限制之外）。",
+      globalReviewCap: "每日卡片数（所有牌组）",
+      globalReviewCapDesc: "所有牌组每天显示的卡片（新卡 + 复习）上限。",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "顽固卡阈值",
       leechThresholdDesc:
         "当遗忘次数达到此数时，卡片会被标记为顽固卡（默认 8）。顽固卡常被遗忘，通常需要重写。",

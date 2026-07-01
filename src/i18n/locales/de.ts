@@ -431,6 +431,7 @@ export const de: Translations = {
       "{count} Wiederholungskarten heute verfügbar (Limit: {limit})",
     reviewCardsDueTooltip: "{count} Wiederholungskarten fällig",
     studiedSummary: "{cards} Karten in {hours} heute gelernt ({pace})",
+    statCardsToday: "Karten heute",
   },
 
   review: {
@@ -1373,6 +1374,11 @@ export const de: Translations = {
       studyDayStartsAt: "Lerntag beginnt um",
       studyDayStartsAtDesc:
         "Stunde, zu der der Lerntag wechselt (0-23, Standard 4). Wiederholungen vor dieser Stunde zählen zur Statistik und zu den Tageslimits des Vortags.",
+      enableGlobalReviewCap: "Globales tägliches Kartenlimit",
+      enableGlobalReviewCapDesc: "Begrenzt die Gesamtzahl der Karten (neu + Wiederholung) pro Tag über alle Stapel hinweg (zusätzlich zu den Limits pro Stapel).",
+      globalReviewCap: "Karten pro Tag (alle Stapel)",
+      globalReviewCapDesc: "Maximale Anzahl an Karten (neu + Wiederholung) pro Tag über alle Stapel hinweg.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Egel-Schwelle",
       leechThresholdDesc:
         "Eine Karte wird als Egel markiert, sobald ihre Vergessen-Anzahl diese Zahl erreicht (Standard 8). Egel werden wiederholt vergessen und sollten meist umgeschrieben werden.",

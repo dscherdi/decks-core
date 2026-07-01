@@ -2,6 +2,19 @@
  * String utility functions for text comparison and manipulation
  */
 
+const naturalCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
+/**
+ * Locale-, number- and case-insensitive string comparison so names with
+ * embedded numbers order naturally (e.g. "Урок 2" < "Урок 10").
+ */
+export function naturalCompare(a: string, b: string): number {
+  return naturalCollator.compare(a, b);
+}
+
 /**
  * Calculate Levenshtein distance between two strings
  * @param a First string

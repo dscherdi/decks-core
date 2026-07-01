@@ -422,6 +422,7 @@ export const es: Translations = {
       "{count} tarjetas de repaso disponibles hoy (límite: {limit})",
     reviewCardsDueTooltip: "{count} tarjetas de repaso pendientes",
     studiedSummary: "Hoy estudiaste {cards} tarjetas en {hours} ({pace})",
+    statCardsToday: "Tarjetas de hoy",
   },
 
   review: {
@@ -1364,6 +1365,11 @@ export const es: Translations = {
       studyDayStartsAt: "El día de estudio empieza a",
       studyDayStartsAtDesc:
         "Hora a la que cambia el día de estudio (0-23, por defecto 4). Los repasos antes de esta hora cuentan para las estadísticas y límites diarios del día anterior.",
+      enableGlobalReviewCap: "Límite diario global de tarjetas",
+      enableGlobalReviewCapDesc: "Limita el total de tarjetas (nuevas + repaso) por día en todos los mazos combinados (además de los límites por mazo).",
+      globalReviewCap: "Tarjetas por día (todos los mazos)",
+      globalReviewCapDesc: "Número máximo de tarjetas (nuevas + repaso) mostradas por día en todos los mazos combinados.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Umbral de sanguijuela",
       leechThresholdDesc:
         "Una tarjeta se marca como sanguijuela cuando su número de lapsus llega a esta cifra (por defecto 8). Las sanguijuelas se olvidan repetidamente y suelen necesitar reescribirse.",

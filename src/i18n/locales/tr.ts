@@ -414,6 +414,7 @@ export const tr: Translations = {
       "Bugün kullanılabilir {count} tekrar kartı (sınır: {limit})",
     reviewCardsDueTooltip: "{count} tekrar kartı bekliyor",
     studiedSummary: "Bugün {hours} içinde {cards} kart çalışıldı ({pace})",
+    statCardsToday: "Bugünkü kartlar",
   },
 
   review: {
@@ -1351,6 +1352,11 @@ export const tr: Translations = {
       studyDayStartsAt: "Çalışma gününün başlangıcı",
       studyDayStartsAtDesc:
         "Çalışma gününün devrettiği saat (0-23, varsayılan 4). Bu saatten önce yapılan tekrarlar önceki günün istatistiklerine ve günlük sınırlarına sayılır.",
+      enableGlobalReviewCap: "Genel günlük kart sınırı",
+      enableGlobalReviewCapDesc: "Tüm desteler birlikte günlük toplam kartı (yeni + tekrar) sınırlar (deste başına sınırlara ek olarak).",
+      globalReviewCap: "Günlük kart (tüm desteler)",
+      globalReviewCapDesc: "Tüm desteler birlikte günde gösterilen en fazla kart (yeni + tekrar) sayısı.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Sülük (Leech) eşiği",
       leechThresholdDesc:
         "Unutulma (lapse) sayısı bu sayıya ulaştığında bir kart sülük olarak işaretlenir (varsayılan 8). Sülükler sürekli unutulur ve muhtemelen yeniden yazılmaları gerekir.",

@@ -414,6 +414,7 @@ export const it: Translations = {
       "{count} schede di ripasso disponibili oggi (limite: {limit})",
     reviewCardsDueTooltip: "{count} schede di ripasso",
     studiedSummary: "{cards} schede studiate in {hours} oggi ({pace})",
+    statCardsToday: "Carte oggi",
   },
 
   review: {
@@ -1345,6 +1346,11 @@ export const it: Translations = {
       studyDayStartsAt: "Il giorno di studio inizia alle",
       studyDayStartsAtDesc:
         "Ora in cui il giorno di studio cambia (0-23, predefinito 4). I ripassi prima di quest'ora contano per il giorno precedente.",
+      enableGlobalReviewCap: "Limite giornaliero globale di carte",
+      enableGlobalReviewCapDesc: "Limita il totale di carte (nuove + ripasso) al giorno su tutti i mazzi combinati (oltre ai limiti per mazzo).",
+      globalReviewCap: "Carte al giorno (tutti i mazzi)",
+      globalReviewCapDesc: "Numero massimo di carte (nuove + ripasso) mostrate al giorno su tutti i mazzi combinati.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Soglia sanguisuga",
       leechThresholdDesc:
         "Una scheda è segnata come sanguisuga quando i lapsi raggiungono questo numero (predefinito 8). Le sanguisughe vengono dimenticate ripetutamente e di solito vanno riscritte.",

@@ -119,32 +119,26 @@ export class Scheduler {
       sessionDurationMinutes
     );
     const newCardCount = await this.getNewCardCount(deckId);
+    const globalDailyRemaining = await this.globalDailyRemaining();
 
-    let goalTotal = 0;
+    // Due review cards (applying the per-deck limit if configured).
+    const reviewGoal = deck.profile.hasReviewCardsLimitEnabled
+      ? Math.min(
+          dueCardCount,
+          Math.max(0, deck.profile.reviewCardsPerDay - dailyCounts.reviewCount)
+        )
+      : dueCardCount;
 
-    // Add due review cards (applying daily limits if configured)
-    if (deck.profile.hasReviewCardsLimitEnabled) {
-      const remainingReviewQuota = Math.max(
-        0,
-        deck.profile.reviewCardsPerDay - dailyCounts.reviewCount
-      );
-      goalTotal += Math.min(dueCardCount, remainingReviewQuota);
-    } else {
-      // unlimited
-      goalTotal += dueCardCount;
-    }
+    // New cards (applying the per-deck limit if configured).
+    const newGoal = deck.profile.hasNewCardsLimitEnabled
+      ? Math.min(
+          newCardCount,
+          Math.max(0, deck.profile.newCardsPerDay - dailyCounts.newCount)
+        )
+      : newCardCount;
 
-    // Add new cards (applying daily limits if configured)
-    if (deck.profile.hasNewCardsLimitEnabled) {
-      const remainingNewQuota = Math.max(
-        0,
-        deck.profile.newCardsPerDay - dailyCounts.newCount
-      );
-      goalTotal += Math.min(newCardCount, remainingNewQuota);
-    } else {
-      // unlimited
-      goalTotal += newCardCount;
-    }
+    // Clamp the combined total by the global daily cap (new + review).
+    const goalTotal = Math.min(reviewGoal + newGoal, globalDailyRemaining);
 
     // Ensure at least 1 for progress calculation
     const finalGoalTotal = Math.max(1, goalTotal);
@@ -272,8 +266,11 @@ export class Scheduler {
         )
       : null;
 
-    // First check for due cards with quota
-    if (this.hasReviewCardQuota(deck, dailyCounts)) {
+    // Global daily cap (new + review combined) — computed once, gates both.
+    const globalRemaining = await this.globalDailyRemaining();
+
+    // First check for due cards with quota (per-deck AND the global daily cap)
+    if (this.hasReviewCardQuota(deck, dailyCounts) && globalRemaining > 0) {
       this.debugLog(`Checking for due cards for deck: ${deckId}`);
       const dueCard = await this.getNextDueCard(now, deckId, deck);
       if (dueCard) {
@@ -286,9 +283,8 @@ export class Scheduler {
       this.debugLog(`Review card quota exhausted for deck: ${deckId}`);
     }
 
-    // If no due cards and new cards allowed, get next new card
-    // Then check for new cards with quota
-    if (allowNew && this.hasNewCardQuota(deck, dailyCounts)) {
+    // If no due cards and new cards allowed, get next new card (also under cap)
+    if (allowNew && this.hasNewCardQuota(deck, dailyCounts) && globalRemaining > 0) {
       this.debugLog(`Checking for new cards for deck: ${deckId}`);
       const newCard = await this.getNextNewCard(deckId);
       if (newCard) {
@@ -765,6 +761,17 @@ export class Scheduler {
   }
 
   /**
+   * Cards (new + review) still allowed today under the global daily cap across
+   * ALL decks combined. `Infinity` when the cap is disabled or set to 0.
+   */
+  private async globalDailyRemaining(): Promise<number> {
+    const r = this.settings.review;
+    if (!r.hasGlobalReviewCap || !(r.globalReviewCapAmount > 0)) return Infinity;
+    const done = await this.db.countCardsStudiedTodayAllDecks(r.nextDayStartsAt);
+    return Math.max(0, r.globalReviewCapAmount - done);
+  }
+
+  /**
    * Configure the FSRS instance for a deck. The TRAINED profile applies the active
    * trained weight set (newest live row in the DB); if none exists it falls back to the
    * shipped standard weights. Returns the active weight-set id (or null) so the caller can
@@ -1022,7 +1029,8 @@ export class Scheduler {
   ): Promise<NewSession> {
     this.debugLog(`Starting review session for deck group: ${deckGroup.name}`);
 
-    let goalTotal = 0;
+    let reviewGoal = 0;
+    let newGoal = 0;
 
     for (const deckId of deckGroup.deckIds) {
       const deckWithProfile = await this.db.getDeckWithProfile(deckId);
@@ -1038,9 +1046,9 @@ export class Scheduler {
           0,
           profile.reviewCardsPerDay - dailyCounts.reviewCount
         );
-        goalTotal += Math.min(dueCardCount, remainingReviewQuota);
+        reviewGoal += Math.min(dueCardCount, remainingReviewQuota);
       } else {
-        goalTotal += dueCardCount;
+        reviewGoal += dueCardCount;
       }
 
       if (profile.hasNewCardsLimitEnabled) {
@@ -1048,13 +1056,17 @@ export class Scheduler {
           0,
           profile.newCardsPerDay - dailyCounts.newCount
         );
-        goalTotal += Math.min(newCardCount, remainingNewQuota);
+        newGoal += Math.min(newCardCount, remainingNewQuota);
       } else {
-        goalTotal += newCardCount;
+        newGoal += newCardCount;
       }
     }
 
-    const finalGoalTotal = Math.max(1, goalTotal);
+    // Clamp the combined total (new + review) by the global daily cap.
+    const finalGoalTotal = Math.max(
+      1,
+      Math.min(reviewGoal + newGoal, await this.globalDailyRemaining())
+    );
 
     const sessionId = await this.db.createReviewSession({
       deckId: deckGroup.deckIds[0],
@@ -1080,12 +1092,22 @@ export class Scheduler {
   ): Promise<Flashcard | null> {
     const { allowNew = true } = options;
 
-    if (await this.hasReviewCardQuotaForDeckGroup(deckGroup)) {
+    // Global daily cap (new + review combined) — gates both branches.
+    const globalRemaining = await this.globalDailyRemaining();
+
+    if (
+      (await this.hasReviewCardQuotaForDeckGroup(deckGroup)) &&
+      globalRemaining > 0
+    ) {
       const dueCard = await this.getNextDueCardForDeckGroup(now, deckGroup);
       if (dueCard) return dueCard;
     }
 
-    if (allowNew && (await this.hasNewCardQuotaForDeckGroup(deckGroup))) {
+    if (
+      allowNew &&
+      globalRemaining > 0 &&
+      (await this.hasNewCardQuotaForDeckGroup(deckGroup))
+    ) {
       return await this.getNextNewCardForDeckGroup(deckGroup);
     }
 
@@ -1275,7 +1297,12 @@ export class Scheduler {
 
     const dueCount = await this.db.countDueCardsCustomDeck(customDeck.id);
     const newCount = await this.db.countNewCardsCustomDeck(customDeck.id);
-    const goalTotal = Math.max(1, dueCount + newCount);
+    // Custom decks have no per-deck limits; only the global daily cap applies to
+    // the combined new + review total.
+    const goalTotal = Math.max(
+      1,
+      Math.min(dueCount + newCount, await this.globalDailyRemaining())
+    );
 
     const sessionId = await this.db.createReviewSession({
       deckId: customDeck.id,
@@ -1302,12 +1329,17 @@ export class Scheduler {
   ): Promise<Flashcard | null> {
     const { allowNew = true } = options;
 
-    const dueCards = await this.db.getDueCardsForCustomDeck(customDeck.id);
-    if (dueCards.length > 0) {
-      return dueCards[0];
+    // Global daily cap (new + review combined) — gates both branches.
+    const globalRemaining = await this.globalDailyRemaining();
+
+    if (globalRemaining > 0) {
+      const dueCards = await this.db.getDueCardsForCustomDeck(customDeck.id);
+      if (dueCards.length > 0) {
+        return dueCards[0];
+      }
     }
 
-    if (allowNew) {
+    if (allowNew && globalRemaining > 0) {
       const newCards = await this.db.getNewCardsForCustomDeck(customDeck.id);
       if (newCards.length > 0) {
         return newCards[0];

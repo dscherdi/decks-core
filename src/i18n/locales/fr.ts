@@ -422,6 +422,7 @@ export const fr: Translations = {
       "{count} cartes de révision disponibles aujourd'hui (limite : {limit})",
     reviewCardsDueTooltip: "{count} cartes de révision dues",
     studiedSummary: "{cards} cartes étudiées en {hours} aujourd'hui ({pace})",
+    statCardsToday: "Cartes aujourd'hui",
   },
 
   review: {
@@ -1360,6 +1361,11 @@ export const fr: Translations = {
       studyDayStartsAt: "Le jour d'étude commence à",
       studyDayStartsAtDesc:
         "Heure à laquelle le jour d'étude bascule (0-23, défaut 4). Les révisions effectuées avant cette heure comptent pour la veille.",
+      enableGlobalReviewCap: "Limite quotidienne globale de cartes",
+      enableGlobalReviewCapDesc: "Limite le total de cartes (nouvelles + révision) par jour sur tous les paquets combinés (en plus des limites par paquet).",
+      globalReviewCap: "Cartes par jour (tous les paquets)",
+      globalReviewCapDesc: "Nombre maximal de cartes (nouvelles + révision) affichées par jour sur tous les paquets combinés.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Seuil de sangsue",
       leechThresholdDesc:
         "Une carte est marquée comme sangsue lorsque ses oublis atteignent ce nombre (défaut 8). Les sangsues sont oubliées à répétition et méritent souvent d'être réécrites.",

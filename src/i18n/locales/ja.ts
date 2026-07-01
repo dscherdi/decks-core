@@ -410,6 +410,7 @@ export const ja: Translations = {
       "本日 {count} 枚の復習カードが利用可能（上限: {limit})",
     reviewCardsDueTooltip: "{count} 枚の復習カード",
     studiedSummary: "本日 {hours} で {cards} 枚学習（{pace}）",
+    statCardsToday: "今日のカード",
   },
 
   review: {
@@ -1319,6 +1320,11 @@ export const ja: Translations = {
       studyDayStartsAt: "学習日が始まる時刻",
       studyDayStartsAtDesc:
         "学習日が切り替わる時刻（0-23、既定 4）。この時刻より前の復習は前日の統計と上限に算入されます。",
+      enableGlobalReviewCap: "全体の1日のカード上限",
+      enableGlobalReviewCapDesc: "すべてのデッキ合計の1日あたりのカード数（新規＋復習）を制限します（デッキごとの制限に加えて）。",
+      globalReviewCap: "1日のカード数（全デッキ）",
+      globalReviewCapDesc: "すべてのデッキ合計で1日に表示するカード（新規＋復習）の上限。",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "リーチのしきい値",
       leechThresholdDesc:
         "失念回数がこの数に達するとカードがリーチとして扱われます（既定 8）。リーチは繰り返し忘れられがちで、書き直しが望ましいことが多いです。",

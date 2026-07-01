@@ -423,6 +423,7 @@ export const sq: Translations = {
       "{count} karta për rishikim të disponueshme sot (kufiri: {limit})",
     reviewCardsDueTooltip: "{count} karta për rishikim në pritje",
     studiedSummary: "Studjuar {cards} karta për {hours} sot ({pace})",
+    statCardsToday: "Karta sot",
   },
 
   review: {
@@ -1365,6 +1366,11 @@ export const sq: Translations = {
       studyDayStartsAt: "Dita e studimit fillon në",
       studyDayStartsAtDesc:
         "Ora kur ndërron dita e studimit (0-23, paracaktuar 4). Rishikimet para kësaj ore llogariten për ditën e kaluar.",
+      enableGlobalReviewCap: "Kufi ditor global i kartave",
+      enableGlobalReviewCapDesc: "Kufizon totalin e kartave (të reja + rishikim) në ditë për të gjitha kutitë së bashku (përveç kufijve për kuti).",
+      globalReviewCap: "Karta në ditë (të gjitha kutitë)",
+      globalReviewCapDesc: "Numri maksimal i kartave (të reja + rishikim) të shfaqura në ditë për të gjitha kutitë së bashku.",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "Kufiri për kartat problematike (Leech)",
       leechThresholdDesc:
         "Një kartë shënohet si problem (leech) kur numri i gabimeve arrin këtë numër (paracaktuar 8). Këto karta harrohen shpesh dhe duhen rishkruar.",

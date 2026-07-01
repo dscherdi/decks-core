@@ -416,6 +416,7 @@ export const hi: Translations = {
       "आज {count} समीक्षा कार्ड उपलब्ध हैं (सीमा: {limit})",
     reviewCardsDueTooltip: "{count} समीक्षा कार्ड देय हैं",
     studiedSummary: "आज {hours} में {cards} कार्ड का अध्ययन किया ({pace})",
+    statCardsToday: "आज के कार्ड",
   },
 
   review: {
@@ -1351,6 +1352,11 @@ export const hi: Translations = {
       studyDayStartsAt: "अध्ययन का दिन शुरू होता है",
       studyDayStartsAtDesc:
         "वह घंटा जब अध्ययन का दिन बदलता है (0-23, डिफ़ॉल्ट 4 है)। इस घंटे से पहले की गई समीक्षाएं पिछले दिन के आँकड़ों और दैनिक सीमाओं में गिनी जाती हैं।",
+      enableGlobalReviewCap: "वैश्विक दैनिक कार्ड सीमा",
+      enableGlobalReviewCapDesc: "सभी डेक मिलाकर प्रति दिन कुल कार्ड (नए + समीक्षा) सीमित करें (प्रति-डेक सीमाओं के अतिरिक्त)।",
+      globalReviewCap: "प्रति दिन कार्ड (सभी डेक)",
+      globalReviewCapDesc: "सभी डेक मिलाकर प्रति दिन दिखाए जाने वाले कार्ड (नए + समीक्षा) की अधिकतम संख्या।",
+      globalReviewCapPlaceholder: "100",
       leechThreshold: "लीच (Leech) सीमा",
       leechThresholdDesc:
         "किसी कार्ड को तब 'लीच' के रूप में चिह्नित किया जाता है जब उसकी चूक (lapse) संख्या इस संख्या तक पहुँच जाती है (डिफ़ॉल्ट 8)। लीच कार्ड बार-बार भुलाए जाते हैं और संभवतः इन्हें फिर से लिखने की आवश्यकता होती है।",
