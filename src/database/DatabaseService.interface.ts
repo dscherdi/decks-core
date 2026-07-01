@@ -44,6 +44,9 @@ export interface IDatabaseService {
   migrationNotice: string | null;
 
   initialize(): Promise<void>;
+  // Resolves when the DB is ready for operations (worker/SQL.js up). Ops queue
+  // behind it, so callers only need this to sequence post-init work in onload.
+  whenReady(): Promise<void>;
   close(): Promise<void>;
   save(): Promise<void>;
 
