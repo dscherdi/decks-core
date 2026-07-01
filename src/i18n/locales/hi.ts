@@ -707,6 +707,8 @@ export const hi: Translations = {
       "समीक्षा कार्ड पर 'फिर से' दबाने पर अंतराल (उदा. 10m)",
     headerLevelLabel: "शीर्षक स्तर",
     headerLevelDescParsing: "फ़्लैशकार्ड पार्सिंग के लिए शीर्षक स्तर",
+    extraHeaderLevelsLabel: "अतिरिक्त शीर्षक स्तर",
+    extraHeaderLevelsDesc: "इन शीर्षक स्तरों को भी कार्ड के रूप में पार्स करें (नए और आयात किए गए कार्ड ऊपर दिए मुख्य स्तर का ही उपयोग करते हैं)",
     clozeDeletionsLabel: "क्लोज़ विलोपन",
     clozeDeletionsDesc: "==हाइलाइट किए गए== टेक्स्ट से क्लोज़ कार्ड बनाएं",
     clozeContextLabel: "क्लोज़ संदर्भ",

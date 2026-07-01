@@ -15,6 +15,11 @@ export interface DeckProfile {
   reviewCardsPerDay: number;
 
   headerLevel: number;
+  // Additional header levels (1-6) parsed as card fronts alongside the primary
+  // headerLevel. Empty by default; ignored in title mode (headerLevel === 0).
+  // Optional so existing profile literals/fixtures don't need updating — the DB
+  // layer always populates it (defaulting to []).
+  extraHeaderLevels?: number[];
 
   reviewOrder: ReviewOrder;
 
@@ -49,6 +54,19 @@ export function headingProfileName(level: number): string {
   return `Heading ${level}`;
 }
 
+/**
+ * Resolve the set of header levels parsed as card fronts for a profile/config.
+ * Title mode (primary level 0) parses the whole note and ignores extras.
+ * Otherwise the primary level plus any valid (1-6) extras, deduped.
+ */
+export function parseHeaderLevels(
+  cfg: { headerLevel: number; extraHeaderLevels?: number[] }
+): number[] {
+  if (cfg.headerLevel === 0) return [0];
+  const extras = (cfg.extraHeaderLevels ?? []).filter((l) => l >= 1 && l <= 6);
+  return Array.from(new Set([cfg.headerLevel, ...extras]));
+}
+
 export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modified'> = {
   name: 'DEFAULT',
   hasNewCardsLimitEnabled: false,
@@ -56,6 +74,7 @@ export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modifie
   hasReviewCardsLimitEnabled: false,
   reviewCardsPerDay: 100,
   headerLevel: 2,
+  extraHeaderLevels: [],
   reviewOrder: "due-date",
   learningSteps: "1m",
   relearningSteps: "10m",

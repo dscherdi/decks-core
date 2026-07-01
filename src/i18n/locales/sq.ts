@@ -714,6 +714,8 @@ export const sq: Translations = {
       "Intervali kur shtyp Përsëri në një kartë për rishikim (psh. 10m)",
     headerLevelLabel: "Niveli i titullit",
     headerLevelDescParsing: "Niveli i titullit për analizimin e kartave",
+    extraHeaderLevelsLabel: "Nivele shtesë titujsh",
+    extraHeaderLevelsDesc: "Analizo edhe këto nivele titujsh si karta (kartat e reja dhe të importuara përdorin gjithsesi nivelin kryesor më sipër)",
     clozeDeletionsLabel: "Boshllëqet (Cloze)",
     clozeDeletionsDesc: "Gjenero karta me boshllëqe nga teksti ==i theksuar==",
     clozeContextLabel: "Konteksti i boshllëkut",

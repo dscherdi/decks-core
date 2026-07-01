@@ -717,6 +717,8 @@ export const fr: Translations = {
       "Intervalle quand tu appuies Encore sur une carte de révision (ex. 10m)",
     headerLevelLabel: "Niveau de titre",
     headerLevelDescParsing: "Niveau de titre utilisé pour l'analyse",
+    extraHeaderLevelsLabel: "Niveaux de titre supplémentaires",
+    extraHeaderLevelsDesc: "Analyser aussi ces niveaux de titre comme des cartes (les nouvelles cartes et celles importées utilisent toujours le niveau principal ci-dessus)",
     clozeDeletionsLabel: "Lacunes",
     clozeDeletionsDesc:
       "Générer des cartes à lacunes depuis le texte ==surligné==",

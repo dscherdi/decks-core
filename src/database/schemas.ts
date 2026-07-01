@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 32;
+export const CURRENT_SCHEMA_VERSION = 33;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -61,6 +61,7 @@ export const CREATE_TABLES_SQL = `
     has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
     review_cards_per_day INTEGER NOT NULL DEFAULT 100,
     header_level INTEGER NOT NULL DEFAULT 2,
+    extra_header_levels TEXT NOT NULL DEFAULT '[]',
     review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
     learning_steps TEXT NOT NULL DEFAULT '1m',
     relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -355,6 +356,7 @@ export function buildMigrationSQL(db: Database): string {
   const needsCloze = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("cloze_enabled");
   const needsUseTrained = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("fsrs_use_trained");
   const needsDeckprofilesDeletedAt = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("deleted_at");
+  const needsExtraHeaderLevels = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("extra_header_levels");
   const customDecksColumns = getColumnNames(db, "custom_decks");
   const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
@@ -474,6 +476,7 @@ export function buildMigrationSQL(db: Database): string {
       has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
       review_cards_per_day INTEGER NOT NULL DEFAULT 100,
       header_level INTEGER NOT NULL DEFAULT 2,
+      extra_header_levels TEXT NOT NULL DEFAULT '[]',
       review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
       learning_steps TEXT NOT NULL DEFAULT '1m',
       relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -505,6 +508,10 @@ export function buildMigrationSQL(db: Database): string {
 
     ${needsDeckprofilesDeletedAt ? `
     ALTER TABLE deckprofiles ADD COLUMN deleted_at TEXT;
+    ` : ""}
+
+    ${needsExtraHeaderLevels ? `
+    ALTER TABLE deckprofiles ADD COLUMN extra_header_levels TEXT NOT NULL DEFAULT '[]';
     ` : ""}
 
     INSERT OR IGNORE INTO deckprofiles (
@@ -540,6 +547,7 @@ export function buildMigrationSQL(db: Database): string {
       has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
       review_cards_per_day INTEGER NOT NULL DEFAULT 100,
       header_level INTEGER NOT NULL DEFAULT 2,
+      extra_header_levels TEXT NOT NULL DEFAULT '[]',
       review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
       learning_steps TEXT NOT NULL DEFAULT '1m',
       relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -557,7 +565,7 @@ export function buildMigrationSQL(db: Database): string {
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, extra_header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
@@ -567,7 +575,7 @@ export function buildMigrationSQL(db: Database): string {
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, extra_header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention,
       CASE
@@ -930,8 +938,8 @@ export const SQL_QUERIES = {
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_default, created, modified, extra_header_levels
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -940,7 +948,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -950,7 +958,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -960,7 +968,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -972,7 +980,7 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -985,6 +993,7 @@ export const SQL_QUERIES = {
       learning_steps = ?, relearning_steps = ?,
       fsrs_request_retention = ?, fsrs_profile = ?,
       cloze_enabled = ?, cloze_show_context = ?,
+      extra_header_levels = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,

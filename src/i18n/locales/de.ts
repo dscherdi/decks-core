@@ -721,6 +721,8 @@ export const de: Translations = {
       "Intervall bei Nochmal auf einer Wiederholungskarte (z. B. 10m)",
     headerLevelLabel: "Überschriftenebene",
     headerLevelDescParsing: "Überschriftenebene für das Parsen",
+    extraHeaderLevelsLabel: "Zusätzliche Überschriftenebenen",
+    extraHeaderLevelsDesc: "Diese Überschriftenebenen ebenfalls als Karten parsen (neue und importierte Karten verwenden weiterhin die primäre Ebene oben)",
     clozeDeletionsLabel: "Lückentexte",
     clozeDeletionsDesc: "Lückentexte aus ==hervorgehobenem== Text generieren",
     clozeContextLabel: "Lücken-Kontext",

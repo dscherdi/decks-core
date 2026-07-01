@@ -687,6 +687,8 @@ export const ar: Translations = {
       "الفاصل الزمني عند الضغط على مجدداً لبطاقة مراجعة (مثال: 10m)",
     headerLevelLabel: "مستوى العنوان",
     headerLevelDescParsing: "مستوى العنوان لتحليل البطاقات",
+    extraHeaderLevelsLabel: "مستويات عناوين إضافية",
+    extraHeaderLevelsDesc: "حلّل هذه المستويات من العناوين كبطاقات أيضًا (تظل البطاقات الجديدة والمستوردة تستخدم المستوى الأساسي أعلاه)",
     clozeDeletionsLabel: "حذف الفراغات",
     clozeDeletionsDesc: "إنشاء بطاقات فراغات من النص ==المميز==",
     clozeContextLabel: "سياق الفراغات",

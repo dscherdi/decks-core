@@ -712,6 +712,8 @@ export const es: Translations = {
       "Intervalo al pulsar Otra vez en una tarjeta de repaso (p. ej. 10m)",
     headerLevelLabel: "Nivel de encabezado",
     headerLevelDescParsing: "Nivel de encabezado para el análisis",
+    extraHeaderLevelsLabel: "Niveles de encabezado adicionales",
+    extraHeaderLevelsDesc: "Analiza también estos niveles de encabezado como tarjetas (las tarjetas nuevas e importadas siguen usando el nivel principal de arriba)",
     clozeDeletionsLabel: "Huecos",
     clozeDeletionsDesc: "Generar tarjetas con huecos desde texto ==resaltado==",
     clozeContextLabel: "Contexto de huecos",

@@ -705,6 +705,8 @@ export const it: Translations = {
       "Intervallo premendo Di nuovo su una scheda di ripasso (es. 10m)",
     headerLevelLabel: "Livello di intestazione",
     headerLevelDescParsing: "Livello di intestazione per l'analisi",
+    extraHeaderLevelsLabel: "Livelli di intestazione aggiuntivi",
+    extraHeaderLevelsDesc: "Analizza anche questi livelli di intestazione come carte (le carte nuove e importate usano comunque il livello principale sopra)",
     clozeDeletionsLabel: "Lacune",
     clozeDeletionsDesc: "Genera schede con lacune da testo ==evidenziato==",
     clozeContextLabel: "Contesto lacune",

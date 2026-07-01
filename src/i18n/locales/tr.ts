@@ -701,6 +701,8 @@ export const tr: Translations = {
       "Tekrar kartında Yeniden'e basıldığındaki aralık (örn. 10m)",
     headerLevelLabel: "Başlık seviyesi",
     headerLevelDescParsing: "Bilgi kartı ayrıştırma için başlık seviyesi",
+    extraHeaderLevelsLabel: "Ek başlık seviyeleri",
+    extraHeaderLevelsDesc: "Bu başlık seviyelerini de kart olarak ayrıştır (yeni ve içe aktarılan kartlar yukarıdaki ana seviyeyi kullanmaya devam eder)",
     clozeDeletionsLabel: "Boşluk doldurmalar",
     clozeDeletionsDesc:
       "==Vurgulanan== metinden boşluk doldurma (cloze) kartları oluştur",

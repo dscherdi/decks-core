@@ -667,6 +667,8 @@ export const zh: Translations = {
     againIntervalReviewDesc: "对复习卡片按重来时的间隔（如 10m）",
     headerLevelLabel: "标题级别",
     headerLevelDescParsing: "用于解析的标题级别",
+    extraHeaderLevelsLabel: "额外的标题级别",
+    extraHeaderLevelsDesc: "同时将这些标题级别解析为卡片（新建和导入的卡片仍使用上方的主级别）",
     clozeDeletionsLabel: "填空",
     clozeDeletionsDesc: "从 ==高亮== 文本生成填空卡片",
     clozeContextLabel: "填空上下文",

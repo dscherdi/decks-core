@@ -131,7 +131,7 @@ export class FlashcardParser {
   private static extractOcclusionV2Blocks(
     content: string,
     clozeEnabled: boolean,
-    headerLevel: number
+    levelSet: Set<number>
   ): { cards: ParsedFlashcard[]; maskedContent: string } {
     const lines = content.split("\n");
     const cards: ParsedFlashcard[] = [];
@@ -186,7 +186,7 @@ export class FlashcardParser {
         // section header (stack top) must be at the configured level.
         const top = headerStack[headerStack.length - 1];
         const inConfiguredHeader =
-          headerLevel === 0 || (!!top && top.level === headerLevel);
+          levelSet.has(0) || (!!top && levelSet.has(top.level));
         if (clozeEnabled && inConfiguredHeader) {
           const breadcrumb = headerStack.map((h) => h.text).join(" > ");
           const tags = FlashcardParser.collectStackTags(headerStack);
@@ -255,24 +255,29 @@ export class FlashcardParser {
   /**
    * Parse flashcards from content string (optimized single-pass parsing)
    * @param content - Markdown content to parse
-   * @param headerLevel - Target header level for header-paragraph flashcards (1-6, default: 2), or 0 for title mode
-   * @param fileTitle - File title used as card front when headerLevel is 0 (title mode)
+   * @param headerLevel - Target header level(s) for header-paragraph flashcards
+   *   (1-6, default: 2), or 0 for title mode. Accepts a single level or a set of levels.
+   * @param fileTitle - File title used as card front when in title mode (level 0)
    * @param clozeEnabled - When true, ==highlighted== text generates cloze cards
    * @returns Array of parsed flashcards
    */
   static parseFlashcardsFromContent(
     content: string,
-    headerLevel = 2,
+    headerLevel: number | number[] = 2,
     fileTitle?: string,
     clozeEnabled = false
   ): ParsedFlashcard[] {
+    const levelSet = new Set(
+      Array.isArray(headerLevel) ? headerLevel : [headerLevel]
+    );
+
     // Pre-pass: pull out V2 occlusion codeblocks and strip them from the
     // content so they never reach the header/table parser below.
-    const occlusion = FlashcardParser.extractOcclusionV2Blocks(content, clozeEnabled, headerLevel);
+    const occlusion = FlashcardParser.extractOcclusionV2Blocks(content, clozeEnabled, levelSet);
     content = occlusion.maskedContent;
     const occlusionCards = occlusion.cards;
 
-    if (headerLevel === 0) {
+    if (levelSet.has(0)) {
       if (!fileTitle) return occlusionCards;
       const back = FlashcardParser.stripFrontmatter(content).trim();
       if (clozeEnabled) {
@@ -331,7 +336,7 @@ export class FlashcardParser {
         // Only parse table if we have a current header with the correct level AND no non-table content
         if (
           currentHeader &&
-          currentHeader.level === headerLevel &&
+          levelSet.has(currentHeader.level) &&
           !hasNonTableContent
         ) {
           if (!inTable) {
@@ -443,7 +448,7 @@ export class FlashcardParser {
               currentHeader,
               currentContent,
               flashcards,
-              headerLevel,
+              levelSet,
               breadcrumb,
               stackTags,
               clozeEnabled
@@ -473,7 +478,7 @@ export class FlashcardParser {
             currentHeader,
             currentContent,
             flashcards,
-            headerLevel,
+            levelSet,
             breadcrumb,
             stackTags,
             clozeEnabled
@@ -524,7 +529,7 @@ export class FlashcardParser {
       currentHeader,
       currentContent,
       flashcards,
-      headerLevel,
+      levelSet,
       finalBreadcrumb,
       finalStackTags,
       clozeEnabled
@@ -610,7 +615,7 @@ export class FlashcardParser {
     currentHeader: { text: string; level: number; tags: string[] } | null,
     currentContent: string[],
     flashcards: ParsedFlashcard[],
-    targetHeaderLevel: number,
+    targetLevels: Set<number>,
     breadcrumb: string,
     stackTags: string[],
     clozeEnabled = false
@@ -618,7 +623,7 @@ export class FlashcardParser {
     if (
       currentHeader &&
       currentContent.length > 0 &&
-      currentHeader.level === targetHeaderLevel
+      targetLevels.has(currentHeader.level)
     ) {
       // A header section whose only content is blank lines or a thematic break
       // (e.g. a trailing `---` separator left after its table) is not a real card.

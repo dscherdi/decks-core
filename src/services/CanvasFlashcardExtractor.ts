@@ -23,7 +23,7 @@ export class CanvasFlashcardExtractor {
 
   static extract(
     rawJson: string,
-    headerLevel = 2,
+    headerLevel: number | number[] = 2,
     fileTitle?: string,
     clozeEnabled = false,
   ): ParsedFlashcard[] {

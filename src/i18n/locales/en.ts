@@ -658,6 +658,8 @@ export const en = {
     againIntervalReviewDesc: "Interval when pressing Again on a review card (e.g. 10m)",
     headerLevelLabel: "Header level",
     headerLevelDescParsing: "Header level for flashcard parsing",
+    extraHeaderLevelsLabel: "Additional header levels",
+    extraHeaderLevelsDesc: "Also parse these header levels as cards (new and imported cards still use the primary level above)",
     clozeDeletionsLabel: "Cloze deletions",
     clozeDeletionsDesc: "Generate cloze cards from ==highlighted== text",
     clozeContextLabel: "Cloze context",

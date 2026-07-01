@@ -692,6 +692,8 @@ export const ja: Translations = {
       "復習カードで「もう一度」を押した時の間隔（例：10m）",
     headerLevelLabel: "見出しレベル",
     headerLevelDescParsing: "解析に使う見出しレベル",
+    extraHeaderLevelsLabel: "追加の見出しレベル",
+    extraHeaderLevelsDesc: "これらの見出しレベルもカードとして解析します（新規・インポートされたカードは引き続き上の主レベルを使用します）",
     clozeDeletionsLabel: "穴埋め",
     clozeDeletionsDesc: "==強調== テキストから穴埋めカードを生成",
     clozeContextLabel: "穴埋めのコンテキスト",

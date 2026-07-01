@@ -383,12 +383,12 @@ async function handleProfileUpsert(
        id, name,
        has_new_cards_limit_enabled, new_cards_per_day,
        has_review_cards_limit_enabled, review_cards_per_day,
-       header_level, review_order,
+       header_level, extra_header_levels, review_order,
        learning_steps, relearning_steps,
        fsrs_request_retention, fsrs_profile,
        cloze_enabled, cloze_show_context,
        is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -396,6 +396,7 @@ async function handleProfileUpsert(
        has_review_cards_limit_enabled = excluded.has_review_cards_limit_enabled,
        review_cards_per_day = excluded.review_cards_per_day,
        header_level = excluded.header_level,
+       extra_header_levels = excluded.extra_header_levels,
        review_order = excluded.review_order,
        learning_steps = excluded.learning_steps,
        relearning_steps = excluded.relearning_steps,
@@ -415,6 +416,7 @@ async function handleProfileUpsert(
       p.hasReviewCardsLimitEnabled ? 1 : 0,
       p.reviewCardsPerDay,
       p.headerLevel,
+      JSON.stringify(p.extraHeaderLevels ?? []),
       p.reviewOrder,
       p.learningSteps,
       p.relearningSteps,

@@ -673,6 +673,8 @@ export const zhTW: Translations = {
     againIntervalReviewDesc: "在複習卡片上按下「重來」時的間隔時間 (例如：10m)",
     headerLevelLabel: "標題層級",
     headerLevelDescParsing: "閃卡解析用的標題層級",
+    extraHeaderLevelsLabel: "額外的標題層級",
+    extraHeaderLevelsDesc: "同時將這些標題層級解析為卡片（新建與匯入的卡片仍使用上方的主層級）",
     clozeDeletionsLabel: "填空 (Cloze)",
     clozeDeletionsDesc: "從 ==螢光筆標記== 的文字產生填空卡片",
     clozeContextLabel: "填空環境",

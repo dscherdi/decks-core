@@ -197,6 +197,7 @@ export interface ProfileUpsertOp {
     hasReviewCardsLimitEnabled: boolean;
     reviewCardsPerDay: number;
     headerLevel: number;
+    extraHeaderLevels?: number[];
     reviewOrder: "due-date" | "random";
     learningSteps: string;
     relearningSteps: string;

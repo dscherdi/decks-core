@@ -1,6 +1,7 @@
 import { FlashcardParser } from "./FlashcardParser";
 import { CanvasFlashcardExtractor } from "./CanvasFlashcardExtractor";
 import type { Flashcard, FlashcardType, DeckProfile, TemplateRow } from "../database/types";
+import { parseHeaderLevels } from "../database/types";
 import type { SqlJsValue } from "../database/sql-types";
 import {
   generateFlashcardId,
@@ -232,16 +233,17 @@ export class FlashcardSynchronizer {
       // text-node id.
       progressCallback?.(10, "Parsing flashcards from file content...");
       const isCanvas = data.deckFilepath.toLowerCase().endsWith(".canvas");
+      const headerLevels = parseHeaderLevels(data.deckConfig);
       const parsedCards = isCanvas
         ? CanvasFlashcardExtractor.extract(
             data.fileContent,
-            data.deckConfig.headerLevel,
+            headerLevels,
             data.fileTitle,
             data.clozeEnabled,
           )
         : FlashcardParser.parseFlashcardsFromContent(
             data.fileContent,
-            data.deckConfig.headerLevel,
+            headerLevels,
             data.fileTitle,
             data.clozeEnabled,
           );
