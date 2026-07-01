@@ -217,6 +217,13 @@ export interface IDatabaseService {
   countTotalCards(deckId: string): Promise<number>;
   countAllCards(): Promise<number>;
   countMatureCards(deckId: string): Promise<number>;
+  // Batched per-deck stats for ALL decks in one grouped query each (fast deck-list refresh).
+  getDeckCardStatsBatch(): Promise<
+    { deckId: string; total: number; newCount: number; dueCount: number; matureCount: number }[]
+  >;
+  getDailyReviewCountsBatch(
+    nextDayStartsAt?: number
+  ): Promise<{ deckId: string; newCount: number; reviewCount: number }[]>;
 
   getScheduledDueByDay(
     deckId: string,
