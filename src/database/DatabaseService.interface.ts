@@ -6,6 +6,8 @@ import type {
   Flashcard,
   ReviewLog,
   ReviewSession,
+  CramSession,
+  CramCard,
   CustomDeck,
   CustomDeckType,
   FsrsWeightSet,
@@ -180,6 +182,33 @@ export interface IDatabaseService {
   reviewSessionExists(sessionId: string): Promise<boolean>;
   isCardReviewedInSession(sessionId: string, flashcardId: string): Promise<boolean>;
   countCardReviewsInSession(sessionId: string, flashcardId: string): Promise<number>;
+
+  // Cram (drill) — isolated from real scheduling and review history.
+  createCramSession(
+    session: Omit<CramSession, "id" | "created" | "modified">
+  ): Promise<string>;
+  getCramSessionById(id: string): Promise<CramSession | null>;
+  getActiveCramSessionForDeck(deckKey: string): Promise<CramSession | null>;
+  updateCramSessionProgress(id: string, graduatedCount: number): Promise<void>;
+  endCramSession(id: string): Promise<void>;
+  batchCreateCramCards(
+    cards: Array<Omit<CramCard, "created" | "modified">>
+  ): Promise<void>;
+  getCramCardById(id: string): Promise<CramCard | null>;
+  getNextDueCramCard(sessionId: string): Promise<CramCard | null>;
+  countRemainingCramCards(sessionId: string): Promise<number>;
+  updateCramCard(
+    id: string,
+    updates: {
+      tempState: CramCard["tempState"];
+      tempStability: number;
+      tempDifficulty: number;
+      tempInterval: number;
+      tempDueAt: string;
+      reps: number;
+    }
+  ): Promise<void>;
+  graduateCramCard(id: string, graduatedAt: string, reps: number): Promise<void>;
 
   createCustomDeck(
     name: string,

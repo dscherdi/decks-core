@@ -296,6 +296,7 @@ export const hi: Translations = {
       "समीक्षा शुरू करने में त्रुटि। विवरण के लिए कंसोल देखें।",
     errorStartingBrowse:
       "ब्राउज़ शुरू करने में त्रुटि। विवरण के लिए कंसोल देखें।",
+    errorStartingCram: "गहन अभ्यास शुरू करने में त्रुटि। विवरण के लिए कंसोल देखें।",
     noCardsFoundInDeck: "{deckName} में कोई कार्ड नहीं मिला",
     noCardsDueForReview: "{deckName} में समीक्षा के लिए कोई कार्ड देय नहीं है",
     noCardsFoundInGroup: '"{name}" में कोई कार्ड नहीं मिला',
@@ -365,6 +366,8 @@ export const hi: Translations = {
     review: "समीक्षा",
     browse: "ब्राउज़",
     browseAllCards: "सभी कार्ड ब्राउज़ करें",
+    cram: "गहन अभ्यास",
+    resumeCram: "गहन अभ्यास जारी रखें",
     configureProfile: "प्रोफ़ाइल कॉन्फ़िगर करें",
     rename: "नाम बदलें",
     delete: "हटाएं",

@@ -301,6 +301,7 @@ export const de: Translations = {
       "Fehler beim Starten der Wiederholung. Siehe Konsole für Details.",
     errorStartingBrowse:
       "Fehler beim Starten des Durchsuchens. Siehe Konsole für Details.",
+    errorStartingCram: "Fehler beim Starten des Paukens. Siehe Konsole für Details.",
     noCardsFoundInDeck: "Keine Karten gefunden in {deckName}",
     noCardsDueForReview: "Keine Karten zur Wiederholung fällig in {deckName}",
     noCardsFoundInGroup: 'Keine Karten gefunden in "{name}"',
@@ -376,6 +377,8 @@ export const de: Translations = {
     review: "Wiederholen",
     browse: "Durchsuchen",
     browseAllCards: "Alle Karten durchsuchen",
+    cram: "Pauken",
+    resumeCram: "Pauken fortsetzen",
     configureProfile: "Profil konfigurieren",
     rename: "Umbenennen",
     delete: "Löschen",

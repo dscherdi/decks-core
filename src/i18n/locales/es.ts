@@ -296,6 +296,7 @@ export const es: Translations = {
     errorStartingReview: "Error al iniciar el repaso. Consulta la consola.",
     errorStartingBrowse:
       "Error al iniciar la exploración. Consulta la consola.",
+    errorStartingCram: "Error al iniciar el repaso intensivo. Consulta la consola.",
     noCardsFoundInDeck: "No se encontraron tarjetas en {deckName}",
     noCardsDueForReview: "No hay tarjetas pendientes de repaso en {deckName}",
     noCardsFoundInGroup: 'No se encontraron tarjetas en "{name}"',
@@ -369,6 +370,8 @@ export const es: Translations = {
     review: "Repasar",
     browse: "Explorar",
     browseAllCards: "Explorar todas las tarjetas",
+    cram: "Repaso intensivo",
+    resumeCram: "Reanudar repaso intensivo",
     configureProfile: "Configurar perfil",
     rename: "Renombrar",
     delete: "Eliminar",

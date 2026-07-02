@@ -296,6 +296,7 @@ export const sq: Translations = {
       "Gabim në fillimin e rishikimit. Kontrollo konsolën për detaje.",
     errorStartingBrowse:
       "Gabim në fillimin e shfletimit. Kontrollo konsolën për detaje.",
+    errorStartingCram: "Gabim në fillimin e përsëritjes intensive. Kontrollo konsolën për detaje.",
     noCardsFoundInDeck: "Nuk u gjet asnjë kartë në {deckName}",
     noCardsDueForReview: "Nuk ka karta në radhë për rishikim në {deckName}",
     noCardsFoundInGroup: 'Nuk u gjet asnjë kartë në "{name}"',
@@ -369,6 +370,8 @@ export const sq: Translations = {
     review: "Rishiko",
     browse: "Shfleto",
     browseAllCards: "Shfleto të gjitha kartat",
+    cram: "Përsëritje intensive",
+    resumeCram: "Vazhdo përsëritjen intensive",
     configureProfile: "Konfiguro profilin",
     rename: "Riemërto",
     delete: "Fshi",

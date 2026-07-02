@@ -290,6 +290,7 @@ export const it: Translations = {
     errorStartingReview: "Errore nell'avvio del ripasso. Vedi la console.",
     errorStartingBrowse:
       "Errore nell'avvio della navigazione. Vedi la console.",
+    errorStartingCram: "Errore nell'avvio del ripasso intensivo. Vedi la console.",
     noCardsFoundInDeck: "Nessuna scheda trovata in {deckName}",
     noCardsDueForReview: "Nessuna scheda da ripassare in {deckName}",
     noCardsFoundInGroup: 'Nessuna scheda trovata in "{name}"',
@@ -361,6 +362,8 @@ export const it: Translations = {
     review: "Ripassa",
     browse: "Sfoglia",
     browseAllCards: "Sfoglia tutte le schede",
+    cram: "Ripasso intensivo",
+    resumeCram: "Riprendi ripasso intensivo",
     configureProfile: "Configura profilo",
     rename: "Rinomina",
     delete: "Elimina",

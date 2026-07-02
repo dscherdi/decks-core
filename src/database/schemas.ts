@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 33;
+export const CURRENT_SCHEMA_VERSION = 35;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -264,6 +264,38 @@ export const CREATE_TABLES_SQL = `
     byte_offset INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Cram (drill) sessions: isolated from real scheduling — no review_logs,
+  -- no flashcard mutations. deck_key is FileDeck.id / DeckGroup.tag / CustomDeck.id.
+  CREATE TABLE IF NOT EXISTS cram_sessions (
+    id TEXT PRIMARY KEY,
+    deck_key TEXT NOT NULL,
+    deck_kind TEXT NOT NULL CHECK (deck_kind IN ('file', 'group', 'custom')),
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    goal_total INTEGER NOT NULL DEFAULT 0,
+    graduated_count INTEGER NOT NULL DEFAULT 0,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
+  );
+
+  -- Per-card ephemeral cram state (temporary FSRS-like state, disposable).
+  CREATE TABLE IF NOT EXISTS cram_cards (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    flashcard_id TEXT NOT NULL,
+    temp_state TEXT NOT NULL DEFAULT 'new' CHECK (temp_state IN ('new', 'review')),
+    temp_stability REAL NOT NULL DEFAULT 0,
+    temp_difficulty REAL NOT NULL DEFAULT 5.0,
+    temp_interval REAL NOT NULL DEFAULT 0,
+    temp_due_at TEXT NOT NULL,
+    reps INTEGER NOT NULL DEFAULT 0,
+    graduated_at TEXT,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES cram_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (flashcard_id) REFERENCES flashcards(id) ON DELETE CASCADE
+  );
+
   -- Insert DEFAULT profile
   INSERT OR IGNORE INTO deckprofiles (
     id, name,
@@ -315,6 +347,11 @@ export const CREATE_TABLES_SQL = `
   -- Custom deck indexes
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
+
+  -- Cram indexes (queue lookup = earliest non-graduated by due time)
+  CREATE INDEX IF NOT EXISTS idx_cram_cards_queue ON cram_cards(session_id, graduated_at, temp_due_at);
+  CREATE INDEX IF NOT EXISTS idx_cram_cards_flashcard ON cram_cards(flashcard_id);
+  CREATE INDEX IF NOT EXISTS idx_cram_sessions_deck ON cram_sessions(deck_key);
 
   -- Tombstone indexes (so live-row scans stay cheap)
   CREATE INDEX IF NOT EXISTS idx_deckprofiles_live ON deckprofiles(deleted_at);
@@ -839,6 +876,41 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_live ON fsrs_weight_sets(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_trained_at ON fsrs_weight_sets(trained_at);
 
+    -- Cram (drill) tables. Created here (not just in CREATE_TABLES_SQL) because the
+    -- production worker migration path runs ONLY buildMigrationSQL — it never runs
+    -- CREATE_TABLES_SQL afterward, so new tables must be materialized here to reach
+    -- existing databases.
+    CREATE TABLE IF NOT EXISTS cram_sessions (
+      id TEXT PRIMARY KEY,
+      deck_key TEXT NOT NULL,
+      deck_kind TEXT NOT NULL CHECK (deck_kind IN ('file', 'group', 'custom')),
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      goal_total INTEGER NOT NULL DEFAULT 0,
+      graduated_count INTEGER NOT NULL DEFAULT 0,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS cram_cards (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      flashcard_id TEXT NOT NULL,
+      temp_state TEXT NOT NULL DEFAULT 'new' CHECK (temp_state IN ('new', 'review')),
+      temp_stability REAL NOT NULL DEFAULT 0,
+      temp_difficulty REAL NOT NULL DEFAULT 5.0,
+      temp_interval REAL NOT NULL DEFAULT 0,
+      temp_due_at TEXT NOT NULL,
+      reps INTEGER NOT NULL DEFAULT 0,
+      graduated_at TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES cram_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (flashcard_id) REFERENCES flashcards(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_cram_cards_queue ON cram_cards(session_id, graduated_at, temp_due_at);
+    CREATE INDEX IF NOT EXISTS idx_cram_cards_flashcard ON cram_cards(flashcard_id);
+    CREATE INDEX IF NOT EXISTS idx_cram_sessions_deck ON cram_sessions(deck_key);
+
     -- Set schema version
     PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
 
@@ -1347,6 +1419,68 @@ export const SQL_QUERIES = {
 
   DELETE_REVIEW_SESSIONS_FOR_DECK: `
     DELETE FROM review_sessions WHERE deck_id = ?
+  `,
+
+  // Cram (drill) operations
+  INSERT_CRAM_SESSION: `
+    INSERT INTO cram_sessions (
+      id, deck_key, deck_kind, started_at, ended_at, goal_total, graduated_count, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_CRAM_SESSION_BY_ID: `SELECT * FROM cram_sessions WHERE id = ?`,
+
+  GET_ACTIVE_CRAM_SESSION_FOR_DECK: `
+    SELECT * FROM cram_sessions
+    WHERE deck_key = ? AND ended_at IS NULL
+    ORDER BY started_at DESC
+    LIMIT 1
+  `,
+
+  UPDATE_CRAM_SESSION_PROGRESS: `
+    UPDATE cram_sessions
+    SET graduated_count = ?, modified = ?
+    WHERE id = ?
+  `,
+
+  UPDATE_CRAM_SESSION_END: `
+    UPDATE cram_sessions
+    SET ended_at = ?, modified = ?
+    WHERE id = ?
+  `,
+
+  INSERT_CRAM_CARD: `
+    INSERT OR IGNORE INTO cram_cards (
+      id, session_id, flashcard_id, temp_state, temp_stability, temp_difficulty,
+      temp_interval, temp_due_at, reps, graduated_at, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_CRAM_CARD_BY_ID: `SELECT * FROM cram_cards WHERE id = ?`,
+
+  GET_NEXT_CRAM_CARD: `
+    SELECT * FROM cram_cards
+    WHERE session_id = ? AND graduated_at IS NULL
+    ORDER BY temp_due_at ASC
+    LIMIT 1
+  `,
+
+  COUNT_REMAINING_CRAM_CARDS: `
+    SELECT COUNT(*) as count FROM cram_cards
+    WHERE session_id = ? AND graduated_at IS NULL
+  `,
+
+  UPDATE_CRAM_CARD: `
+    UPDATE cram_cards
+    SET temp_state = ?, temp_stability = ?, temp_difficulty = ?,
+        temp_interval = ?, temp_due_at = ?, reps = ?, modified = ?
+    WHERE id = ?
+  `,
+
+  GRADUATE_CRAM_CARD: `
+    UPDATE cram_cards
+    SET graduated_at = ?, reps = ?, modified = ?
+    WHERE id = ?
   `,
 
   // Custom deck operations

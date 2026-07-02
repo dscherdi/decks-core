@@ -6,7 +6,10 @@ import type {
   ReviewLog,
   DeckGroup,
   CustomDeckGroup,
+  DeckOrGroup,
+  CramRating,
 } from "../database/types";
+import { isDeckGroup, isCustomDeck } from "../database/types";
 import type {
   IDatabaseService,
   ILogger,
@@ -41,6 +44,20 @@ export interface SessionProgress {
   goalTotal: number;
   progress: number; // 0-100
 }
+
+export interface CramProgress {
+  graduated: number;
+  goalTotal: number;
+  progress: number; // 0-100
+}
+
+export interface CramRateResult {
+  graduated: boolean;
+  interval: number; // minutes
+}
+
+// A card leaves the cram queue once a rating would schedule it >= 1 day out.
+const CRAM_GRADUATION_MINUTES = 1440;
 
 export interface NewSession {
   sessionId: string;
@@ -1285,6 +1302,244 @@ export class Scheduler {
     const nextDayStartsAt = this.settings.review.nextDayStartsAt;
     const intervalDays = Math.ceil(intervalMinutes / 1440);
     return this.getStudyDayStartAfterDays(now, intervalDays, nextDayStartsAt);
+  }
+
+  // CRAM (DRILL) METHODS
+  // Cram drills every card "from scratch" until it graduates to a >= 1 day
+  // interval. It reuses the pure FSRS path but persists a private per-card
+  // state in cram_cards — it never writes review_logs, never mutates flashcards,
+  // and never emits sync ops (cross-device convergence is merge-before-save).
+
+  private cramDeckKeyAndKind(deckOrGroup: DeckOrGroup): {
+    deckKey: string;
+    deckKind: "file" | "group" | "custom";
+  } {
+    if (isDeckGroup(deckOrGroup)) {
+      return { deckKey: deckOrGroup.tag, deckKind: "group" };
+    }
+    if (isCustomDeck(deckOrGroup)) {
+      return { deckKey: deckOrGroup.id, deckKind: "custom" };
+    }
+    return { deckKey: deckOrGroup.id, deckKind: "file" };
+  }
+
+  private cramCardId(sessionId: string, flashcardId: string): string {
+    return `${sessionId}:${flashcardId}`;
+  }
+
+  private isSameStudyDay(startedAtIso: string, now: Date): boolean {
+    const nextDayStartsAt = this.settings.review.nextDayStartsAt;
+    return (
+      this.getStudyDayStart(new Date(startedAtIso), nextDayStartsAt) ===
+      this.getStudyDayStart(now, nextDayStartsAt)
+    );
+  }
+
+  /**
+   * Whether a cram session for this deck can be resumed right now: an unfinished
+   * session from the same study day that still has cards to graduate. Drives the
+   * "Resume cram" vs "Cram" menu label; matches startCramSession's resume gate.
+   */
+  async hasResumableCram(
+    deckOrGroup: DeckOrGroup,
+    now: Date = new Date()
+  ): Promise<boolean> {
+    const { deckKey } = this.cramDeckKeyAndKind(deckOrGroup);
+    const existing = await this.db.getActiveCramSessionForDeck(deckKey);
+    if (!existing) return false;
+    if (!this.isSameStudyDay(existing.startedAt, now)) return false;
+    return (await this.db.countRemainingCramCards(existing.id)) > 0;
+  }
+
+  /**
+   * Start (or resume) a cram session over the given cards. If an unfinished
+   * session with cards still to graduate already exists for this deck, it is
+   * resumed; otherwise a fresh session is seeded with every card reset to a
+   * "new" learning state.
+   */
+  async startCramSession(
+    deckOrGroup: DeckOrGroup,
+    cards: Flashcard[],
+    now: Date = new Date()
+  ): Promise<NewSession> {
+    const { deckKey, deckKind } = this.cramDeckKeyAndKind(deckOrGroup);
+
+    const existing = await this.db.getActiveCramSessionForDeck(deckKey);
+    if (existing) {
+      const remaining = await this.db.countRemainingCramCards(existing.id);
+      if (remaining > 0 && this.isSameStudyDay(existing.startedAt, now)) {
+        this.debugLog(`Resuming cram session ${existing.id} (${remaining} left)`);
+        return { sessionId: existing.id, deckFilePath: "" };
+      }
+      // Stale (previous study day) or fully graduated — retire before starting fresh.
+      await this.db.endCramSession(existing.id);
+    }
+
+    const sessionId = await this.db.createCramSession({
+      deckKey,
+      deckKind,
+      startedAt: now.toISOString(),
+      endedAt: null,
+      goalTotal: cards.length,
+      graduatedCount: 0,
+    });
+
+    const nowIso = now.toISOString();
+    await this.db.batchCreateCramCards(
+      cards.map((card) => ({
+        id: this.cramCardId(sessionId, card.id),
+        sessionId,
+        flashcardId: card.id,
+        tempState: "new",
+        tempStability: 0,
+        tempDifficulty: 5.0,
+        tempInterval: 0,
+        tempDueAt: nowIso,
+        reps: 0,
+        graduatedAt: null,
+      }))
+    );
+
+    this.debugLog(`Cram session created: ${sessionId}, goal: ${cards.length}`);
+    return { sessionId, deckFilePath: "" };
+  }
+
+  /**
+   * Get the next card to drill in a cram session (earliest non-graduated by
+   * in-session due time), or null when every card has graduated. Cram entries
+   * whose real flashcard was deleted are graduated out and skipped.
+   */
+  async getNextCramCard(sessionId: string): Promise<Flashcard | null> {
+    for (;;) {
+      const cramCard = await this.db.getNextDueCramCard(sessionId);
+      if (!cramCard) return null;
+
+      const flashcard = await this.db.getFlashcardById(cramCard.flashcardId);
+      if (flashcard) return flashcard;
+
+      // Underlying card is gone — retire this entry and try the next.
+      const session = await this.db.getCramSessionById(sessionId);
+      await this.db.graduateCramCard(
+        cramCard.id,
+        new Date().toISOString(),
+        cramCard.reps
+      );
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          session.graduatedCount + 1
+        );
+      }
+    }
+  }
+
+  /**
+   * Apply a cram rating ('again' | 'good') to a card. Advances the card's
+   * private cram state via pure FSRS; graduates it (out of the queue) once the
+   * computed interval reaches >= 1 day. Never touches the real card or logs.
+   */
+  async rateCram(
+    sessionId: string,
+    flashcardId: string,
+    rating: CramRating,
+    now: Date = new Date()
+  ): Promise<CramRateResult> {
+    const id = this.cramCardId(sessionId, flashcardId);
+    const cramCard = await this.db.getCramCardById(id);
+    if (!cramCard) {
+      throw new Error(`Cram card not found: ${id}`);
+    }
+
+    const realCard = await this.db.getFlashcardById(flashcardId);
+    const session = await this.db.getCramSessionById(sessionId);
+    const newReps = cramCard.reps + 1;
+
+    // Card deleted mid-session: graduate it out and report done.
+    if (!realCard) {
+      await this.db.graduateCramCard(id, now.toISOString(), newReps);
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          session.graduatedCount + 1
+        );
+      }
+      return { graduated: true, interval: CRAM_GRADUATION_MINUTES };
+    }
+
+    const deck = await this.getCachedDeck(realCard.deckId);
+    if (!deck) {
+      throw new Error(`Deck not found for cram card: ${realCard.deckId}`);
+    }
+    await this.updateFSRSForDeck(deck);
+
+    // Drill from a synthetic card carrying only the cram-local scheduling state.
+    // lastReviewed is pinned a day back so each cram rating is evaluated on
+    // FSRS's long-term (spaced) path rather than the same-study-day short-term
+    // path — otherwise rapid re-reviews within one session would grow stability
+    // in tiny increments and a card could take dozens of Goods to reach 1 day.
+    const spacedLastReviewed = new Date(
+      now.getTime() - 24 * 60 * 60 * 1000
+    ).toISOString();
+    const synthetic: Flashcard = {
+      ...realCard,
+      state: cramCard.tempState,
+      stability: cramCard.tempStability,
+      difficulty: cramCard.tempDifficulty,
+      interval: cramCard.tempInterval,
+      dueDate: cramCard.tempDueAt,
+      repetitions: cramCard.reps,
+      lapses: 0,
+      lastReviewed: spacedLastReviewed,
+    };
+
+    const next = this.applyStepOverride(
+      synthetic,
+      rating,
+      deck,
+      this.fsrs.updateCard(synthetic, rating, now),
+      now
+    );
+
+    if (next.interval >= CRAM_GRADUATION_MINUTES) {
+      await this.db.graduateCramCard(id, now.toISOString(), newReps);
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          session.graduatedCount + 1
+        );
+      }
+      return { graduated: true, interval: next.interval };
+    }
+
+    await this.db.updateCramCard(id, {
+      tempState: next.state,
+      tempStability: next.stability,
+      tempDifficulty: next.difficulty,
+      tempInterval: next.interval,
+      tempDueAt: this.calculateDueDateForInterval(next.interval, now),
+      reps: newReps,
+    });
+    return { graduated: false, interval: next.interval };
+  }
+
+  async getCramProgress(sessionId: string): Promise<CramProgress | null> {
+    const session = await this.db.getCramSessionById(sessionId);
+    if (!session) return null;
+
+    const progress =
+      session.goalTotal > 0
+        ? Math.min(100, (session.graduatedCount / session.goalTotal) * 100)
+        : 0;
+
+    return {
+      graduated: session.graduatedCount,
+      goalTotal: session.goalTotal,
+      progress,
+    };
+  }
+
+  async endCramSession(sessionId: string): Promise<void> {
+    await this.db.endCramSession(sessionId);
   }
 
   // CUSTOM DECK REVIEW METHODS

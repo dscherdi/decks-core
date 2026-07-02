@@ -302,6 +302,47 @@ export interface ReviewSession {
   doneUnique: number; // unique number of cards seen
 }
 
+export type CramRating = "again" | "good";
+
+export type CramDeckKind = "file" | "group" | "custom";
+
+/**
+ * A cram (drill) run over a deck. Cram scheduling is isolated from real FSRS
+ * state — it writes no review_logs and never mutates flashcards. Per-card
+ * temporary state lives in CramCard rows tied to this session.
+ */
+export interface CramSession {
+  id: string;
+  deckKey: string; // FileDeck.id | DeckGroup.tag | CustomDeckGroup.id
+  deckKind: CramDeckKind;
+  startedAt: string;
+  endedAt: string | null;
+  goalTotal: number; // number of cards enrolled
+  graduatedCount: number; // cards that reached a >= 1 day interval
+  created: string;
+  modified: string;
+}
+
+/**
+ * Ephemeral per-card scheduling state within a cram session. Seeded fresh
+ * ("drill from scratch") and advanced only by cram ratings; a card graduates
+ * (leaves the queue) once temp_interval reaches >= 1 day.
+ */
+export interface CramCard {
+  id: string; // `${sessionId}:${flashcardId}`
+  sessionId: string;
+  flashcardId: string;
+  tempState: FlashcardState;
+  tempStability: number;
+  tempDifficulty: number;
+  tempInterval: number; // in minutes
+  tempDueAt: string; // next in-session show time
+  reps: number;
+  graduatedAt: string | null; // set once tempInterval >= 1440
+  created: string;
+  modified: string;
+}
+
 export interface ReviewLog {
   id: string;
   flashcardId: string;

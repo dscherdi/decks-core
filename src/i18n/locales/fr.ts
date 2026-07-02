@@ -292,6 +292,7 @@ export const fr: Translations = {
     errorStartingReview: "Erreur au démarrage de la révision. Voir la console.",
     errorStartingBrowse:
       "Erreur au démarrage de la navigation. Voir la console.",
+    errorStartingCram: "Erreur au démarrage du bachotage. Voir la console.",
     noCardsFoundInDeck: "Aucune carte trouvée dans {deckName}",
     noCardsDueForReview: "Aucune carte à réviser dans {deckName}",
     noCardsFoundInGroup: 'Aucune carte trouvée dans "{name}"',
@@ -367,6 +368,8 @@ export const fr: Translations = {
     review: "Réviser",
     browse: "Parcourir",
     browseAllCards: "Parcourir toutes les cartes",
+    cram: "Bachotage",
+    resumeCram: "Reprendre le bachotage",
     configureProfile: "Configurer le profil",
     rename: "Renommer",
     delete: "Supprimer",
