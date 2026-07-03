@@ -99,7 +99,7 @@ describe("AnkiHistoryImporter.importHistory", () => {
     const first = await AnkiHistoryImporter.importHistory(db, items, {}, now);
     expect(first.injected).toBe(1);
 
-    const cardId = generateFlashcardId("Hallo", "deck_x");
+    const cardId = generateFlashcardId("Hallo");
     expect(db.logs.has(`log_migrate_anki_${cardId}`)).toBe(true);
     expect(db.updates[0].updates.state).toBe("review");
     expect(db.updates[0].updates.stability).toBe(4);
@@ -110,7 +110,7 @@ describe("AnkiHistoryImporter.importHistory", () => {
 
   it("imports real revlog rows as a review timeline", async () => {
     const db = new MockHistoryDb();
-    const cardId = generateFlashcardId("Hallo", "deck_x");
+    const cardId = generateFlashcardId("Hallo");
     const revlog: AnkiRevlogRow[] = [
       { id: 1700000000000, cid: 100, ease: 3, ivl: 4, lastIvl: 1, factor: 2500 },
       { id: 1700100000000, cid: 100, ease: 2, ivl: 6, lastIvl: 4, factor: 2300 },
@@ -161,7 +161,7 @@ describe("AnkiHistoryImporter.importHistory", () => {
       {},
       now
     );
-    const id = generateClozeFlashcardId("Du trinkst ==jeden Tag== Bier.", "jeden Tag", 0, "deck_x");
+    const id = generateClozeFlashcardId("Du trinkst ==jeden Tag== Bier.", "jeden Tag", 0);
     expect(db.updates[0].id).toBe(id);
   });
 

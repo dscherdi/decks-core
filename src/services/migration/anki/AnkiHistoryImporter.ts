@@ -11,6 +11,8 @@ import {
   generateOcclusionV2FlashcardId,
 } from "../../../utils/hash";
 import { splitClozeHeader } from "./ClozeLayout";
+import { AnkiDeckRenderer } from "./AnkiDeckRenderer";
+import { occlusionImageName } from "../../occlusion/OcclusionV2";
 import type { FsrsState } from "../LegacySrMigrator";
 import { SrHistoryImporter } from "../SrHistoryImporter";
 import type { HistoryDb, MigrationProfileFsrs } from "../SrHistoryImporter";
@@ -167,7 +169,7 @@ export class AnkiHistoryImporter {
         const fsrs = AnkiHistoryImporter.buildFsrsState(card.scheduling, options.collectionCreatedMs, now);
         if (!fsrs) continue;
 
-        const cardId = AnkiHistoryImporter.decksCardId(card, item.deckId);
+        const cardId = AnkiHistoryImporter.decksCardId(card);
         const contentHash = generateContentHash(card.back);
 
         const logId = `log_migrate_anki_${cardId}`;
@@ -202,9 +204,16 @@ export class AnkiHistoryImporter {
     return { injected, reviews };
   }
 
-  private static decksCardId(card: AnkiParsedCard, deckId: string): string {
-    if (card.kind === "occlusion" && card.imagePath && card.maskId) {
-      return generateOcclusionV2FlashcardId(deckId, card.imagePath, card.maskId);
+  private static decksCardId(card: AnkiParsedCard): string {
+    if (card.kind === "occlusion" && card.maskId) {
+      // Keyed on the heading the renderer emits (`## leafLabel(deckName)`) plus
+      // the image file name, so the injected history links to the occlusion card
+      // created on the next sync.
+      return generateOcclusionV2FlashcardId(
+        AnkiDeckRenderer.leafLabel(card.deckName),
+        occlusionImageName(card.imagePath ?? ""),
+        card.maskId
+      );
     }
     if (card.isCloze) {
       // The parser hashes the rendered front: a compact cloze stays a table cell
@@ -217,11 +226,10 @@ export class AnkiHistoryImporter {
       return generateClozeFlashcardId(
         front,
         card.clozeText ?? "",
-        card.clozeOrder ?? card.ord,
-        deckId
+        card.clozeOrder ?? card.ord
       );
     }
-    return generateFlashcardId(card.front, deckId);
+    return generateFlashcardId(card.front);
   }
 
   // Best-effort: one ReviewLog per real Anki revlog row. Anki does not store FSRS

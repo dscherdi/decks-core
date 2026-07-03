@@ -438,7 +438,7 @@ export class AnkiDeckRenderer {
   }
 
   // The deck's own (leaf) name, cleaned for use as a table's container header.
-  private static leafLabel(deckName: string): string {
+  static leafLabel(deckName: string): string {
     const segments = deckName.split("::");
     const leaf = segments[segments.length - 1] ?? deckName;
     return leaf.replace(ILLEGAL_PATH, " ").replace(/\s+/g, " ").trim() || "Cards";

@@ -120,7 +120,7 @@ describe("SrHistoryImporter.importHistory", () => {
       { deckId: "deck_1", profileFsrs: PROFILE, cards: [card()] },
     ];
     const { injected } = await SrHistoryImporter.importHistory(db, items, NOW);
-    const expectedId = generateFlashcardId("Front", "deck_1");
+    const expectedId = generateFlashcardId("Front");
     expect(injected).toBe(1);
     expect(logs[0].flashcardId).toBe(expectedId);
     expect(logs[0].id).toBe(`log_migrate_${expectedId}`);
@@ -139,8 +139,8 @@ describe("SrHistoryImporter.importHistory", () => {
     ];
     await SrHistoryImporter.importHistory(db, items, NOW);
 
-    const fwdId = generateFlashcardId("Front", "deck_1");
-    const revId = generateReverseFlashcardId("Front", "deck_1");
+    const fwdId = generateFlashcardId("Front");
+    const revId = generateReverseFlashcardId("Front");
     const fwdLog = logs.find((l) => l.flashcardId === fwdId)!;
     const revLog = logs.find((l) => l.flashcardId === revId)!;
     expect(fwdLog.id).toBe(`log_migrate_${fwdId}`);
@@ -210,8 +210,8 @@ describe("SrHistoryImporter.importHistory", () => {
     ];
     const { injected } = await SrHistoryImporter.importHistory(db, items, NOW);
     expect(injected).toBe(2);
-    const id0 = generateClozeFlashcardId("Geo", "Paris", 0, "deck_1");
-    const id1 = generateClozeFlashcardId("Geo", "France", 1, "deck_1");
+    const id0 = generateClozeFlashcardId("Geo", "Paris", 0);
+    const id1 = generateClozeFlashcardId("Geo", "France", 1);
     expect(logs.map((l) => l.flashcardId).sort()).toEqual([id0, id1].sort());
     expect(updates.find((u) => u.id === id0)!.updates.stability).toBe(4);
     expect(updates.find((u) => u.id === id1)!.updates.stability).toBe(9);
@@ -234,7 +234,7 @@ describe("SrHistoryImporter.importHistory", () => {
       [{ deckId: "deck_1", profileFsrs: PROFILE, cards: [clozeCard] }],
       NOW
     );
-    const id = generateClozeFlashcardId("Geo", "Paris", 0, "deck_1");
+    const id = generateClozeFlashcardId("Geo", "Paris", 0);
     expect(updates.find((u) => u.id === id)!.updates.suspendedAt).toBe(NOW.toISOString());
   });
 

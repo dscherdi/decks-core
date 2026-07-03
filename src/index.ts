@@ -13,6 +13,7 @@ export {
   BACKUP_TABLES_SQL,
   buildMigrationSQL,
 } from "./database/schemas";
+export { remapCardIdsToDeckIndependent } from "./database/remapCardIds";
 export * from "./database/sql-types";
 export type {
   IDatabaseService,
@@ -207,6 +208,7 @@ export type {
 export {
   generateFlashcardId,
   generateOldFlashcardId,
+  generateLegacyDeckScopedFlashcardId,
   generateDeckId,
   generateContentHash,
   generateDeckGroupId,

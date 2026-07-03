@@ -1,4 +1,4 @@
-import type { Flashcard, FlashcardType } from "../../database/types";
+import type { FlashcardType } from "../../database/types";
 import {
   OCCLUSION_V2_VERSION,
   type OcclusionDoc,
@@ -21,6 +21,16 @@ export function occlusionImageLinkpath(image: string): string {
   const md = /\]\(([^)\s]+)/.exec(trimmed);
   if (md) return md[1].trim();
   return trimmed.replace(/^!/, "");
+}
+
+/**
+ * The bare file name of an occlusion image (e.g. `heart.png`), used as a stable
+ * tiebreaker in the card id. Accepts a raw reference or an already-resolved
+ * path; the folder is dropped so relocating the image doesn't change the id.
+ */
+export function occlusionImageName(image: string): string {
+  const linkpath = occlusionImageLinkpath(image);
+  return (linkpath.split(/[\\/]/).pop() ?? linkpath).trim();
 }
 
 /** Serialize the full occlusion model into a flashcard `back` payload. */
@@ -75,7 +85,10 @@ export function occlusionV2HashInput(back: string, maskId: string): string {
 }
 
 /** The active mask id for a stored V2 card, resolved via its `clozeOrder`. */
-export function activeMaskIdForCard(card: Flashcard): string | null {
+export function activeMaskIdForCard(card: {
+  back: string;
+  clozeOrder: number | null;
+}): string | null {
   const doc = parseOcclusionBack(card.back);
   if (!doc) return null;
   const order = card.clozeOrder;

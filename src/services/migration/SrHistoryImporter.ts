@@ -141,8 +141,7 @@ export class SrHistoryImporter {
             const id = generateClozeFlashcardId(
               card.front,
               cloze.clozeText,
-              cloze.clozeOrder,
-              item.deckId
+              cloze.clozeOrder
             );
             const res = await SrHistoryImporter.injectDirection(
               db,
@@ -160,7 +159,7 @@ export class SrHistoryImporter {
           continue;
         }
 
-        const cardId = generateFlashcardId(card.front, item.deckId);
+        const cardId = generateFlashcardId(card.front);
         const fwd = await SrHistoryImporter.injectDirection(
           db,
           cardId,
@@ -175,7 +174,7 @@ export class SrHistoryImporter {
         suspended += fwd.suspended;
 
         if (card.isReverse) {
-          const reverseId = generateReverseFlashcardId(card.front, item.deckId);
+          const reverseId = generateReverseFlashcardId(card.front);
           const rev = await SrHistoryImporter.injectDirection(
             db,
             reverseId,

@@ -12,7 +12,7 @@ import {
   generateSpatialClozeFlashcardId,
   generateOcclusionV2FlashcardId,
 } from "../utils/hash";
-import { occlusionV2HashInput } from "./occlusion/OcclusionV2";
+import { occlusionV2HashInput, occlusionImageName } from "./occlusion/OcclusionV2";
 import { levenshteinSimilarity } from "../utils/string";
 
 export interface FlashcardUpdates {
@@ -379,40 +379,43 @@ export class FlashcardSynchronizer {
           );
         }
 
-        // ID generation varies by card type:
-        //   - spatial (non-cloze) -> generateSpatialFlashcardId(deckId, edgeId)
+        // ID generation varies by card type (all IDs are deck-independent):
+        //   - spatial (non-cloze) -> generateSpatialFlashcardId(front, edgeId)
         //   - cloze-with-edgeId (spatial cloze) -> generateSpatialClozeFlashcardId
+        //   - occlusion-v2 -> generateOcclusionV2FlashcardId(heading, imageName, maskId)
         //   - cloze / image-occlusion -> generateClozeFlashcardId
         //   - reverse -> generateReverseFlashcardId
-        //   - default markdown / spatial standalone -> generateFlashcardId
+        //   - default markdown -> generateFlashcardId
         // For canvas cards, sourceNodeId is mixed into the (non-spatial) hash
-        // so identical fronts in different nodes produce distinct IDs. For
-        // markdown cards (no sourceNodeId / no edgeId), the hash is
-        // byte-identical to the pre-canvas implementation.
+        // so identical fronts in different nodes produce distinct IDs.
         const isOcclusionV2 = parsed.type === "image-occlusion-v2";
         const isClozeType = parsed.type === "cloze" || parsed.type === "image-occlusion";
         const isSpatial = parsed.type === "spatial";
         const hasEdge = !!parsed.edgeId;
         let flashcardId: string;
         if (isOcclusionV2) {
-          // Identity keyed on the stable mask id, so moving/editing a box keeps
-          // the card's FSRS history.
-          flashcardId = generateOcclusionV2FlashcardId(data.deckId, parsed.imagePath!, parsed.maskId!);
+          // Identity keyed on the heading + stable mask id, so moving/editing a
+          // box (or relocating the image) keeps the card's FSRS history.
+          flashcardId = generateOcclusionV2FlashcardId(
+            parsed.breadcrumb,
+            occlusionImageName(parsed.imagePath!),
+            parsed.maskId!,
+          );
         } else if (isSpatial && hasEdge) {
-          flashcardId = generateSpatialFlashcardId(data.deckId, parsed.edgeId!);
+          flashcardId = generateSpatialFlashcardId(parsed.front, parsed.edgeId!);
         } else if (isClozeType && hasEdge) {
           flashcardId = generateSpatialClozeFlashcardId(
-            data.deckId,
+            parsed.front,
             parsed.edgeId!,
             parsed.clozeText!,
             parsed.clozeOrder!,
           );
         } else if (isClozeType) {
-          flashcardId = generateClozeFlashcardId(parsed.front, parsed.clozeText!, parsed.clozeOrder!, data.deckId, parsed.sourceNodeId);
+          flashcardId = generateClozeFlashcardId(parsed.front, parsed.clozeText!, parsed.clozeOrder!, parsed.sourceNodeId);
         } else if (parsed.isReverse) {
-          flashcardId = generateReverseFlashcardId(parsed.back, data.deckId, parsed.sourceNodeId);
+          flashcardId = generateReverseFlashcardId(parsed.back, parsed.sourceNodeId);
         } else {
-          flashcardId = generateFlashcardId(parsed.front, data.deckId, parsed.sourceNodeId);
+          flashcardId = generateFlashcardId(parsed.front, parsed.sourceNodeId);
         }
         // Table rows fold their full cells into the hash so editing any column
         // (even ones only a template reads) triggers a re-sync of the card.
