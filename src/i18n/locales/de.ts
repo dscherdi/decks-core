@@ -1368,6 +1368,7 @@ export const de: Translations = {
       showProgressDesc:
         "Fortschrittsbalken während Wiederholungssitzungen anzeigen",
       keyboardShortcuts: "Tastenkürzel",
+      enableShortcuts: "Tastenkürzel aktivieren",
       keyboardShortcutsDesc:
         "Tastenkürzel im Wiederholungsfenster aktivieren (1-4 für Schwierigkeit)",
       shortcutsHeading: "Tastenkürzel für die Wiederholung",

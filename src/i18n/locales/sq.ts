@@ -1360,6 +1360,7 @@ export const sq: Translations = {
       showProgressDesc:
         "Shfaq shiritin e progresit gjatë sesioneve të rishikimit",
       keyboardShortcuts: "Shkurtoret e tastierës",
+      enableShortcuts: "Aktivizo shkurtoret e tastierës",
       keyboardShortcutsDesc:
         "Aktivizo shkurtoret e tastierës në dritaren e rishikimit (1-4 për vështirësinë)",
       shortcutsHeading: "Shkurtoret e rishikimit",

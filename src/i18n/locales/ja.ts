@@ -1315,6 +1315,7 @@ export const ja: Translations = {
       showProgress: "進捗を表示",
       showProgressDesc: "復習セッション中に進捗バーを表示",
       keyboardShortcuts: "キーボードショートカット",
+      enableShortcuts: "キーボードショートカットを有効化",
       keyboardShortcutsDesc:
         "復習ウィンドウでショートカットを有効化（1-4 で難易度）",
       shortcutsHeading: "復習のショートカット",

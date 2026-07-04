@@ -1346,6 +1346,7 @@ export const tr: Translations = {
       showProgressDesc:
         "Tekrar oturumları sırasında ilerleme çubuğunu görüntüle",
       keyboardShortcuts: "Klavye kısayolları",
+      enableShortcuts: "Klavye kısayollarını etkinleştir",
       keyboardShortcutsDesc:
         "Tekrar penceresinde klavye kısayollarını etkinleştir (Zorluk için 1-4)",
       shortcutsHeading: "Tekrar kısayolları",

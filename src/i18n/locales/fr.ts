@@ -1355,6 +1355,7 @@ export const fr: Translations = {
       showProgressDesc:
         "Afficher la barre de progression pendant les sessions de révision",
       keyboardShortcuts: "Raccourcis clavier",
+      enableShortcuts: "Activer les raccourcis clavier",
       keyboardShortcutsDesc:
         "Activer les raccourcis dans la fenêtre de révision (1-4 pour la difficulté)",
       shortcutsHeading: "Raccourcis de révision",

@@ -1270,6 +1270,7 @@ export const zh: Translations = {
       showProgress: "显示进度",
       showProgressDesc: "在复习会话期间显示进度条",
       keyboardShortcuts: "键盘快捷键",
+      enableShortcuts: "启用键盘快捷键",
       keyboardShortcutsDesc: "在复习窗口启用键盘快捷键（1-4 表示难度）",
       shortcutsHeading: "复习快捷键",
       shortcutsHeadingDesc: "点击下方的按键，然后按下你想使用的键。按 Esc 取消。",

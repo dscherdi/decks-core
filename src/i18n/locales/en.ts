@@ -1265,6 +1265,7 @@ export const en = {
       showProgress: "Show progress",
       showProgressDesc: "Display progress bar during review sessions",
       keyboardShortcuts: "Keyboard shortcuts",
+      enableShortcuts: "Enable keyboard shortcuts",
       keyboardShortcutsDesc: "Enable keyboard shortcuts in review modal (1-4 for difficulty)",
       shortcutsHeading: "Review shortcuts",
       shortcutsHeadingDesc: "Click a key below, then press the key you want. Press Esc to cancel.",

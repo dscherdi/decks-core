@@ -1291,6 +1291,7 @@ export const zhTW: Translations = {
       showProgress: "顯示進度",
       showProgressDesc: "在複習階段中顯示進度列",
       keyboardShortcuts: "鍵盤快速鍵",
+      enableShortcuts: "啟用鍵盤快捷鍵",
       keyboardShortcutsDesc: "在複習視窗中啟用鍵盤快速鍵 (1-4 用於選擇困難度)",
       shortcutsHeading: "複習快捷鍵",
       shortcutsHeadingDesc: "點擊下方的按鍵，然後按下你想使用的鍵。按 Esc 取消。",

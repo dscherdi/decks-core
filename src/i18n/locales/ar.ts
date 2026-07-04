@@ -1306,6 +1306,7 @@ export const ar: Translations = {
       showProgress: "إظهار التقدم",
       showProgressDesc: "عرض شريط التقدم أثناء جلسات المراجعة",
       keyboardShortcuts: "اختصارات لوحة المفاتيح",
+      enableShortcuts: "تفعيل اختصارات لوحة المفاتيح",
       keyboardShortcutsDesc: "تفعيل الاختصارات في نافذة المراجعة (1-4 للصعوبة)",
       shortcutsHeading: "اختصارات المراجعة",
       shortcutsHeadingDesc: "انقر على مفتاح في الأسفل، ثم اضغط المفتاح الذي تريد استخدامه. اضغط Esc للإلغاء.",

@@ -1346,6 +1346,7 @@ export const hi: Translations = {
       showProgressDesc:
         "समीक्षा सत्र के दौरान प्रगति पट्टी (progress bar) प्रदर्शित करें",
       keyboardShortcuts: "कीबोर्ड शॉर्टकट",
+      enableShortcuts: "कीबोर्ड शॉर्टकट सक्षम करें",
       keyboardShortcutsDesc:
         "समीक्षा मोडल में कीबोर्ड शॉर्टकट सक्षम करें (कठिनाई के लिए 1-4)",
       shortcutsHeading: "समीक्षा शॉर्टकट",

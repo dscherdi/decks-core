@@ -1340,6 +1340,7 @@ export const it: Translations = {
       showProgressDesc:
         "Mostra la barra di progresso durante le sessioni di ripasso",
       keyboardShortcuts: "Scorciatoie da tastiera",
+      enableShortcuts: "Attiva le scorciatoie da tastiera",
       keyboardShortcutsDesc:
         "Attiva scorciatoie nella finestra di ripasso (1-4 per la difficoltà)",
       shortcutsHeading: "Scorciatoie di ripasso",

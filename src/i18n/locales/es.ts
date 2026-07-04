@@ -1359,6 +1359,7 @@ export const es: Translations = {
       showProgressDesc:
         "Mostrar barra de progreso durante las sesiones de repaso",
       keyboardShortcuts: "Atajos de teclado",
+      enableShortcuts: "Activar atajos de teclado",
       keyboardShortcutsDesc:
         "Activar atajos de teclado en la ventana de repaso (1-4 para dificultad)",
       shortcutsHeading: "Atajos de repaso",

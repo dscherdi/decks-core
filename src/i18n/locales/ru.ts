@@ -1330,6 +1330,7 @@ export const ru: Translations = {
       showProgress: "Показывать прогресс",
       showProgressDesc: "Показывать индикатор прогресса во время сессий",
       keyboardShortcuts: "Сочетания клавиш",
+      enableShortcuts: "Включить горячие клавиши",
       keyboardShortcutsDesc:
         "Включить сочетания клавиш в окне повторения (1-4 для сложности)",
       shortcutsHeading: "Горячие клавиши повторения",
