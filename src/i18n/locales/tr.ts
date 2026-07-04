@@ -1348,6 +1348,12 @@ export const tr: Translations = {
       keyboardShortcuts: "Klavye kısayolları",
       keyboardShortcutsDesc:
         "Tekrar penceresinde klavye kısayollarını etkinleştir (Zorluk için 1-4)",
+      shortcutsHeading: "Tekrar kısayolları",
+      shortcutsHeadingDesc: "Aşağıdan bir tuşa tıklayın, ardından kullanmak istediğiniz tuşa basın. İptal için Esc'e basın.",
+      shortcutReveal: "Göster / Sonraki tuşu",
+      shortcutPressKey: "Bir tuşa basın… (İptal için Esc)",
+      shortcutResetDefaults: "Varsayılanlara sıfırla",
+      shortcutDuplicate: "Bu tuş zaten başka bir tekrar işleminde kullanılıyor.",
       sessionDuration: "Oturum süresi",
       sessionDurationDesc:
         "Dakika cinsinden bilgi kartı tekrar oturumları için maksimum süre (1-60)",

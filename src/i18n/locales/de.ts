@@ -1370,6 +1370,12 @@ export const de: Translations = {
       keyboardShortcuts: "Tastenkürzel",
       keyboardShortcutsDesc:
         "Tastenkürzel im Wiederholungsfenster aktivieren (1-4 für Schwierigkeit)",
+      shortcutsHeading: "Tastenkürzel für die Wiederholung",
+      shortcutsHeadingDesc: "Klicke unten auf eine Taste und drücke dann die gewünschte Taste. Esc zum Abbrechen.",
+      shortcutReveal: "Taste zum Aufdecken / Weiter",
+      shortcutPressKey: "Taste drücken… (Esc zum Abbrechen)",
+      shortcutResetDefaults: "Auf Standard zurücksetzen",
+      shortcutDuplicate: "Diese Taste wird bereits von einer anderen Aktion verwendet.",
       sessionDuration: "Sitzungsdauer",
       sessionDurationDesc:
         "Maximale Dauer für Wiederholungssitzungen in Minuten (1-60)",

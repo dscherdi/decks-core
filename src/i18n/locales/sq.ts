@@ -1362,6 +1362,12 @@ export const sq: Translations = {
       keyboardShortcuts: "Shkurtoret e tastierës",
       keyboardShortcutsDesc:
         "Aktivizo shkurtoret e tastierës në dritaren e rishikimit (1-4 për vështirësinë)",
+      shortcutsHeading: "Shkurtoret e rishikimit",
+      shortcutsHeadingDesc: "Klikoni një tast më poshtë, pastaj shtypni tastin që doni të përdorni. Esc për ta anuluar.",
+      shortcutReveal: "Tasti Shfaq / Tjetri",
+      shortcutPressKey: "Shtypni një tast… (Esc për ta anuluar)",
+      shortcutResetDefaults: "Rikthe te parazgjedhjet",
+      shortcutDuplicate: "Ky tast përdoret tashmë nga një veprim tjetër rishikimi.",
       sessionDuration: "Kohëzgjatja e sesionit",
       sessionDurationDesc:
         "Kohëzgjatja maksimale për sesionet në minuta (1-60)",

@@ -1348,6 +1348,12 @@ export const hi: Translations = {
       keyboardShortcuts: "कीबोर्ड शॉर्टकट",
       keyboardShortcutsDesc:
         "समीक्षा मोडल में कीबोर्ड शॉर्टकट सक्षम करें (कठिनाई के लिए 1-4)",
+      shortcutsHeading: "समीक्षा शॉर्टकट",
+      shortcutsHeadingDesc: "नीचे किसी कुंजी पर क्लिक करें, फिर वह कुंजी दबाएँ जिसे आप उपयोग करना चाहते हैं। रद्द करने के लिए Esc दबाएँ।",
+      shortcutReveal: "दिखाएँ / अगला कुंजी",
+      shortcutPressKey: "कोई कुंजी दबाएँ… (रद्द करने के लिए Esc)",
+      shortcutResetDefaults: "डिफ़ॉल्ट पर रीसेट करें",
+      shortcutDuplicate: "यह कुंजी पहले से किसी अन्य समीक्षा क्रिया द्वारा उपयोग में है।",
       sessionDuration: "सत्र की अवधि",
       sessionDurationDesc:
         "फ़्लैशकार्ड समीक्षा सत्रों के लिए मिनटों में अधिकतम अवधि (1-60)",

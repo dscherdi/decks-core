@@ -1361,6 +1361,12 @@ export const es: Translations = {
       keyboardShortcuts: "Atajos de teclado",
       keyboardShortcutsDesc:
         "Activar atajos de teclado en la ventana de repaso (1-4 para dificultad)",
+      shortcutsHeading: "Atajos de repaso",
+      shortcutsHeadingDesc: "Haz clic en una tecla de abajo y luego pulsa la que quieras usar. Pulsa Esc para cancelar.",
+      shortcutReveal: "Tecla de mostrar / siguiente",
+      shortcutPressKey: "Pulsa una tecla… (Esc para cancelar)",
+      shortcutResetDefaults: "Restablecer valores predeterminados",
+      shortcutDuplicate: "Esa tecla ya la usa otra acción de repaso.",
       sessionDuration: "Duración de la sesión",
       sessionDurationDesc:
         "Duración máxima de las sesiones de repaso en minutos (1-60)",

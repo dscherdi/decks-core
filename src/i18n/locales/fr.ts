@@ -1357,6 +1357,12 @@ export const fr: Translations = {
       keyboardShortcuts: "Raccourcis clavier",
       keyboardShortcutsDesc:
         "Activer les raccourcis dans la fenêtre de révision (1-4 pour la difficulté)",
+      shortcutsHeading: "Raccourcis de révision",
+      shortcutsHeadingDesc: "Cliquez sur une touche ci-dessous, puis appuyez sur la touche souhaitée. Échap pour annuler.",
+      shortcutReveal: "Touche Révéler / Suivant",
+      shortcutPressKey: "Appuyez sur une touche… (Échap pour annuler)",
+      shortcutResetDefaults: "Réinitialiser les valeurs par défaut",
+      shortcutDuplicate: "Cette touche est déjà utilisée par une autre action de révision.",
       sessionDuration: "Durée de la session",
       sessionDurationDesc:
         "Durée maximale des sessions de révision en minutes (1-60)",

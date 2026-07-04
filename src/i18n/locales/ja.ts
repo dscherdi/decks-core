@@ -1317,6 +1317,12 @@ export const ja: Translations = {
       keyboardShortcuts: "キーボードショートカット",
       keyboardShortcutsDesc:
         "復習ウィンドウでショートカットを有効化（1-4 で難易度）",
+      shortcutsHeading: "復習のショートカット",
+      shortcutsHeadingDesc: "下のキーをクリックし、使いたいキーを押してください。Esc でキャンセルします。",
+      shortcutReveal: "表示 / 次へ のキー",
+      shortcutPressKey: "キーを押してください…（Esc でキャンセル）",
+      shortcutResetDefaults: "デフォルトに戻す",
+      shortcutDuplicate: "そのキーは別の復習操作で既に使われています。",
       sessionDuration: "セッション時間",
       sessionDurationDesc: "復習セッションの最大時間（分、1-60）",
       sessionDurationPlaceholder: "25",

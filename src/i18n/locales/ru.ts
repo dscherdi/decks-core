@@ -1332,6 +1332,12 @@ export const ru: Translations = {
       keyboardShortcuts: "Сочетания клавиш",
       keyboardShortcutsDesc:
         "Включить сочетания клавиш в окне повторения (1-4 для сложности)",
+      shortcutsHeading: "Горячие клавиши повторения",
+      shortcutsHeadingDesc: "Нажмите на клавишу ниже, затем нажмите нужную клавишу. Esc — отмена.",
+      shortcutReveal: "Клавиша «Показать / далее»",
+      shortcutPressKey: "Нажмите клавишу… (Esc — отмена)",
+      shortcutResetDefaults: "Сбросить по умолчанию",
+      shortcutDuplicate: "Эта клавиша уже используется другим действием повторения.",
       sessionDuration: "Длительность сессии",
       sessionDurationDesc: "Максимальная длительность сессии в минутах (1-60)",
       sessionDurationPlaceholder: "25",

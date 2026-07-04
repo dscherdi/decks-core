@@ -1342,6 +1342,12 @@ export const it: Translations = {
       keyboardShortcuts: "Scorciatoie da tastiera",
       keyboardShortcutsDesc:
         "Attiva scorciatoie nella finestra di ripasso (1-4 per la difficoltà)",
+      shortcutsHeading: "Scorciatoie di ripasso",
+      shortcutsHeadingDesc: "Fai clic su un tasto qui sotto, poi premi il tasto che vuoi usare. Esc per annullare.",
+      shortcutReveal: "Tasto Mostra / Avanti",
+      shortcutPressKey: "Premi un tasto… (Esc per annullare)",
+      shortcutResetDefaults: "Ripristina i valori predefiniti",
+      shortcutDuplicate: "Questo tasto è già usato da un'altra azione di ripasso.",
       sessionDuration: "Durata della sessione",
       sessionDurationDesc:
         "Durata massima delle sessioni di ripasso in minuti (1-60)",
