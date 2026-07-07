@@ -138,6 +138,8 @@ export const sq: Translations = {
     progressCopyingMedia: "Po kopjohen mediat {done}/{total}…",
     successNotice: "U importuan {cards} karta në {decks} tufa; historik për {history}.",
     doneSummary: "U krye: {decks} tufa, {cards} karta, {media} media, {history} me historik.",
+    mediaIndexingNotice:
+      "Obsidian po indekson {count} skedarë media të importuar në sfond — imazhet dhe audioja mund të duan pak çaste për t'u shfaqur.",
     cancel: "Anulo",
   },
 

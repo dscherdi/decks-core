@@ -139,6 +139,8 @@ export const es: Translations = {
     progressCopyingMedia: "Copiando multimedia {done}/{total}…",
     successNotice: "Se importaron {cards} tarjeta(s) en {decks} mazo(s); historial de {history}.",
     doneSummary: "Listo: {decks} mazo(s), {cards} tarjeta(s), {media} multimedia, {history} con historial.",
+    mediaIndexingNotice:
+      "Obsidian está indexando {count} archivos multimedia importados en segundo plano; las imágenes y el audio pueden tardar un momento en aparecer.",
     cancel: "Cancelar",
   },
 

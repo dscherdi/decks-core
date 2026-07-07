@@ -138,6 +138,8 @@ export const tr: Translations = {
     progressCopyingMedia: "Medya kopyalanıyor {done}/{total}…",
     successNotice: "{decks} desteye {cards} kart içe aktarıldı; {history} için geçmiş.",
     doneSummary: "Bitti: {decks} deste, {cards} kart, {media} medya, {history} geçmişli.",
+    mediaIndexingNotice:
+      "Obsidian, içe aktarılan {count} medya dosyasını arka planda dizinliyor — görseller ve ses görünene kadar biraz zaman alabilir.",
     cancel: "İptal",
   },
 

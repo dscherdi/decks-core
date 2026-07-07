@@ -235,6 +235,7 @@ export {
   formatStepInterval,
 } from "./utils/step-parser";
 export { yieldToUI, yieldEvery, processWithYielding } from "./utils/ui";
+export { mapWithConcurrency } from "./utils/concurrency";
 export { levenshteinSimilarity, naturalCompare } from "./utils/string";
 export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
 export { MinHeap } from "./utils/min-heap";

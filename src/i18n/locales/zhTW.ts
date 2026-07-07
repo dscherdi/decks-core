@@ -135,6 +135,8 @@ export const zhTW: Translations = {
     progressCopyingMedia: "正在複製媒體 {done}/{total}…",
     successNotice: "已將 {cards} 張卡片匯入 {decks} 個牌組；{history} 張含記錄。",
     doneSummary: "完成：{decks} 個牌組、{cards} 張卡片、{media} 個媒體、{history} 張含記錄。",
+    mediaIndexingNotice:
+      "Obsidian 正在背景索引 {count} 個匯入的媒體檔案，圖片與音訊可能需要片刻才會顯示。",
     cancel: "取消",
   },
 

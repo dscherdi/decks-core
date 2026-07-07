@@ -140,6 +140,8 @@ export const hi: Translations = {
     progressCopyingMedia: "मीडिया कॉपी हो रहा है {done}/{total}…",
     successNotice: "{decks} डेक में {cards} कार्ड आयात किए गए; {history} के लिए इतिहास।",
     doneSummary: "पूर्ण: {decks} डेक, {cards} कार्ड, {media} मीडिया, {history} इतिहास के साथ।",
+    mediaIndexingNotice:
+      "Obsidian पृष्ठभूमि में {count} आयातित मीडिया फ़ाइलों को अनुक्रमित कर रहा है — छवियाँ और ऑडियो दिखने में थोड़ा समय ले सकते हैं।",
     cancel: "रद्द करें",
   },
 

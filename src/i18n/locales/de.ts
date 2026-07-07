@@ -139,6 +139,8 @@ export const de: Translations = {
     progressCopyingMedia: "Medien werden kopiert {done}/{total}…",
     successNotice: "{cards} Karten in {decks} Stapel importiert; Verlauf für {history}.",
     doneSummary: "Fertig: {decks} Stapel, {cards} Karten, {media} Medien, {history} mit Verlauf.",
+    mediaIndexingNotice:
+      "Obsidian indiziert {count} importierte Mediendateien im Hintergrund – Bilder und Audio können einen Moment brauchen, bis sie erscheinen.",
     cancel: "Abbrechen",
   },
 

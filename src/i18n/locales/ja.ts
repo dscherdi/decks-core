@@ -136,6 +136,8 @@ export const ja: Translations = {
     progressCopyingMedia: "メディアをコピー中 {done}/{total}…",
     successNotice: "{decks} 個のデッキに {cards} 枚のカードをインポートしました。{history} 枚分の履歴。",
     doneSummary: "完了：{decks} 個のデッキ、{cards} 枚のカード、{media} 個のメディア、{history} 枚に履歴。",
+    mediaIndexingNotice:
+      "Obsidian がインポートした {count} 個のメディアファイルをバックグラウンドで索引化しています。画像や音声は表示されるまで少し時間がかかる場合があります。",
     cancel: "キャンセル",
   },
 
