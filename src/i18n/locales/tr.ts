@@ -123,6 +123,11 @@ export const tr: Translations = {
     targetFolderDesc: "İçe aktarılan Decks dosyalarının oluşturulacağı yer.",
     profileName: "Profil",
     profileDesc: "İçe aktarılan destelere uygulanan profil (başlık düzeyini ve planlamayı belirler).",
+    splitName: "Büyük desteleri birden çok dosyaya böl",
+    splitDesc:
+      "Çok sayıda kart veya medya içeren desteleri numaralı parça dosyalara böler, böylece her biri Obsidian'da hızlı açılır. Alt desteler her zaman ayrı dosyalar olarak içe aktarılır.",
+    chunkSizeName: "Dosya başına kart",
+    chunkSizeDesc: "Bir deste bölündüğünde her parça dosyadaki en fazla kart sayısı.",
     scanButton: "Tara",
     scanning: "Taranıyor…",
     scanSummary: "{decks} deste, {cards} kart, {history} tekrar geçmişli, {media} medya dosyası bulundu.",

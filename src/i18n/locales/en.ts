@@ -124,6 +124,11 @@ export const en = {
     profileName: "Profile",
     profileDesc:
       "Profile applied to the imported decks (sets the header level and scheduling).",
+    splitName: "Split large decks into multiple files",
+    splitDesc:
+      "Break decks with many cards or media into numbered part-files so each stays fast to open in Obsidian. Subdecks are always imported as separate files.",
+    chunkSizeName: "Cards per file",
+    chunkSizeDesc: "Maximum number of cards in each part-file when a deck is split.",
     scanButton: "Scan",
     scanning: "Scanning…",
     scanSummary:

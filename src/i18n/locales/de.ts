@@ -124,6 +124,11 @@ export const de: Translations = {
     targetFolderDesc: "Wo die importierten Decks-Dateien erstellt werden.",
     profileName: "Profil",
     profileDesc: "Profil, das auf die importierten Stapel angewendet wird (legt Überschriftenebene und Planung fest).",
+    splitName: "Große Stapel in mehrere Dateien aufteilen",
+    splitDesc:
+      "Teilt Stapel mit vielen Karten oder Medien in nummerierte Teildateien auf, damit jede in Obsidian schnell zu öffnen bleibt. Unterstapel werden immer als separate Dateien importiert.",
+    chunkSizeName: "Karten pro Datei",
+    chunkSizeDesc: "Maximale Anzahl Karten pro Teildatei, wenn ein Stapel aufgeteilt wird.",
     scanButton: "Scannen",
     scanning: "Wird gescannt…",
     scanSummary: "{decks} Stapel, {cards} Karten, {history} mit Lernverlauf, {media} Mediendateien gefunden.",

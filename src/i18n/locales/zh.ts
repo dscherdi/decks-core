@@ -118,6 +118,11 @@ export const zh: Translations = {
     targetFolderDesc: "导入的 Decks 文件将创建在此处。",
     profileName: "配置文件",
     profileDesc: "应用于导入牌组的配置文件（设置标题级别和排程）。",
+    splitName: "将大牌组拆分为多个文件",
+    splitDesc:
+      "将卡片或媒体较多的牌组拆分为带编号的分文件，使每个文件在 Obsidian 中都能快速打开。子牌组始终作为单独的文件导入。",
+    chunkSizeName: "每个文件的卡片数",
+    chunkSizeDesc: "拆分牌组时每个分文件的最大卡片数。",
     scanButton: "扫描",
     scanning: "正在扫描…",
     scanSummary: "找到 {decks} 个牌组、{cards} 张卡片、{history} 张含复习记录、{media} 个媒体文件。",

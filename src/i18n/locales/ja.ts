@@ -121,6 +121,11 @@ export const ja: Translations = {
     targetFolderDesc: "インポートした Decks ファイルが作成される場所。",
     profileName: "プロファイル",
     profileDesc: "インポートしたデッキに適用するプロファイル（見出しレベルとスケジュールを設定します）。",
+    splitName: "大きなデッキを複数のファイルに分割",
+    splitDesc:
+      "カードやメディアが多いデッキを番号付きの分割ファイルに分け、Obsidian で各ファイルをすばやく開けるようにします。サブデッキは常に別々のファイルとしてインポートされます。",
+    chunkSizeName: "ファイルごとのカード数",
+    chunkSizeDesc: "デッキを分割する際の各ファイルの最大カード数。",
     scanButton: "スキャン",
     scanning: "スキャン中…",
     scanSummary: "{decks} 個のデッキ、{cards} 枚のカード、{history} 枚に学習履歴、{media} 個のメディアファイルが見つかりました。",

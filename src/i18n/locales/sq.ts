@@ -123,6 +123,11 @@ export const sq: Translations = {
     targetFolderDesc: "Ku do të krijohen skedarët e importuar të Decks.",
     profileName: "Profili",
     profileDesc: "Profili i zbatuar te tufat e importuara (cakton nivelin e titullit dhe planifikimin).",
+    splitName: "Ndaji tufat e mëdha në disa skedarë",
+    splitDesc:
+      "I ndan tufat me shumë karta ose media në skedarë të numëruar, që secili të hapet shpejt në Obsidian. Nëntufat importohen gjithmonë si skedarë të veçantë.",
+    chunkSizeName: "Karta për skedar",
+    chunkSizeDesc: "Numri maksimal i kartave në çdo skedar kur një tufë ndahet.",
     scanButton: "Skano",
     scanning: "Po skanohet…",
     scanSummary: "U gjetën {decks} tufa, {cards} karta, {history} me historik përsëritjesh, {media} skedarë media.",

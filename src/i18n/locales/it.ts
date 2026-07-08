@@ -122,6 +122,11 @@ export const it: Translations = {
     targetFolderDesc: "Dove verranno creati i file di Decks importati.",
     profileName: "Profilo",
     profileDesc: "Profilo applicato ai mazzi importati (imposta il livello di intestazione e la pianificazione).",
+    splitName: "Dividi i mazzi grandi in più file",
+    splitDesc:
+      "Suddivide i mazzi con molte carte o media in file numerati così ognuno resta veloce da aprire in Obsidian. I sottomazzi vengono sempre importati come file separati.",
+    chunkSizeName: "Carte per file",
+    chunkSizeDesc: "Numero massimo di carte in ciascun file quando un mazzo viene diviso.",
     scanButton: "Scansiona",
     scanning: "Scansione…",
     scanSummary: "Trovati {decks} mazzo/i, {cards} carta/e, {history} con cronologia di ripasso, {media} file multimediali.",

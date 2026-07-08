@@ -366,6 +366,41 @@ describe("AnkiDeckRenderer", () => {
       expect(new Set(decks.map((d) => d.tag))).toEqual(new Set(["decks/anki/spanish"]));
     });
 
+    it("with split=false keeps an over-cap deck as one unsuffixed file", () => {
+      const input = manyNotes(CAP + 1);
+      const decks = AnkiDeckRenderer.render(input, "decks/anki", 2, false);
+      expect(decks).toHaveLength(1);
+      expect(decks[0].relativePath).toBe("Spanish");
+      expect(decks[0].cards).toHaveLength(CAP + 1);
+    });
+
+    it("with split=false still separates subdecks into distinct files", () => {
+      const cards = [
+        basic({ deckName: "German::01 Hallo", front: "a" }),
+        basic({ noteId: 2, cardId: 11, deckName: "German::02 Wetter", front: "b" }),
+      ];
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2, false);
+      expect(decks.map((d) => d.relativePath)).toEqual(["German/01 Hallo", "German/02 Wetter"]);
+    });
+
+    it("honors a custom cardsPerFile cap when splitting", () => {
+      const decks = AnkiDeckRenderer.render(manyNotes(250), "decks/anki", 2, true, 100);
+      expect(decks.map((d) => d.relativePath)).toEqual([
+        "Spanish/Spanish 01",
+        "Spanish/Spanish 02",
+        "Spanish/Spanish 03",
+      ]);
+      expect(decks.map((d) => d.cards.length)).toEqual([100, 100, 50]);
+      expect(Math.max(...decks.map((d) => d.cards.length))).toBeLessThanOrEqual(100);
+    });
+
+    it("ignores cardsPerFile when split=false (one file)", () => {
+      const decks = AnkiDeckRenderer.render(manyNotes(250), "decks/anki", 2, false, 100);
+      expect(decks).toHaveLength(1);
+      expect(decks[0].relativePath).toBe("Spanish");
+      expect(decks[0].cards).toHaveLength(250);
+    });
+
     it("partitions every card exactly once across chunks", () => {
       const input = manyNotes(CAP + 1);
       const decks = AnkiDeckRenderer.render(input, "decks/anki", 2);

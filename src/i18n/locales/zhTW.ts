@@ -120,6 +120,11 @@ export const zhTW: Translations = {
     targetFolderDesc: "匯入的 Decks 檔案將建立於此處。",
     profileName: "設定檔",
     profileDesc: "套用於匯入牌組的設定檔（設定標題層級和排程）。",
+    splitName: "將大型牌組拆分成多個檔案",
+    splitDesc:
+      "將卡片或媒體較多的牌組拆分成帶編號的分割檔案，讓每個檔案在 Obsidian 中都能快速開啟。子牌組一律以獨立檔案匯入。",
+    chunkSizeName: "每個檔案的卡片數",
+    chunkSizeDesc: "拆分牌組時每個分割檔案的最大卡片數。",
     scanButton: "掃描",
     scanning: "正在掃描…",
     scanSummary: "找到 {decks} 個牌組、{cards} 張卡片、{history} 張含複習記錄、{media} 個媒體檔案。",

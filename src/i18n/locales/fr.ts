@@ -122,6 +122,11 @@ export const fr: Translations = {
     targetFolderDesc: "Où les fichiers Decks importés seront créés.",
     profileName: "Profil",
     profileDesc: "Profil appliqué aux paquets importés (définit le niveau de titre et la planification).",
+    splitName: "Diviser les grands paquets en plusieurs fichiers",
+    splitDesc:
+      "Divise les paquets comportant beaucoup de cartes ou de médias en fichiers numérotés pour que chacun reste rapide à ouvrir dans Obsidian. Les sous-paquets sont toujours importés dans des fichiers distincts.",
+    chunkSizeName: "Cartes par fichier",
+    chunkSizeDesc: "Nombre maximal de cartes par fichier lorsqu'un paquet est divisé.",
     scanButton: "Analyser",
     scanning: "Analyse…",
     scanSummary: "{decks} paquet(s), {cards} carte(s), {history} avec historique de révision, {media} fichier(s) média trouvés.",

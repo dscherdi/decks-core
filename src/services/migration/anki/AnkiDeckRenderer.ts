@@ -38,7 +38,9 @@ const HEADER_PARAGRAPH_TABLE_THRESHOLD = 50;
 // Obsidian and under the per-deck sync limit. A file is capped on card count AND
 // on media-embed count (whichever is hit first): a file with thousands of
 // audio/image embeds lags reading view even with a modest row count.
-const CARDS_PER_FILE = 1000;
+// Cards-per-file is user-overridable at import time; media-per-file is a fixed
+// safety rail.
+export const DEFAULT_ANKI_CARDS_PER_FILE = 1000;
 const MEDIA_PER_FILE = 500;
 
 /**
@@ -57,7 +59,12 @@ export class AnkiDeckRenderer {
   static render(
     cards: AnkiParsedCard[],
     baseTag: string,
-    headerLevel: number
+    headerLevel: number,
+    // When false, a deck is never broken into numbered part-files (one file per
+    // deck regardless of size). Subdecks still map to separate files either way.
+    split = true,
+    // Max cards per part-file when splitting (media cap stays fixed).
+    cardsPerFile = DEFAULT_ANKI_CARDS_PER_FILE
   ): AnkiRenderedDeck[] {
     const byDeck = new Map<string, AnkiParsedCard[]>();
     for (const card of cards) {
@@ -69,12 +76,14 @@ export class AnkiDeckRenderer {
     const decks: AnkiRenderedDeck[] = [];
     for (const [deckName, deckCards] of byDeck) {
       const tag = AnkiDeckRenderer.deckTag(baseTag, deckName);
-      // Always run the chunker: it returns a single chunk when the deck fits both
+      // When splitting, the chunker returns a single chunk if the deck fits both
       // caps (output unchanged), else multiple subfoldered parts so each file stays
       // openable in Obsidian — capped on card count AND media embeds, since a file
       // with thousands of audio/image embeds lags reading view even under the card
-      // cap.
-      const chunks = AnkiDeckRenderer.chunkByNote(deckCards, CARDS_PER_FILE, MEDIA_PER_FILE);
+      // cap. When not splitting, the whole deck is kept as one file.
+      const chunks = split
+        ? AnkiDeckRenderer.chunkByNote(deckCards, cardsPerFile, MEDIA_PER_FILE)
+        : [deckCards];
       if (chunks.length === 1) {
         decks.push({
           deckName,
