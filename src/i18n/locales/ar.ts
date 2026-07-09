@@ -142,6 +142,8 @@ export const ar: Translations = {
     progressCopyingMedia: "جارٍ نسخ الوسائط {done}/{total}…",
     successNotice: "تم استيراد {cards} بطاقة إلى {decks} مجموعة؛ سجل لـ {history}.",
     doneSummary: "تم: {decks} مجموعة، و{cards} بطاقة، و{media} وسائط، و{history} بسجل.",
+    cardsMerged:
+      "{count} بطاقة لها نفس الوجه الأمامي لبطاقة أخرى وتم دمجها في واحدة.",
     mediaIndexingNotice:
       "يقوم Obsidian بفهرسة {count} من ملفات الوسائط المستوردة في الخلفية — قد تستغرق الصور والصوت لحظة حتى تظهر.",
     cancel: "إلغاء",

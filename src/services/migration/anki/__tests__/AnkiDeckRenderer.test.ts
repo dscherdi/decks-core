@@ -501,4 +501,90 @@ describe("AnkiDeckRenderer", () => {
       expect(decks[0].cards).toHaveLength(400);
     });
   });
+
+  describe("front disambiguation", () => {
+    it("appends a marker to identical basic fronts across sub-decks", () => {
+      const cards = [
+        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "object", back: "a thing" }),
+        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "object", back: "to protest" }),
+      ];
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      const d1 = decks.find((d) => d.relativePath === "Book/1")!;
+      const d2 = decks.find((d) => d.relativePath === "Book/2")!;
+      expect(d1.content).toContain("## object\n");
+      expect(d2.content).toContain("## object (2)\n");
+      // Lowest (noteId, ord, cardId) keeps the clean front; mutation is in place.
+      expect(cards.find((c) => c.noteId === 1)!.front).toBe("object");
+      expect(cards.find((c) => c.noteId === 2)!.front).toBe("object (2)");
+    });
+
+    it("assigns markers deterministically regardless of input order", () => {
+      const make = (): AnkiParsedCard[] => [
+        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "found", back: "past of find" }),
+        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "found", back: "to establish" }),
+        basic({ noteId: 3, cardId: 30, deckName: "Book::3", front: "found", back: "molten metal" }),
+      ];
+      const forward = AnkiDeckRenderer.render(make(), "decks/anki", 2).map((d) => d.content);
+      const reversed = AnkiDeckRenderer.render(make().reverse(), "decks/anki", 2).map((d) => d.content);
+      expect(reversed).toEqual(forward);
+
+      const cards = make();
+      AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(cards.find((c) => c.noteId === 1)!.front).toBe("found");
+      expect(cards.find((c) => c.noteId === 2)!.front).toBe("found (2)");
+      expect(cards.find((c) => c.noteId === 3)!.front).toBe("found (3)");
+    });
+
+    it("skips a synthetic marker that would collide with a real '(2)' note", () => {
+      const cards = [
+        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "run", back: "a" }),
+        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "run", back: "b" }),
+        basic({ noteId: 3, cardId: 30, deckName: "Book::3", front: "run (2)", back: "c" }),
+      ];
+      AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      // noteId 2's "run" would become "run (2)", but that front already exists →
+      // it skips to "run (3)". The real "run (2)" is left as-is.
+      expect(cards.find((c) => c.noteId === 2)!.front).toBe("run (3)");
+      expect(cards.find((c) => c.noteId === 3)!.front).toBe("run (2)");
+    });
+
+    it("disambiguates template cards on cells[0] and front together", () => {
+      const tmpl = (noteId: number, cardId: number, deckName: string): AnkiParsedCard =>
+        basic({
+          noteId,
+          cardId,
+          deckName,
+          kind: "template",
+          front: "cube",
+          back: "a solid",
+          templateRow: { headers: ["Word", "Def"], cells: ["cube", "a solid"] },
+          templateTag: "model-0",
+        });
+      const cards = [tmpl(1, 10, "Book::1"), tmpl(2, 20, "Book::2")];
+      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      const second = cards.find((c) => c.noteId === 2)!;
+      expect(second.front).toBe("cube (2)");
+      expect(second.templateRow!.cells[0]).toBe("cube (2)");
+      expect(cards.find((c) => c.noteId === 1)!.templateRow!.cells[0]).toBe("cube");
+      expect(decks.find((d) => d.relativePath === "Book/2")!.content).toContain("| cube (2) |");
+    });
+
+    it("leaves cloze fronts untouched", () => {
+      const cloze = (noteId: number, cardId: number, deckName: string): AnkiParsedCard =>
+        basic({
+          noteId,
+          cardId,
+          deckName,
+          isCloze: true,
+          front: "The ==sun== is a star.",
+          back: "The ==sun== is a star.",
+          clozeBody: "The ==sun== is a star.",
+          clozeText: "sun",
+          clozeOrder: 0,
+        });
+      const cards = [cloze(1, 10, "Book::1"), cloze(2, 20, "Book::2")];
+      AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      expect(cards.every((c) => c.front === "The ==sun== is a star.")).toBe(true);
+    });
+  });
 });

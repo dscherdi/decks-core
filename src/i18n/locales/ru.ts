@@ -142,6 +142,8 @@ export const ru: Translations = {
     progressCopyingMedia: "Копирование медиа {done}/{total}…",
     successNotice: "Импортировано {cards} карточек в {decks} колод; история для {history}.",
     doneSummary: "Готово: колод — {decks}, карточек — {cards}, медиа — {media}, с историей — {history}.",
+    cardsMerged:
+      "{count} карт(ы) имели одинаковую лицевую сторону и были объединены в одну.",
     mediaIndexingNotice:
       "Obsidian индексирует импортированные медиафайлы ({count}) в фоновом режиме — изображения и звук могут появиться не сразу.",
     cancel: "Отмена",

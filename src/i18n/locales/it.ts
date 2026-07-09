@@ -142,6 +142,8 @@ export const it: Translations = {
     progressCopyingMedia: "Copia dei media {done}/{total}…",
     successNotice: "Importate {cards} carta/e in {decks} mazzo/i; cronologia per {history}.",
     doneSummary: "Fatto: {decks} mazzo/i, {cards} carta/e, {media} media, {history} con cronologia.",
+    cardsMerged:
+      "{count} carta/e avevano lo stesso fronte di un'altra e sono state unite in una.",
     mediaIndexingNotice:
       "Obsidian sta indicizzando {count} file multimediali importati in background: immagini e audio potrebbero richiedere un momento per apparire.",
     cancel: "Annulla",

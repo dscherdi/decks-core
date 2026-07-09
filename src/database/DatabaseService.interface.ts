@@ -152,6 +152,9 @@ export interface IDatabaseService {
     updates: Array<{ id: string; updates: Partial<Flashcard> }>
   ): Promise<void>;
   batchDeleteFlashcards(flashcardIds: string[]): Promise<void>;
+  // Delete cards whose deck_id has no matching deck row (dangling orphans). Run on
+  // a full sync after adoption; returns the number removed.
+  pruneOrphanedFlashcards(): Promise<number>;
 
   createReviewLog(log: Omit<ReviewLog, "id">): Promise<void>;
   insertReviewLog(reviewLog: ReviewLog): Promise<void>;

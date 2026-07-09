@@ -138,6 +138,8 @@ export const zh: Translations = {
     progressCopyingMedia: "正在复制媒体 {done}/{total}…",
     successNotice: "已将 {cards} 张卡片导入 {decks} 个牌组；{history} 张含记录。",
     doneSummary: "完成：{decks} 个牌组、{cards} 张卡片、{media} 个媒体、{history} 张含记录。",
+    cardsMerged:
+      "{count} 张卡片与其他卡片正面相同，已合并为一张。",
     mediaIndexingNotice:
       "Obsidian 正在后台索引 {count} 个导入的媒体文件，图片和音频可能需要片刻才会显示。",
     cancel: "取消",

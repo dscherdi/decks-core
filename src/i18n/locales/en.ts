@@ -147,6 +147,8 @@ export const en = {
       "Imported {cards} card(s) into {decks} deck(s); history for {history}.",
     doneSummary:
       "Done: {decks} deck(s), {cards} card(s), {media} media, {history} with history.",
+    cardsMerged:
+      "{count} card(s) shared a front with another and were merged into one.",
     mediaIndexingNotice:
       "Obsidian is indexing {count} imported media files in the background — images and audio may take a moment to appear.",
     cancel: "Cancel",

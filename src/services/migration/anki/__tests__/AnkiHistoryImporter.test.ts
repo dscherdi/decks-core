@@ -1,4 +1,5 @@
 import { AnkiHistoryImporter } from "../AnkiHistoryImporter";
+import { AnkiDeckRenderer } from "../AnkiDeckRenderer";
 import type { AnkiRevlogRow, AnkiDeckItem } from "../AnkiHistoryImporter";
 import type { AnkiParsedCard, AnkiScheduling } from "../AnkiTypes";
 import type { HistoryDb } from "../../SrHistoryImporter";
@@ -163,6 +164,42 @@ describe("AnkiHistoryImporter.importHistory", () => {
     );
     const id = generateClozeFlashcardId("Du trinkst ==jeden Tag== Bier.", "jeden Tag", 0);
     expect(db.updates[0].id).toBe(id);
+  });
+
+  it("links history to the disambiguated id after render mutates duplicate fronts", async () => {
+    const reviewed = card({
+      noteId: 1,
+      cardId: 100,
+      deckName: "Book::1",
+      front: "found",
+      scheduling: sched({ type: 2, ivl: 20, reps: 3, data: '{"s":6,"d":5}' }),
+    });
+    const other = card({
+      noteId: 2,
+      cardId: 200,
+      deckName: "Book::2",
+      front: "found",
+      scheduling: sched({ type: 2, ivl: 12, reps: 2, data: '{"s":3,"d":6}' }),
+    });
+    // render mutates the shared card objects in place; the same objects flow to
+    // importHistory, so decksCardId hashes the disambiguated front.
+    const decks = AnkiDeckRenderer.render([reviewed, other], "decks/anki", 2);
+    expect(other.front).toBe("found (2)");
+
+    const db = new MockHistoryDb();
+    const items: AnkiDeckItem[] = decks.map((d) => ({
+      deckId: `deck_${d.relativePath}`,
+      profileFsrs: PROFILE,
+      cards: d.cards,
+    }));
+    await AnkiHistoryImporter.importHistory(db, items, {}, now);
+
+    const cleanId = generateFlashcardId("found");
+    const bumpedId = generateFlashcardId("found (2)");
+    expect(cleanId).not.toBe(bumpedId);
+    expect(db.logs.has(`log_migrate_anki_${cleanId}`)).toBe(true);
+    expect(db.logs.has(`log_migrate_anki_${bumpedId}`)).toBe(true);
+    expect(db.updates.map((u) => u.id).sort()).toEqual([cleanId, bumpedId].sort());
   });
 
   it("reports progress with non-decreasing done up to the card total", async () => {

@@ -66,6 +66,8 @@ export class AnkiDeckRenderer {
     // Max cards per part-file when splitting (media cap stays fixed).
     cardsPerFile = DEFAULT_ANKI_CARDS_PER_FILE
   ): AnkiRenderedDeck[] {
+    AnkiDeckRenderer.disambiguateFronts(cards);
+
     const byDeck = new Map<string, AnkiParsedCard[]>();
     for (const card of cards) {
       const group = byDeck.get(card.deckName);
@@ -109,6 +111,49 @@ export class AnkiDeckRenderer {
       });
     }
     return decks.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  }
+
+  // Card ids are derived from the front text and are deck-independent, so two
+  // notes that render the same front (e.g. the same head-word in several
+  // sub-decks) would collapse to a single card on sync. Append a stable " (n)"
+  // marker to every occurrence after the first so each keeps a distinct front —
+  // and therefore a distinct id. Only basic/template cards key their id on the
+  // front (cloze/occlusion key on cloze text/order or mask id, so they're left
+  // untouched). Ordering is by (noteId, ord, cardId) — never the parser's row
+  // order, which is unsorted — so re-imports are byte-stable.
+  private static disambiguateFronts(cards: AnkiParsedCard[]): void {
+    const groups = new Map<string, AnkiParsedCard[]>();
+    for (const card of cards) {
+      if (card.kind !== "basic" && card.kind !== "template") continue;
+      const key = card.front.trim();
+      const group = groups.get(key);
+      if (group) group.push(card);
+      else groups.set(key, [card]);
+    }
+
+    // Seed with every real front so a synthesized "word (2)" never collides with a
+    // note whose front already is "word (2)".
+    const used = new Set(groups.keys());
+    for (const [key, group] of groups) {
+      if (group.length < 2) continue;
+      group.sort((a, b) => a.noteId - b.noteId || a.ord - b.ord || a.cardId - b.cardId);
+      for (let i = 1; i < group.length; i++) {
+        let n = i + 1;
+        let candidate = `${key} (${n})`;
+        while (used.has(candidate)) candidate = `${key} (${++n})`;
+        used.add(candidate);
+        AnkiDeckRenderer.applyFront(group[i], candidate);
+      }
+    }
+  }
+
+  // A template card's id hashes `front` while its table renders `cells[0]`, and the
+  // two are the same value (parser sets `front = cells[0]`); keep them in lockstep.
+  private static applyFront(card: AnkiParsedCard, front: string): void {
+    card.front = front;
+    if (card.templateRow) {
+      card.templateRow.cells = [front, ...card.templateRow.cells.slice(1)];
+    }
   }
 
   // Split a deck's cards into chunks capped by both card count and media-embed

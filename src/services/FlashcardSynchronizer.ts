@@ -154,14 +154,37 @@ export class FlashcardSynchronizer {
         stmt.free();
       } else if (op.type === "create" && op.flashcard) {
         const card = op.flashcard;
+        // Card ids are deck-independent, so a card can already exist under a
+        // different deck (moved note) or be orphaned (its old deck row is gone).
+        // Upsert instead of INSERT OR IGNORE: adopt that row into this deck and
+        // refresh its content, but PRESERVE its scheduling/suspend/bury/created
+        // state (those columns are omitted from DO UPDATE). A genuinely-new card
+        // takes the plain INSERT with review_logs restoration.
         const stmt = this.db.prepare(`
-                    INSERT OR IGNORE INTO flashcards (
+                    INSERT INTO flashcards (
                         id, deck_id, front, back, type, source_file, content_hash, breadcrumb, notes,
                         cloze_text, cloze_order, source_node_id, edge_id, hint,
                         state, due_date, interval, repetitions, difficulty, stability,
                         lapses, last_reviewed, created, modified, tags,
                         suspended_at, buried_until, template_row
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        deck_id = excluded.deck_id,
+                        front = excluded.front,
+                        back = excluded.back,
+                        type = excluded.type,
+                        source_file = excluded.source_file,
+                        content_hash = excluded.content_hash,
+                        breadcrumb = excluded.breadcrumb,
+                        notes = excluded.notes,
+                        cloze_text = excluded.cloze_text,
+                        cloze_order = excluded.cloze_order,
+                        source_node_id = excluded.source_node_id,
+                        edge_id = excluded.edge_id,
+                        hint = excluded.hint,
+                        tags = excluded.tags,
+                        template_row = excluded.template_row,
+                        modified = datetime('now')
                 `);
         stmt.run([
           card.id,
@@ -481,7 +504,9 @@ export class FlashcardSynchronizer {
         }
       }
 
-      // Identify cards to delete
+      // Identify cards to delete. Scoped to THIS deck's existingById minus the
+      // parsed ids, so a card the upsert moved into another deck (same front in two
+      // files) is never also deleted here — it's relocated (last sync wins), not lost.
       progressCallback?.(60, "Identifying orphaned flashcards...");
       existingById.forEach((existingCard, flashcardId) => {
         if (!processedIds.has(flashcardId)) {
