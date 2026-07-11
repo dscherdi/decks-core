@@ -155,6 +155,9 @@ export interface IDatabaseService {
   // Delete cards whose deck_id has no matching deck row (dangling orphans). Run on
   // a full sync after adoption; returns the number removed.
   pruneOrphanedFlashcards(): Promise<number>;
+  // Distinct fronts of cards in live decks outside the given path prefix (used to
+  // reserve already-taken fronts during an import; orphans excluded on purpose).
+  getFrontsOutsidePath(pathPrefix: string): Promise<string[]>;
 
   createReviewLog(log: Omit<ReviewLog, "id">): Promise<void>;
   insertReviewLog(reviewLog: ReviewLog): Promise<void>;

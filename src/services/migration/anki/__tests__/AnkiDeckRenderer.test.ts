@@ -548,6 +548,49 @@ describe("AnkiDeckRenderer", () => {
       expect(cards.find((c) => c.noteId === 3)!.front).toBe("run (2)");
     });
 
+    it("suffixes every occurrence of a RESERVED front (taken by another vault deck)", () => {
+      const cards = [
+        basic({ noteId: 1, cardId: 10, front: "tie", back: "necktie" }),
+        basic({ noteId: 2, cardId: 20, front: "sphere", back: "a ball" }),
+      ];
+      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, new Set(["tie"]));
+      // "tie" already lives in another deck → the imported one becomes its own
+      // card instead of being silently merged; unrelated fronts untouched.
+      expect(cards.find((c) => c.noteId === 1)!.front).toBe("tie (2)");
+      expect(cards.find((c) => c.noteId === 2)!.front).toBe("sphere");
+    });
+
+    it("numbers reserved + within-batch duplicates consecutively", () => {
+      const cards = [
+        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "tie", back: "necktie" }),
+        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "tie", back: "draw result" }),
+      ];
+      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, new Set(["tie"]));
+      expect(cards.find((c) => c.noteId === 1)!.front).toBe("tie (2)");
+      expect(cards.find((c) => c.noteId === 2)!.front).toBe("tie (3)");
+    });
+
+    it("keeps a reserved template card's front and cells[0] in lockstep", () => {
+      const card = basic({
+        noteId: 1,
+        cardId: 10,
+        kind: "template",
+        front: "cube",
+        back: "a solid",
+        templateRow: { headers: ["Word", "Meaning"], cells: ["cube", "a solid"] },
+        templateTag: "anki-tmpl-x",
+      });
+      AnkiDeckRenderer.render([card], "decks/anki", 2, true, 1000, new Set(["cube"]));
+      expect(card.front).toBe("cube (2)");
+      expect(card.templateRow!.cells[0]).toBe("cube (2)");
+    });
+
+    it("a reserved '(2)' variant pushes the synthetic marker to '(3)'", () => {
+      const cards = [basic({ noteId: 1, cardId: 10, front: "run", back: "a" })];
+      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, new Set(["run", "run (2)"]));
+      expect(cards[0].front).toBe("run (3)");
+    });
+
     it("disambiguates template cards on cells[0] and front together", () => {
       const tmpl = (noteId: number, cardId: number, deckName: string): AnkiParsedCard =>
         basic({

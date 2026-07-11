@@ -461,7 +461,8 @@ export class AnkiCollectionParser {
     const cards: AnkiParsedCard[] = [];
     for (const group of byModel.values()) {
       const model = group[0].model;
-      const orderedFields = AnkiCollectionParser.fieldOrderByFill(model, group);
+      const frontField = AnkiCollectionParser.frontFieldName(model, group, cellSanitize);
+      const orderedFields = AnkiCollectionParser.fieldOrderByFill(model, group, frontField);
       for (const { row, deckName, fieldMap } of group) {
         const media: string[] = [];
         const cells = orderedFields.map((name) => {
@@ -498,10 +499,15 @@ export class AnkiCollectionParser {
     return cards;
   }
 
-  // Keep Anki's field 0 first (its primary/sort field → the card front), then
-  // order the rest by fill count (desc) so the second cell is rarely empty (the
-  // Decks parser drops rows with an empty second cell).
-  private static fieldOrderByFill(model: AnkiModel, group: RowContext[]): string[] {
+  // The card front is the first table column (the Decks parser reads cells[0] as
+  // the front and hashes it into the id). So put `frontField` first, then order
+  // the rest by fill count (desc) so the second cell is rarely empty (the Decks
+  // parser drops rows with an empty second cell).
+  private static fieldOrderByFill(
+    model: AnkiModel,
+    group: RowContext[],
+    frontField: string
+  ): string[] {
     const names = model.flds.map((f) => f.name);
     if (names.length <= 1) return names;
     const counts = new Map<string, number>(names.map((n) => [n, 0]));
@@ -512,10 +518,56 @@ export class AnkiCollectionParser {
     }
     const rest = names
       .map((name, idx) => ({ name, idx }))
-      .slice(1)
+      .filter((entry) => entry.name !== frontField)
       .sort((a, b) => (counts.get(b.name) ?? 0) - (counts.get(a.name) ?? 0) || a.idx - b.idx)
       .map((entry) => entry.name);
-    return [names[0], ...rest];
+    return [frontField, ...rest];
+  }
+
+  // The card front for a CSS-layout note: the first field its front template
+  // (qfmt) references whose value carries text (not just a media embed), falling
+  // back to the first referenced field, then to Anki field 0. Some notetypes make
+  // field 0 a sort/index number, so deriving the front from the template — what
+  // the card actually shows — avoids meaningless numeric fronts that collide
+  // across decks (ids are hash(front)).
+  private static frontFieldName(
+    model: AnkiModel,
+    group: RowContext[],
+    sanitize: SanitizeOptions
+  ): string {
+    const names = model.flds.map((f) => f.name);
+    const nameSet = new Set(names);
+    const referenced: string[] = [];
+    const seen = new Set<string>();
+    for (const tmpl of model.tmpls) {
+      for (const name of AnkiTemplateEngine.referencedFields(tmpl.qfmt)) {
+        if (nameSet.has(name) && !seen.has(name)) {
+          seen.add(name);
+          referenced.push(name);
+        }
+      }
+    }
+    const textBearing = referenced.find((name) =>
+      AnkiCollectionParser.fieldHasText(name, group, sanitize)
+    );
+    return textBearing ?? referenced[0] ?? names[0];
+  }
+
+  // Whether any row in the group gives this field non-media text (after dropping
+  // `![[embed]]` markup) — used to skip audio/image-only fields when picking the
+  // front.
+  private static fieldHasText(
+    name: string,
+    group: RowContext[],
+    sanitize: SanitizeOptions
+  ): boolean {
+    for (const { fieldMap } of group) {
+      const raw = fieldMap.get(name) ?? "";
+      if (!raw.trim()) continue;
+      const { text } = AnkiSanitizer.sanitizeField(raw, sanitize);
+      if (text.replace(/!\[\[[^\]]*\]\]/g, "").trim().length > 0) return true;
+    }
+    return false;
   }
 
   // --- Image occlusion ---

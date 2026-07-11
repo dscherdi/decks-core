@@ -235,6 +235,7 @@ export const zh: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "清理无所属牌组的孤立卡片",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "在光标处创建图像遮挡",
@@ -249,6 +250,7 @@ export const zh: Translations = {
   },
 
   notices: {
+    orphansCleaned: "已移除 {count} 张孤立卡片。",
     reparsing: "正在重新解析每个牌组，请稍候…",
     resyncComplete: "完全重新同步已完成。",
     resyncFailed: "重新同步失败。详情请查看控制台。",

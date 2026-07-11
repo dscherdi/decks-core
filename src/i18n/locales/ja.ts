@@ -239,6 +239,7 @@ export const ja: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "デッキのない孤立カードを整理",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "カーソル位置に画像オクルージョンを作成",
@@ -253,6 +254,7 @@ export const ja: Translations = {
   },
 
   notices: {
+    orphansCleaned: "{count} 枚の孤立カードを削除しました。",
     reparsing: "各デッキを再解析中。少しお待ちください…",
     resyncComplete: "完全な再同期が完了しました。",
     resyncFailed: "再同期に失敗しました。詳細はコンソールを確認してください。",

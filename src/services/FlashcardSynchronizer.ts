@@ -13,7 +13,7 @@ import {
   generateOcclusionV2FlashcardId,
 } from "../utils/hash";
 import { occlusionV2HashInput, occlusionImageName } from "./occlusion/OcclusionV2";
-import { levenshteinSimilarity } from "../utils/string";
+import { levenshteinSimilarityAbove } from "../utils/string";
 
 export interface FlashcardUpdates {
   front: string;
@@ -62,6 +62,10 @@ export interface SyncResult {
   parsedCount: number;
   operationsCount: number;
   duplicatesSkipped: number;
+  // Set when the file parsed to zero cards while the deck still had cards: the
+  // sync is aborted (cards preserved) rather than deleting everything. Callers
+  // must NOT stamp last_synced_mtime for a skipped sync.
+  skippedEmptyParse?: boolean;
 }
 
 export interface SyncData {
@@ -156,10 +160,13 @@ export class FlashcardSynchronizer {
         const card = op.flashcard;
         // Card ids are deck-independent, so a card can already exist under a
         // different deck (moved note) or be orphaned (its old deck row is gone).
-        // Upsert instead of INSERT OR IGNORE: adopt that row into this deck and
-        // refresh its content, but PRESERVE its scheduling/suspend/bury/created
-        // state (those columns are omitted from DO UPDATE). A genuinely-new card
-        // takes the plain INSERT with review_logs restoration.
+        // Upsert instead of INSERT OR IGNORE. A genuinely-new card takes the plain
+        // INSERT (review_logs restoration). On id conflict we ADOPT the row into
+        // this deck (move deck_id + refresh content, preserving scheduling/suspend/
+        // bury/created) — but ONLY when its current deck is DEAD (orphaned), i.e.
+        // leftovers from an old import. The `WHERE … deck is null` makes the whole
+        // update a no-op when the card still lives in a LIVE deck, so a front shared
+        // by two overlapping decks stays put instead of bouncing/being overwritten.
         const stmt = this.db.prepare(`
                     INSERT INTO flashcards (
                         id, deck_id, front, back, type, source_file, content_hash, breadcrumb, notes,
@@ -185,6 +192,7 @@ export class FlashcardSynchronizer {
                         tags = excluded.tags,
                         template_row = excluded.template_row,
                         modified = datetime('now')
+                    WHERE (SELECT 1 FROM decks d WHERE d.id = flashcards.deck_id) IS NULL
                 `);
         stmt.run([
           card.id,
@@ -351,6 +359,27 @@ export class FlashcardSynchronizer {
         existingById.set(flashcard.id, flashcard);
       });
 
+      // Safety: an EMPTY file read for a deck that still has cards is a read race,
+      // not a real edit — a live deck file always has at least its frontmatter tag,
+      // so empty content can never be a legitimate "user removed every card".
+      // Deleting here would wipe the deck; abort so the next sync retries. Non-empty
+      // content that parses to zero (the user genuinely cleared the file, or a
+      // canvas whose last edge was removed) proceeds and deletes normally. The
+      // caller must not stamp mtime for a skipped sync.
+      if (
+        expandedCards.length === 0 &&
+        existingFlashcards.length > 0 &&
+        data.fileContent.trim() === ""
+      ) {
+        return {
+          success: true,
+          parsedCount: 0,
+          operationsCount: 0,
+          duplicatesSkipped: 0,
+          skippedEmptyParse: true,
+        };
+      }
+
       const processedIds = new Set<string>();
       const batchOperations: BatchOperation[] = [];
       let duplicatesSkipped = 0;
@@ -514,69 +543,98 @@ export class FlashcardSynchronizer {
         }
       });
 
-      // Smart Rename Detection
+      // Smart Rename Detection. A rename = same card, edited front: the old id's
+      // delete + the new id's create are paired into a "migrate" that carries the
+      // scheduling state (and re-points review_logs). Strong matches (identical
+      // back) resolve first via a Map — O(creates). Only the leftovers try the
+      // fuzzy front comparison, which is pre-filtered and capped: an uncapped
+      // creates × deletes Levenshtein sweep froze multi-minute on large
+      // re-imports where both sides' content had shifted.
       progressCallback?.(65, "Detecting renamed flashcards...");
       const matchedCreates = new Set<number>();
       const matchedDeletes = new Set<number>();
+      const FUZZY_PAIR_BUDGET = 200_000;
 
+      const pushMigrate = (newCardData: ParsedCardData, oldCard: Flashcard): void => {
+        batchOperations.push({
+          type: "migrate",
+          oldId: oldCard.id,
+          flashcard: {
+            id: newCardData.flashcardId,
+            deckId: data.deckId,
+            front: newCardData.parsed.front,
+            back: newCardData.parsed.back,
+            notes: newCardData.parsed.notes || "",
+            type: newCardData.parsed.type,
+            sourceFile: data.deckFilepath,
+            contentHash: newCardData.contentHash,
+            breadcrumb: newCardData.parsed.breadcrumb,
+            tags: newCardData.parsed.tags,
+            hint: newCardData.parsed.hint || "",
+            clozeText: newCardData.parsed.clozeText ?? null,
+            clozeOrder: newCardData.parsed.clozeOrder ?? null,
+            sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
+            edgeId: newCardData.parsed.edgeId ?? null,
+            templateRow: newCardData.parsed.templateRow ?? null,
+            state: oldCard.state,
+            dueDate: oldCard.dueDate,
+            interval: oldCard.interval,
+            repetitions: oldCard.repetitions,
+            difficulty: oldCard.difficulty,
+            stability: oldCard.stability,
+            lapses: oldCard.lapses,
+            lastReviewed: oldCard.lastReviewed,
+            suspendedAt: oldCard.suspendedAt,
+            buriedUntil: oldCard.buriedUntil,
+          },
+        });
+      };
+
+      // Strong pass: identical back → first unmatched delete with that back.
+      const deletesByBack = new Map<string, number[]>();
+      for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
+        const queue = deletesByBack.get(cardsToDelete[deleteIdx].back);
+        if (queue) queue.push(deleteIdx);
+        else deletesByBack.set(cardsToDelete[deleteIdx].back, [deleteIdx]);
+      }
       for (let createIdx = 0; createIdx < cardsToCreate.length; createIdx++) {
         const newCardData = cardsToCreate[createIdx];
+        const queue = deletesByBack.get(newCardData.parsed.back);
+        const deleteIdx = queue?.shift();
+        if (deleteIdx === undefined) continue;
+        pushMigrate(newCardData, cardsToDelete[deleteIdx]);
+        matchedCreates.add(createIdx);
+        matchedDeletes.add(deleteIdx);
+      }
 
-        for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
-          const oldCard = cardsToDelete[deleteIdx];
+      // Fuzzy pass (leftovers only): >80% front similarity. Skipped entirely when
+      // the pair count exceeds the budget — unmatched cards then fall back to
+      // plain create/delete, and the create still restores FSRS from review_logs.
+      const fuzzyCreates = cardsToCreate.length - matchedCreates.size;
+      const fuzzyDeletes = cardsToDelete.length - matchedDeletes.size;
+      if (fuzzyCreates * fuzzyDeletes <= FUZZY_PAIR_BUDGET) {
+        for (let createIdx = 0; createIdx < cardsToCreate.length; createIdx++) {
+          if (matchedCreates.has(createIdx)) continue;
+          const newCardData = cardsToCreate[createIdx];
 
-          // Skip already matched cards
-          if (matchedCreates.has(createIdx) || matchedDeletes.has(deleteIdx)) {
-            continue;
-          }
+          for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
+            if (matchedDeletes.has(deleteIdx)) continue;
+            const oldCard = cardsToDelete[deleteIdx];
 
-          // Strong match: same back content (exact match)
-          const strongMatch = newCardData.parsed.back === oldCard.back;
-
-          // Fuzzy match: >80% similarity in front text
-          const fuzzyMatch =
-            levenshteinSimilarity(newCardData.parsed.front, oldCard.front) > 80;
-
-          if (strongMatch || fuzzyMatch) {
-            // Create migration operation
-            batchOperations.push({
-              type: "migrate",
-              oldId: oldCard.id,
-              flashcard: {
-                id: newCardData.flashcardId,
-                deckId: data.deckId,
-                front: newCardData.parsed.front,
-                back: newCardData.parsed.back,
-                notes: newCardData.parsed.notes || "",
-                type: newCardData.parsed.type,
-                sourceFile: data.deckFilepath,
-                contentHash: newCardData.contentHash,
-                breadcrumb: newCardData.parsed.breadcrumb,
-                tags: newCardData.parsed.tags,
-                hint: newCardData.parsed.hint || "",
-                clozeText: newCardData.parsed.clozeText ?? null,
-                clozeOrder: newCardData.parsed.clozeOrder ?? null,
-                sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
-                edgeId: newCardData.parsed.edgeId ?? null,
-                templateRow: newCardData.parsed.templateRow ?? null,
-                state: oldCard.state,
-                dueDate: oldCard.dueDate,
-                interval: oldCard.interval,
-                repetitions: oldCard.repetitions,
-                difficulty: oldCard.difficulty,
-                stability: oldCard.stability,
-                lapses: oldCard.lapses,
-                lastReviewed: oldCard.lastReviewed,
-                suspendedAt: oldCard.suspendedAt,
-                buriedUntil: oldCard.buriedUntil,
-              },
-            });
-
+            if (!levenshteinSimilarityAbove(newCardData.parsed.front, oldCard.front, 80)) {
+              continue;
+            }
+            pushMigrate(newCardData, oldCard);
             matchedCreates.add(createIdx);
             matchedDeletes.add(deleteIdx);
             break; // Found a match, move to next create
           }
         }
+      } else {
+        progressCallback?.(
+          65,
+          `Skipping fuzzy rename detection (${fuzzyCreates}x${fuzzyDeletes} pairs exceed budget)`
+        );
       }
 
       // Process remaining creates (not matched)

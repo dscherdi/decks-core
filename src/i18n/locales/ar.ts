@@ -240,6 +240,7 @@ export const ar: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "تنظيف البطاقات المعزولة (بلا مجموعة)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "إنشاء إخفاء صورة عند المؤشر",
@@ -254,6 +255,7 @@ export const ar: Translations = {
   },
 
   notices: {
+    orphansCleaned: "تمت إزالة {count} بطاقة معزولة.",
     reparsing: "جاري إعادة تحليل كل الرزم. قد يستغرق هذا بعض الوقت...",
     resyncComplete: "اكتملت المزامنة بالكامل.",
     resyncFailed: "فشلت المزامنة. راجع وحدة التحكم (Console) للتفاصيل.",

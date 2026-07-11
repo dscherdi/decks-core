@@ -122,6 +122,31 @@ export class AnkiTemplateEngine {
     if (field && !SPECIAL_TOKENS.has(field)) used.add(field);
   }
 
+  /**
+   * The real data-field names a template references, in first-seen order —
+   * section conditions ({{#F}}/{{^F}}), substitutions ({{F}}/{{mod:F}}) and
+   * nested markers included; special tokens ({{FrontSide}}, {{Tags}}, …) and
+   * closing markers ({{/F}}) excluded. Value-independent (unlike `render`), so
+   * it answers "which fields drive this side" without needing a note's data.
+   */
+  static referencedFields(template: string): string[] {
+    const fields: string[] = [];
+    const seen = new Set<string>();
+    const token = /\{\{([^}]+)\}\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = token.exec(template)) !== null) {
+      let raw = match[1].trim();
+      if (raw.startsWith("/")) continue; // section close
+      if (raw.startsWith("#") || raw.startsWith("^")) raw = raw.slice(1).trim();
+      const name = AnkiTemplateEngine.fieldName(raw);
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        fields.push(name);
+      }
+    }
+    return fields;
+  }
+
   private static buildExtraTable(extraFields: AnkiExtraField[]): string {
     if (extraFields.length === 0) return "";
     const rows = extraFields.map((f) => `| **${f.name}** | ${f.value} |`);

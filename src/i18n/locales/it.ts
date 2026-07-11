@@ -240,6 +240,7 @@ export const it: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "Pulisci le carte orfane (senza mazzo)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "Crea occlusione immagine al cursore",
@@ -254,6 +255,7 @@ export const it: Translations = {
   },
 
   notices: {
+    orphansCleaned: "Rimosse {count} carta/e orfana/e.",
     reparsing:
       "Rianalisi di ogni mazzo in corso. Potrebbe richiedere un momento…",
     resyncComplete: "Risincronizzazione completata.",

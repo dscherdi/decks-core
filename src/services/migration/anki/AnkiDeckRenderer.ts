@@ -64,9 +64,13 @@ export class AnkiDeckRenderer {
     // deck regardless of size). Subdecks still map to separate files either way.
     split = true,
     // Max cards per part-file when splitting (media cap stays fixed).
-    cardsPerFile = DEFAULT_ANKI_CARDS_PER_FILE
+    cardsPerFile = DEFAULT_ANKI_CARDS_PER_FILE,
+    // Fronts already taken elsewhere in the vault (other live decks). An imported
+    // card whose front is reserved gets a " (n)" suffix so it lands as its own
+    // card instead of silently merging into the other deck's card.
+    reservedFronts?: ReadonlySet<string>
   ): AnkiRenderedDeck[] {
-    AnkiDeckRenderer.disambiguateFronts(cards);
+    AnkiDeckRenderer.disambiguateFronts(cards, reservedFronts);
 
     const byDeck = new Map<string, AnkiParsedCard[]>();
     for (const card of cards) {
@@ -117,11 +121,17 @@ export class AnkiDeckRenderer {
   // notes that render the same front (e.g. the same head-word in several
   // sub-decks) would collapse to a single card on sync. Append a stable " (n)"
   // marker to every occurrence after the first so each keeps a distinct front —
-  // and therefore a distinct id. Only basic/template cards key their id on the
+  // and therefore a distinct id. When a front is RESERVED (already taken by a
+  // card in another live deck of the vault), every occurrence is suffixed, so the
+  // imported card lands as its own card instead of being silently dropped in
+  // favour of the other deck's. Only basic/template cards key their id on the
   // front (cloze/occlusion key on cloze text/order or mask id, so they're left
   // untouched). Ordering is by (noteId, ord, cardId) — never the parser's row
   // order, which is unsorted — so re-imports are byte-stable.
-  private static disambiguateFronts(cards: AnkiParsedCard[]): void {
+  private static disambiguateFronts(
+    cards: AnkiParsedCard[],
+    reservedFronts?: ReadonlySet<string>
+  ): void {
     const groups = new Map<string, AnkiParsedCard[]>();
     for (const card of cards) {
       if (card.kind !== "basic" && card.kind !== "template") continue;
@@ -131,17 +141,23 @@ export class AnkiDeckRenderer {
       else groups.set(key, [card]);
     }
 
-    // Seed with every real front so a synthesized "word (2)" never collides with a
-    // note whose front already is "word (2)".
+    const reservedTrimmed = new Set<string>();
+    if (reservedFronts) for (const front of reservedFronts) reservedTrimmed.add(front.trim());
+
+    // Seed with every real front (batch + reserved) so a synthesized "word (2)"
+    // never collides with a note or vault card whose front already is "word (2)".
     const used = new Set(groups.keys());
+    for (const front of reservedTrimmed) used.add(front);
     for (const [key, group] of groups) {
-      if (group.length < 2) continue;
+      const reserved = reservedTrimmed.has(key);
+      if (group.length < 2 && !reserved) continue;
       group.sort((a, b) => a.noteId - b.noteId || a.ord - b.ord || a.cardId - b.cardId);
-      for (let i = 1; i < group.length; i++) {
-        let n = i + 1;
+      let n = 2;
+      for (let i = reserved ? 0 : 1; i < group.length; i++) {
         let candidate = `${key} (${n})`;
         while (used.has(candidate)) candidate = `${key} (${++n})`;
         used.add(candidate);
+        n++;
         AnkiDeckRenderer.applyFront(group[i], candidate);
       }
     }

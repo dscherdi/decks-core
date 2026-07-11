@@ -241,6 +241,7 @@ export const tr: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "Sahipsiz kartları temizle (deste yok)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "İmleç konumunda görüntü gizleme oluştur",
@@ -255,6 +256,7 @@ export const tr: Translations = {
   },
 
   notices: {
+    orphansCleaned: "{count} sahipsiz kart kaldırıldı.",
     reparsing:
       "Tüm desteler yeniden ayrıştırılıyor. Bu işlem biraz zaman alabilir…",
     resyncComplete: "Tam eşitleme tamamlandı.",

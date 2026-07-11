@@ -302,6 +302,91 @@ describe("AnkiCollectionParser", () => {
     expect(tpl.content).toContain("<style>");
   });
 
+  it("derives the template front from the qfmt field, not a field-0 sort index", () => {
+    // Refold-style notetype: field 0 is a sequence number; the front the card
+    // actually shows is {{Front of Card}} (field 1). The front (and thus the id)
+    // must be the word, not the number — otherwise numeric fronts collide across
+    // decks and the user sees a bare index.
+    const refoldModel = {
+      id: "m5",
+      name: "Refold",
+      type: 0,
+      css: ".card { display: grid; grid-template-columns: 1fr 1fr; }",
+      flds: [
+        { name: "Sort Index" },
+        { name: "Front of Card" },
+        { name: "Word" },
+        { name: "Definition" },
+        { name: "word_audio" },
+      ],
+      tmpls: [
+        {
+          name: "Card 1",
+          ord: 0,
+          qfmt: '<div class="tw">{{Front of Card}}</div>{{word_audio}}',
+          afmt: "{{FrontSide}}<hr id=answer>{{Definition}}",
+        },
+      ],
+    };
+    const db = makeFakeDb({
+      models: { m5: refoldModel },
+      decks: DECKS,
+      cardNotes: [
+        cardNote({
+          cid: 1, nid: 1, did: "10", ord: 0, mid: "m5",
+          flds: ["1", "être", "être", "(v.) to be", "[sound:etre.mp3]"],
+        }),
+      ],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.kind).toBe("template");
+    expect(card.front).toBe("être"); // the word, not "1"
+    // Front stays in lockstep with cells[0] (the Decks parser reads cells[0] back).
+    expect(card.templateRow?.cells[0]).toBe("être");
+    expect(card.templateRow?.headers[0]).toBe("Front of Card");
+  });
+
+  it("skips a media-only qfmt field and uses the next text field as the front", () => {
+    // If the first qfmt-referenced field is image/audio only, fall through to the
+    // first one that carries text.
+    const model = {
+      id: "m6",
+      name: "Picture-first",
+      type: 0,
+      css: ".card { display: grid; grid-template-columns: 1fr 1fr; }",
+      flds: [{ name: "Picture" }, { name: "Symbol" }, { name: "Name" }],
+      tmpls: [
+        {
+          name: "Card 1", ord: 0,
+          qfmt: "{{Picture}}<div>{{Symbol}}</div>",
+          afmt: "{{FrontSide}}<hr id=answer>{{Name}}",
+        },
+      ],
+    };
+    const db = makeFakeDb({
+      models: { m6: model },
+      decks: DECKS,
+      cardNotes: [
+        cardNote({ cid: 1, nid: 1, did: "10", ord: 0, mid: "m6", flds: ['<img src="h.png">', "H", "Hydrogen"] }),
+      ],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.kind).toBe("template");
+    expect(card.front).toBe("H"); // Symbol, not the image
+  });
+
+  it("keeps field 0 as the front when it is the qfmt field (no regression)", () => {
+    const richModel = { ...MULTI_MODEL, css: ".card { display: grid; grid-template-columns: 1fr 1fr; }" };
+    const db = makeFakeDb({
+      models: { m1: richModel },
+      decks: DECKS,
+      cardNotes: [cardNote({ cid: 1, nid: 1, did: "10", ord: 0, mid: "m1", flds: ["火", "ひ", "fire"] })],
+    });
+    const card = AnkiCollectionParser.parse(db).cards[0];
+    expect(card.kind).toBe("template");
+    expect(card.front).toBe("火"); // qfmt {{Word}} == field 0
+  });
+
   it("skips image-occlusion notes when no media reader is provided", () => {
     const ioModel = {
       id: "m4",

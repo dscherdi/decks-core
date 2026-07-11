@@ -241,6 +241,7 @@ export const sq: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "Pastro kartat jetime (pa kuvertë)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "Krijo okluzion imazhi te kursori",
@@ -255,6 +256,7 @@ export const sq: Translations = {
   },
 
   notices: {
+    orphansCleaned: "U hoqën {count} karta jetime.",
     reparsing: "Po ri-analizohet çdo pako. Kjo mund të marrë pak kohë…",
     resyncComplete: "Sinkronizimi i plotë përfundoi.",
     resyncFailed: "Sinkronizimi dështoi. Kontrollo konsolën për detaje.",

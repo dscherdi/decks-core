@@ -243,6 +243,7 @@ export const de: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "Verwaiste Karten bereinigen (ohne Stapel)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "Bildverdeckung an Cursorposition erstellen",
@@ -258,6 +259,7 @@ export const de: Translations = {
   },
 
   notices: {
+    orphansCleaned: "{count} verwaiste Karte(n) entfernt.",
     reparsing:
       "Jeder Stapel wird neu eingelesen. Dies kann einen Moment dauern…",
     resyncComplete: "Vollständige Neusynchronisierung abgeschlossen.",

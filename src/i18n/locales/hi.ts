@@ -243,6 +243,7 @@ export const hi: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "अनाथ कार्ड साफ़ करें (कोई डेक नहीं)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "कर्सर पर इमेज ऑक्लूज़न बनाएँ",
@@ -257,6 +258,7 @@ export const hi: Translations = {
   },
 
   notices: {
+    orphansCleaned: "{count} अनाथ कार्ड हटाए गए।",
     reparsing:
       "प्रत्येक डेक को फिर से पार्स किया जा रहा है। इसमें कुछ समय लग सकता है…",
     resyncComplete: "पूर्ण रीसिंक पूरा हुआ।",

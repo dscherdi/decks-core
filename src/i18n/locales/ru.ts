@@ -240,6 +240,7 @@ export const ru: Translations = {
   },
 
   commands: {
+    cleanupOrphanedCards: "Очистить осиротевшие карточки (без колоды)",
     migrateFromSr: "Migrate from Spaced Repetition plugin",
     importFromAnki: "Import from Anki (.apkg)",
     insertImageOcclusion: "Создать окклюзию изображения у курсора",
@@ -255,6 +256,7 @@ export const ru: Translations = {
   },
 
   notices: {
+    orphansCleaned: "Удалено осиротевших карточек: {count}.",
     reparsing:
       "Повторный анализ каждой колоды. Это может занять немного времени…",
     resyncComplete: "Полная синхронизация завершена.",

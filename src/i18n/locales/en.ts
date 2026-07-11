@@ -98,6 +98,7 @@ export const en = {
   },
 
   commands: {
+    cleanupOrphanedCards: "Clean up orphaned cards (no deck)",
     showPanel: "Show flashcards panel",
     showReleaseNotes: "Show release notes",
     openManager: "Open flashcard manager",
@@ -245,6 +246,7 @@ export const en = {
   },
 
   notices: {
+    orphansCleaned: "Removed {count} orphaned card(s).",
     reparsing: "Re-parsing every deck. This may take a moment…",
     resyncComplete: "Full resync complete.",
     resyncFailed: "Resync failed. See console for details.",
