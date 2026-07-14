@@ -222,7 +222,26 @@ export {
   generateSpatialFlashcardId,
   generateSpatialClozeFlashcardId,
   generateOcclusionV2FlashcardId,
+  generateAnchorId,
 } from "./utils/hash";
+export {
+  DK_TOKEN_REGEX,
+  isAnchorCommentBody,
+  stripAnchorTokens,
+  extractAnchorTokens,
+  extractLineAnchors,
+  formatAnchorToken,
+  headerBindingKey,
+  clozeBindingKey,
+  reverseBindingKey,
+  titleBindingKey,
+  titleClozeBindingKey,
+  tableBindingKey,
+  occlusionBindingKey,
+  edgeBindingKey,
+  nodeBindingKey,
+} from "./utils/anchors";
+export type { AnchorRole, AnchorToken, LineAnchor } from "./utils/anchors";
 export {
   toLocalDateString,
   toLocalDateTimeString,

@@ -1,6 +1,23 @@
 import { FlashcardParser } from "../FlashcardParser";
-import { generateContentHash } from "../../utils/hash";
+import {
+  generateAnchorId,
+  generateClozeFlashcardId,
+  generateContentHash,
+  generateFlashcardId,
+  generateReverseFlashcardId,
+} from "../../utils/hash";
 import { escapeTableCell } from "../../utils/markdown-table";
+import {
+  formatAnchorToken,
+  headerBindingKey,
+  reverseBindingKey,
+  tableBindingKey,
+} from "../../utils/anchors";
+
+export interface SrAnchorBinding {
+  anchor: string;
+  flashcardId: string;
+}
 
 /**
  * Translated scheduling state for a single review direction.
@@ -96,6 +113,9 @@ export interface RenderedFile {
   reverse: boolean;
   content: string;
   cards: MigratedCard[];
+  // Anchor bindings for the tokens emitted into `content`, keyed to the same
+  // ids the history importer uses.
+  bindings: SrAnchorBinding[];
 }
 
 interface SchedSegment {
@@ -1255,19 +1275,23 @@ export class LegacySrMigrator {
     const reverse = cards.filter((c) => c.isReverse);
     const files: RenderedFile[] = [];
     if (forward.length) {
+      const bindings: SrAnchorBinding[] = [];
       files.push({
         suffix: "",
         reverse: false,
-        content: LegacySrMigrator.renderFile(forward, decksBaseTag, headerLevel, false, options),
+        content: LegacySrMigrator.renderFile(forward, decksBaseTag, headerLevel, false, options, bindings),
         cards: forward,
+        bindings,
       });
     }
     if (reverse.length) {
+      const bindings: SrAnchorBinding[] = [];
       files.push({
         suffix: " (reversed)",
         reverse: true,
-        content: LegacySrMigrator.renderFile(reverse, decksBaseTag, headerLevel, true, options),
+        content: LegacySrMigrator.renderFile(reverse, decksBaseTag, headerLevel, true, options, bindings),
         cards: reverse,
+        bindings,
       });
     }
     return files;
@@ -1278,7 +1302,8 @@ export class LegacySrMigrator {
     decksBaseTag: string,
     headerLevel: number,
     reverse: boolean,
-    options: RenderOptions
+    options: RenderOptions,
+    bindings: SrAnchorBinding[] = []
   ): string {
     // Exactly one deck tag per file (Decks parses a single deck tag). Defaults
     // to the base; the deepest SR subtag (e.g. decks/cleancode/comments) when
@@ -1313,7 +1338,9 @@ export class LegacySrMigrator {
         tableCards,
         level,
         options.noteTitle,
-        options.withBlockRefs
+        options.withBlockRefs,
+        bindings,
+        reverse
       )
     );
     headerCards.forEach((card, ordinal) => {
@@ -1323,7 +1350,9 @@ export class LegacySrMigrator {
         card.front = card.breadcrumb || normalizeText(options.noteTitle || "");
         card.back = card.ownFront;
       }
-      sections.push(LegacySrMigrator.renderHeaderBlock(card, level, ordinal, options.withBlockRefs));
+      sections.push(
+        LegacySrMigrator.renderHeaderBlock(card, level, ordinal, options.withBlockRefs, bindings, reverse)
+      );
     });
 
     return frontmatterLines.join("\n") + sections.join("\n\n") + "\n";
@@ -1333,7 +1362,9 @@ export class LegacySrMigrator {
     card: MigratedCard,
     level: number,
     ordinal: number,
-    withBlockRefs?: boolean
+    withBlockRefs?: boolean,
+    bindings?: SrAnchorBinding[],
+    reverse?: boolean
   ): string {
     const hashes = "#".repeat(level);
     const tagSuffix = card.tags.map((t) => ` #${t}`).join("");
@@ -1342,6 +1373,23 @@ export class LegacySrMigrator {
       const blockId = shortBlockId(`${ordinal}:${card.front}`);
       card.blockId = blockId;
       back = `${back} ^${blockId}`;
+    }
+    // Cloze header blocks anchor lazily at review time (line-scoped keys
+    // would need per-line tokens); plain cards get an own-line h token.
+    if (bindings && !card.clozes) {
+      const anchorId = generateAnchorId(`sr:${ordinal}:${card.front}`);
+      const baseKey = headerBindingKey(anchorId);
+      bindings.push({
+        anchor: baseKey,
+        flashcardId: generateFlashcardId(card.front),
+      });
+      if (reverse) {
+        bindings.push({
+          anchor: reverseBindingKey(baseKey),
+          flashcardId: generateReverseFlashcardId(card.front),
+        });
+      }
+      back = `${back}\n${formatAnchorToken("h", anchorId)}`;
     }
     return `${hashes} ${card.front}${tagSuffix}\n\n${back}`;
   }
@@ -1355,9 +1403,41 @@ export class LegacySrMigrator {
     cards: MigratedCard[],
     level: number,
     noteTitle?: string,
-    withBlockRefs?: boolean
+    withBlockRefs?: boolean,
+    bindings?: SrAnchorBinding[],
+    reverse?: boolean
   ): string[] {
     if (cards.length === 0) return [];
+    let rowOrdinal = 0;
+    const rowToken = (c: MigratedCard): string => {
+      if (!bindings) return "";
+      const anchorId = generateAnchorId(`sr:t:${rowOrdinal++}:${c.front}`);
+      const baseKey = tableBindingKey(anchorId);
+      if (c.clozes) {
+        for (const entry of c.clozes) {
+          bindings.push({
+            anchor: tableBindingKey(anchorId, entry.clozeOrder),
+            flashcardId: generateClozeFlashcardId(
+              c.front,
+              entry.clozeText,
+              entry.clozeOrder
+            ),
+          });
+        }
+      } else {
+        bindings.push({
+          anchor: baseKey,
+          flashcardId: generateFlashcardId(c.front),
+        });
+        if (reverse) {
+          bindings.push({
+            anchor: reverseBindingKey(baseKey),
+            flashcardId: generateReverseFlashcardId(c.front),
+          });
+        }
+      }
+      return ` ${formatAnchorToken("t", anchorId)}`;
+    };
     const hashes = "#".repeat(level);
     // Group by context AND tag-set: a table's container header supplies one
     // tag-set to all its rows, so cards sharing a context but differing in tags
@@ -1385,12 +1465,12 @@ export class LegacySrMigrator {
         ? `| Front | Back | Notes |\n| --- | --- | --- |\n${group
             .map((c) =>
               c.clozes
-                ? `| ${escapeTableCell(c.front.trim())} |  |  |`
-                : `| ${escapeTableCell(c.front.trim())} | ${escapeTableCell(c.back.trim())} |  |`
+                ? `| ${escapeTableCell(c.front.trim())}${rowToken(c)} |  |  |`
+                : `| ${escapeTableCell(c.front.trim())}${rowToken(c)} | ${escapeTableCell(c.back.trim())} |  |`
             )
             .join("\n")}`
         : `| Front |\n| --- |\n${group
-            .map((c) => `| ${escapeTableCell(c.front.trim())} |`)
+            .map((c) => `| ${escapeTableCell(c.front.trim())}${rowToken(c)} |`)
             .join("\n")}`;
 
       if (!withBlockRefs) {
@@ -1421,6 +1501,11 @@ export class LegacySrMigrator {
    * the back. Frontmatter carries exactly the one `reviewTag` (e.g.
    * `decks/review`). The original note is never modified — this is a duplicate.
    */
+  /** Deterministic `decks-id` value for a migrated title-mode note. */
+  static titleAnchorId(originalFront: string): string {
+    return generateAnchorId(`sr:title:${originalFront}`);
+  }
+
   static renderTitleModeFile(
     card: MigratedCard,
     reviewTag: string,
@@ -1435,6 +1520,7 @@ export class LegacySrMigrator {
     const frontmatter = [
       "---",
       ...(props ? props.split("\n") : []),
+      `decks-id: ${LegacySrMigrator.titleAnchorId(card.front)}`,
       "tags:",
       ...tags.map((t) => `  - ${t}`),
       "---",

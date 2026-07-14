@@ -274,6 +274,10 @@ export interface Flashcard {
   // be merged at render time. Null for non-table cards.
   templateRow?: TemplateRow | null;
 
+  // Anchor binding key currently present in the source file; null until the
+  // card is stamped (the durable record lives in anchor_bindings).
+  anchor?: string | null;
+
   state: FlashcardState;
   dueDate: string;
   interval: number; // in minutes

@@ -1,5 +1,15 @@
 import { LegacySrMigrator } from "../LegacySrMigrator";
 import type { MigratedCard } from "../LegacySrMigrator";
+import { stripAnchorTokens } from "../../../utils/anchors";
+
+// Layout assertions ignore anchor tokens (inline and own-line); emission has
+// dedicated tests below.
+const clean = (s: string): string =>
+  s
+    .split("\n")
+    .filter((line) => !/^%%dk:[hcto]:[a-z0-9]+%%$/.test(line.trim()))
+    .map((line) => stripAnchorTokens(line))
+    .join("\n");
 
 const OPTS = { srBaseTag: "#flashcards", decksBaseTag: "#decks" };
 
@@ -325,14 +335,14 @@ describe("pipe guardrail (smart routing)", () => {
   it("routes a single-line card containing | to a header, not a table", () => {
     const cards = process("Absolute value :: $|x| = \\max(x,-x)$");
     const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "smart" });
-    expect(main.content).toContain("## Absolute value");
-    expect(main.content).not.toContain("| Front | Back | Notes |");
+    expect(clean(main.content)).toContain("## Absolute value");
+    expect(clean(main.content)).not.toContain("| Front | Back | Notes |");
   });
 
   it("still tables a pipe-free single-line card in smart mode", () => {
     const cards = process("Cat :: Gato");
     const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "smart" });
-    expect(main.content).toContain("| Front | Back | Notes |");
+    expect(clean(main.content)).toContain("| Front | Back | Notes |");
   });
 });
 
@@ -490,9 +500,9 @@ describe("cloze migration", () => {
       format: "tables",
       noteTitle: "MyNote",
     });
-    expect(main.content).toContain("## MyNote");
-    expect(main.content).toContain("| Front |");
-    expect(main.content).toContain("| The capital is ==Paris==. |");
+    expect(clean(main.content)).toContain("## MyNote");
+    expect(clean(main.content)).toContain("| Front |");
+    expect(clean(main.content)).toContain("| The capital is ==Paris==. |");
   });
 });
 
@@ -530,10 +540,10 @@ describe("single deck tag derivation", () => {
     const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, {
       deckTag: "decks/cleancode/tdd",
     });
-    expect(main.content).toContain("  - decks/cleancode/tdd");
+    expect(clean(main.content)).toContain("  - decks/cleancode/tdd");
     // The bare base tag must NOT also appear.
-    expect(main.content).not.toMatch(/^ {2}- decks$/m);
-    expect(main.content).not.toContain("development/clean-code");
+    expect(clean(main.content)).not.toMatch(/^ {2}- decks$/m);
+    expect(clean(main.content)).not.toContain("development/clean-code");
   });
 
   it("derives a review deck tag preserving the subpath", () => {
@@ -564,10 +574,10 @@ describe("LegacySrMigrator.renderDecksFiles — headers format", () => {
     const files = LegacySrMigrator.renderDecksFiles(cards, "#decks", 3, { format: "headers" });
     expect(files).toHaveLength(1);
     expect(files[0].suffix).toBe("");
-    expect(files[0].content).toContain("### Cat #decks/animals");
-    expect(files[0].content).toContain("Gato");
-    expect(files[0].content).toContain("tags:\n  - decks");
-    expect(files[0].content).not.toContain("reverse: true");
+    expect(clean(files[0].content)).toContain("### Cat #decks/animals");
+    expect(clean(files[0].content)).toContain("Gato");
+    expect(clean(files[0].content)).toContain("tags:\n  - decks");
+    expect(clean(files[0].content)).not.toContain("reverse: true");
   });
 
   it("splits reverse cards into a (reversed) file with reverse frontmatter", () => {
@@ -576,9 +586,9 @@ describe("LegacySrMigrator.renderDecksFiles — headers format", () => {
     expect(files).toHaveLength(2);
     const main = files.find((f) => f.suffix === "")!;
     const reversed = files.find((f) => f.suffix === " (reversed)")!;
-    expect(main.content).toContain("## Cat");
-    expect(reversed.content).toContain("reverse: true");
-    expect(reversed.content).toContain("## Dog");
+    expect(clean(main.content)).toContain("## Cat");
+    expect(clean(reversed.content)).toContain("reverse: true");
+    expect(clean(reversed.content)).toContain("## Dog");
   });
 });
 
@@ -586,10 +596,10 @@ describe("LegacySrMigrator.renderDecksFiles — smart routing", () => {
   it("routes single-line cards to a table and multi-line cards to headers, in one file", () => {
     const cards = process("Cat :: Gato\n\nLong front\n?\nLong multi-line back");
     const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "smart" });
-    expect(main.content).toContain("| Front | Back | Notes |");
-    expect(main.content).toContain("| Cat | Gato |");
-    expect(main.content).toContain("## Long front");
-    expect(main.content).toContain("Long multi-line back");
+    expect(clean(main.content)).toContain("| Front | Back | Notes |");
+    expect(clean(main.content)).toContain("| Cat | Gato |");
+    expect(clean(main.content)).toContain("## Long front");
+    expect(clean(main.content)).toContain("Long multi-line back");
   });
 
   it("groups table cards by tag-set under a tagged container header", () => {
@@ -598,10 +608,10 @@ describe("LegacySrMigrator.renderDecksFiles — smart routing", () => {
       format: "smart",
       noteTitle: "Vocab",
     });
-    expect(main.content).toContain("## Vocab #decks/es");
-    expect(main.content).toContain("## Vocab #decks/fr");
-    expect(main.content).toContain("| Hola | Hi |");
-    expect(main.content).toContain("| Bonjour | Hi |");
+    expect(clean(main.content)).toContain("## Vocab #decks/es");
+    expect(clean(main.content)).toContain("## Vocab #decks/fr");
+    expect(clean(main.content)).toContain("| Hola | Hi |");
+    expect(clean(main.content)).toContain("| Bonjour | Hi |");
   });
 });
 
@@ -616,35 +626,35 @@ describe("contextual bundling (Groups 13 & 14)", () => {
 
   it("13.1 bundles QA cards under one heading into a single table with own-front rows", () => {
     const [main] = render("## State Capitals\nNew York :: Albany\n\nTexas :: Austin");
-    expect(tableCount(main.content)).toBe(1);
-    expect(main.content).toContain("## State Capitals");
-    expect(main.content).toContain("| New York | Albany |");
-    expect(main.content).toContain("| Texas | Austin |");
+    expect(tableCount(clean(main.content))).toBe(1);
+    expect(clean(main.content)).toContain("## State Capitals");
+    expect(clean(main.content)).toContain("| New York | Albany |");
+    expect(clean(main.content)).toContain("| Texas | Austin |");
   });
 
   it("13.2 bundles QA cards nested under a list item, using the parent text as the container", () => {
     const md = ["- State Capitals", "    - New York :: Albany", "    - Texas :: Austin"].join("\n");
     const [main] = render(md);
-    expect(tableCount(main.content)).toBe(1);
-    expect(main.content).toContain("## State Capitals");
-    expect(main.content).toContain("| New York | Albany |");
-    expect(main.content).toContain("| Texas | Austin |");
+    expect(tableCount(clean(main.content))).toBe(1);
+    expect(clean(main.content)).toContain("## State Capitals");
+    expect(clean(main.content)).toContain("| New York | Albany |");
+    expect(clean(main.content)).toContain("| Texas | Austin |");
   });
 
   it("13.4 a reverse card in a bundle goes to the (reversed) file; forwards bundle in main", () => {
     const files = render("## Animals\nCat :: Gato\n\nDog ::: Perro");
     const main = files.find((f) => f.suffix === "")!;
     const rev = files.find((f) => f.reverse)!;
-    expect(main.content).toContain("| Cat | Gato |");
-    expect(main.content).not.toContain("Perro");
-    expect(rev.content).toContain("| Dog | Perro |");
+    expect(clean(main.content)).toContain("| Cat | Gato |");
+    expect(clean(main.content)).not.toContain("Perro");
+    expect(clean(rev.content)).toContain("| Dog | Perro |");
   });
 
   it("13.5 the nearest heading wins as the container label", () => {
     const [main] = render("## Geography\n### Europe\nFrance :: Paris");
-    expect(main.content).toContain("## Europe");
-    expect(main.content).toContain("| France | Paris |");
-    expect(main.content).not.toContain("Geography > Europe");
+    expect(clean(main.content)).toContain("## Europe");
+    expect(clean(main.content)).toContain("| France | Paris |");
+    expect(clean(main.content)).not.toContain("Geography > Europe");
   });
 
   it("13.6 each bundled card keeps its own SR state", () => {
@@ -656,28 +666,28 @@ describe("contextual bundling (Groups 13 & 14)", () => {
 
   it("13.x bundles top-level (no heading) cards under the note title", () => {
     const [main] = render("France :: Paris\n\nSpain :: Madrid", "Geo");
-    expect(tableCount(main.content)).toBe(1);
-    expect(main.content).toContain("## Geo");
-    expect(main.content).toContain("| France | Paris |");
-    expect(main.content).toContain("| Spain | Madrid |");
+    expect(tableCount(clean(main.content))).toBe(1);
+    expect(clean(main.content)).toContain("## Geo");
+    expect(clean(main.content)).toContain("| France | Paris |");
+    expect(clean(main.content)).toContain("| Spain | Madrid |");
   });
 
   it("14.1 bundles clozes under one heading into a 1-column table (sentence in front)", () => {
     const [main] = render(
       "## Planets\n- The largest planet is ==Jupiter==. <!--SR:!2024-06-18,4,250-->\n- Closest to the sun is ==Mercury==. <!--SR:!2024-06-19,9,250-->"
     );
-    expect(main.content).toContain("## Planets");
-    expect(main.content).toContain("| Front |");
-    expect(main.content).not.toContain("| Front | Back | Notes |");
-    expect(main.content).toContain("| The largest planet is ==Jupiter==. |");
-    expect(main.content).toContain("| Closest to the sun is ==Mercury==. |");
+    expect(clean(main.content)).toContain("## Planets");
+    expect(clean(main.content)).toContain("| Front |");
+    expect(clean(main.content)).not.toContain("| Front | Back | Notes |");
+    expect(clean(main.content)).toContain("| The largest planet is ==Jupiter==. |");
+    expect(clean(main.content)).toContain("| Closest to the sun is ==Mercury==. |");
   });
 
   it("14.3 mixes QA and clozes in one 3-column table; cloze rows have an empty back", () => {
     const [main] = render("## Mix\nNew York :: Albany\n\nThe capital is ==Paris==.");
-    expect(tableCount(main.content)).toBe(1);
-    expect(main.content).toContain("| New York | Albany |  |");
-    expect(main.content).toContain("| The capital is ==Paris==. |  |  |");
+    expect(tableCount(clean(main.content))).toBe(1);
+    expect(clean(main.content)).toContain("| New York | Albany |  |");
+    expect(clean(main.content)).toContain("| The capital is ==Paris==. |  |  |");
   });
 });
 
@@ -685,7 +695,7 @@ describe("LegacySrMigrator.renderDecksFiles — tables format", () => {
   it("places multi-line cards into table cells using <br> and escapes pipes", () => {
     const cards = process("Front\n?\nline one\nline | two");
     const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "tables" });
-    expect(main.content).toContain("line one<br>line \\| two");
+    expect(clean(main.content)).toContain("line one<br>line \\| two");
   });
 });
 
@@ -698,7 +708,7 @@ describe("LegacySrMigrator delete mode", () => {
       format: "headers",
     });
     const main = files.find((f) => !f.reverse)!;
-    expect(main.content).toMatch(/4 \^[a-z0-9]{6}/);
+    expect(clean(main.content)).toMatch(/4 \^[a-z0-9]{6}/);
 
     const linked = LegacySrMigrator.buildLinkReplacedOriginal(
       original,
@@ -721,9 +731,9 @@ describe("LegacySrMigrator delete mode", () => {
     });
     const main = files[0];
     // Container header is clean (linkable); tags live on a parent header.
-    expect(main.content).toContain("## Vocab\n");
-    expect(main.content).toContain("# es #decks/es");
-    expect(main.content).not.toContain("## Vocab #decks/es");
+    expect(clean(main.content)).toContain("## Vocab\n");
+    expect(clean(main.content)).toContain("# es #decks/es");
+    expect(clean(main.content)).not.toContain("## Vocab #decks/es");
 
     const linked = LegacySrMigrator.buildLinkReplacedOriginal(original, cards, "Deck", "Deck");
     expect(linked).toContain("[[Deck#Vocab]]");
@@ -822,7 +832,10 @@ describe("LegacySrMigrator.renderTitleModeFile (duplicate)", () => {
   it("renders a title-mode file with exactly the review tag and the cleaned body", () => {
     const card = LegacySrMigrator.processWholeNote(reviewNote, "My Note");
     const out = LegacySrMigrator.renderTitleModeFile(card, "decks/review");
-    expect(out.startsWith("---\ntags:\n  - decks/review\n---")).toBe(true);
+    const titleId = LegacySrMigrator.titleAnchorId("My Note");
+    expect(
+      out.startsWith(`---\ndecks-id: ${titleId}\ntags:\n  - decks/review\n---`)
+    ).toBe(true);
     // Exactly one tag, in the decks/ namespace; no carried-over SR tags.
     expect(out.match(/^ {2}- /gm)).toHaveLength(1);
     expect(out).not.toContain("flashcards/cleancode/comments");

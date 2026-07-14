@@ -63,6 +63,15 @@ export interface IDatabaseService {
     { id: string; filepath: string; lastSyncedMtime: number }[]
   >;
 
+  // Anchor bindings (durable anchor-key -> card-id records, append-only)
+  getAnchorBinding(anchor: string): Promise<string | null>;
+  insertAnchorBindings(
+    rows: { anchor: string; flashcardId: string }[]
+  ): Promise<void>;
+  setFlashcardAnchor(flashcardId: string, anchor: string): Promise<void>;
+  countNodeCards(deckId: string, sourceNodeId: string): Promise<number>;
+  getReviewedUnanchoredCards(): Promise<Flashcard[]>;
+
   createDeck(
     deck: Omit<Deck, "created" | "modified" | "profileId"> & { id?: string; profileId?: string }
   ): Promise<string>;

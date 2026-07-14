@@ -1,5 +1,15 @@
 import { AnkiDeckRenderer } from "../AnkiDeckRenderer";
 import type { AnkiParsedCard, AnkiScheduling } from "../AnkiTypes";
+import { stripAnchorTokens } from "../../../../utils/anchors";
+
+// Layout assertions ignore anchor tokens (inline and own-line); emission has
+// dedicated tests below.
+const clean = (s: string): string =>
+  s
+    .split("\n")
+    .filter((line) => !/^%%dk:[hcto]:[a-z0-9]+%%$/.test(line.trim()))
+    .map((line) => stripAnchorTokens(line))
+    .join("\n");
 
 const NEW_SCHED: AnkiScheduling = {
   type: 0,
@@ -40,9 +50,9 @@ describe("AnkiDeckRenderer", () => {
     const deck = decks[0];
     expect(deck.relativePath).toBe("German/01 Hallo");
     expect(deck.tag).toBe("decks/anki/german/01-hallo");
-    expect(deck.content).toContain("tags:\n  - decks/anki/german/01-hallo");
-    expect(deck.content).toContain("## Hallo\n\nHello");
-    expect(deck.content).toContain("## Tschüss\n\nBye");
+    expect(clean(deck.content)).toContain("tags:\n  - decks/anki/german/01-hallo");
+    expect(clean(deck.content)).toContain("## Hallo\n\nHello");
+    expect(clean(deck.content)).toContain("## Tschüss\n\nBye");
   });
 
   it("keeps forward and reverse templates as independent entries", () => {
@@ -51,8 +61,8 @@ describe("AnkiDeckRenderer", () => {
       basic({ cardId: 11, ord: 1, front: "The weather", back: "Das Wetter" }),
     ];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("## Das Wetter\n\nThe weather");
-    expect(deck.content).toContain("## The weather\n\nDas Wetter");
+    expect(clean(deck.content)).toContain("## Das Wetter\n\nThe weather");
+    expect(clean(deck.content)).toContain("## The weather\n\nDas Wetter");
   });
 
   it("renders cloze cards as a 1-col table per deck, deduped by note", () => {
@@ -68,9 +78,9 @@ describe("AnkiDeckRenderer", () => {
         clozeOrder: ord,
       });
     const decks = AnkiDeckRenderer.render([clozeCard(0, "jeden Tag"), clozeCard(1, "Bier")], "decks/anki", 2);
-    expect(decks[0].content).toContain("| Front |\n| --- |");
+    expect(clean(decks[0].content)).toContain("| Front |\n| --- |");
     // Same note → one row.
-    const occurrences = decks[0].content.split("Du trinkst ==jeden Tag== ==Bier==.").length - 1;
+    const occurrences = clean(decks[0].content).split("Du trinkst ==jeden Tag== ==Bier==.").length - 1;
     expect(occurrences).toBe(1);
   });
 
@@ -86,14 +96,14 @@ describe("AnkiDeckRenderer", () => {
   it("appends notes after a --- in header-paragraph format", () => {
     const cards = [basic({ front: "Hallo", back: "Hello", notes: "informal greeting" })];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("## Hallo\n\nHello\n\n---\n\ninformal greeting");
+    expect(clean(deck.content)).toContain("## Hallo\n\nHello\n\n---\n\ninformal greeting");
   });
 
   it("promotes notes into back when back is empty (no dangling ---)", () => {
     const cards = [basic({ front: "Hallo", back: "", notes: "only notes" })];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("## Hallo\n\nonly notes");
-    expect(deck.content).not.toContain("---\n\n");
+    expect(clean(deck.content)).toContain("## Hallo\n\nonly notes");
+    expect(clean(deck.content)).not.toContain("---\n\n");
   });
 
   it("aggregates table-routed cards (no notes) into a single 2-col table", () => {
@@ -102,12 +112,12 @@ describe("AnkiDeckRenderer", () => {
       basic({ noteId: 2, cardId: 11, front: "Tschüss", back: "Bye", tableLayout: true }),
     ];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| Front | Back |\n| --- | --- |");
-    expect(deck.content).toContain("| Hallo | Hello |");
-    expect(deck.content).toContain("| Tschüss | Bye |");
-    expect(deck.content).not.toContain("| Notes |");
+    expect(clean(deck.content)).toContain("| Front | Back |\n| --- | --- |");
+    expect(clean(deck.content)).toContain("| Hallo | Hello |");
+    expect(clean(deck.content)).toContain("| Tschüss | Bye |");
+    expect(clean(deck.content)).not.toContain("| Notes |");
     // One aggregated table, not one per card.
-    expect(deck.content.split("| Front | Back |").length - 1).toBe(1);
+    expect(clean(deck.content).split("| Front | Back |").length - 1).toBe(1);
   });
 
   it("groups table cards by structure: a 2-col table and a separate 3-col table", () => {
@@ -116,19 +126,19 @@ describe("AnkiDeckRenderer", () => {
       basic({ noteId: 2, cardId: 11, front: "Tschüss", back: "Bye", tableLayout: true }),
     ];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| Front | Back | Notes |\n| --- | --- | --- |");
-    expect(deck.content).toContain("| Hallo | Hello | informal |");
-    expect(deck.content).toContain("| Front | Back |\n| --- | --- |");
-    expect(deck.content).toContain("| Tschüss | Bye |");
+    expect(clean(deck.content)).toContain("| Front | Back | Notes |\n| --- | --- | --- |");
+    expect(clean(deck.content)).toContain("| Hallo | Hello | informal |");
+    expect(clean(deck.content)).toContain("| Front | Back |\n| --- | --- |");
+    expect(clean(deck.content)).toContain("| Tschüss | Bye |");
     // The no-notes card is NOT padded into the 3-col table.
-    expect(deck.content).not.toContain("| Tschüss | Bye |  |");
+    expect(clean(deck.content)).not.toContain("| Tschüss | Bye |  |");
   });
 
   it("renders a no-front media card as a table row (front cell = the image)", () => {
     const card = basic({ front: "![[img1.jpg]]", back: "![[img2.jpg]]", tableLayout: true });
     const [deck] = AnkiDeckRenderer.render([card], "decks/anki", 2);
-    expect(deck.content).toContain("| Front | Back |\n| --- | --- |");
-    expect(deck.content).toContain("| ![[img1.jpg]] | ![[img2.jpg]] |");
+    expect(clean(deck.content)).toContain("| Front | Back |\n| --- | --- |");
+    expect(clean(deck.content)).toContain("| ![[img1.jpg]] | ![[img2.jpg]] |");
   });
 
   it("collapses a deck with >= 50 header-paragraph basics into a table", () => {
@@ -136,8 +146,8 @@ describe("AnkiDeckRenderer", () => {
       basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "line a\nline b\nline c", tableLayout: false })
     );
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| Front | Back |");
-    expect(deck.content).not.toContain("## Q0"); // no header-paragraph sections
+    expect(clean(deck.content)).toContain("| Front | Back |");
+    expect(clean(deck.content)).not.toContain("## Q0"); // no header-paragraph sections
   });
 
   it("keeps < 50 header-paragraph basics as header-paragraph sections", () => {
@@ -145,8 +155,8 @@ describe("AnkiDeckRenderer", () => {
       basic({ noteId: i + 1, cardId: 100 + i, front: `Q${i}`, back: "line a\nline b", tableLayout: false })
     );
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("## Q0");
-    expect(deck.content).not.toContain("| Front | Back |");
+    expect(clean(deck.content)).toContain("## Q0");
+    expect(clean(deck.content)).not.toContain("| Front | Back |");
   });
 
   it("does not promote block-markdown cards in the volume fallback", () => {
@@ -157,9 +167,9 @@ describe("AnkiDeckRenderer", () => {
       basic({ noteId: 999, cardId: 999, front: "Truth table", back: "| A | B |\n| --- | --- |\n| w | f |", tableLayout: false })
     );
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| Front | Back |"); // the 50 plain cards aggregated
-    expect(deck.content).toContain("## Truth table"); // the table card stays header-paragraph
-    expect(deck.content).toContain("| A | B |\n| --- | --- |\n| w | f |"); // its table renders intact
+    expect(clean(deck.content)).toContain("| Front | Back |"); // the 50 plain cards aggregated
+    expect(clean(deck.content)).toContain("## Truth table"); // the table card stays header-paragraph
+    expect(clean(deck.content)).toContain("| A | B |\n| --- | --- |\n| w | f |"); // its table renders intact
   });
 
   it("keeps empty-back cards header-paragraph even above the volume threshold", () => {
@@ -168,8 +178,8 @@ describe("AnkiDeckRenderer", () => {
     );
     cards.push(basic({ noteId: 999, cardId: 999, front: "OnlyFront", back: "", notes: "a note", tableLayout: false }));
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| Front | Back |"); // the 50 went into a table
-    expect(deck.content).toContain("## OnlyFront"); // the empty-back one stayed header-paragraph
+    expect(clean(deck.content)).toContain("| Front | Back |"); // the 50 went into a table
+    expect(clean(deck.content)).toContain("## OnlyFront"); // the empty-back one stayed header-paragraph
   });
 
   it("renders a templated cloze (with extras) as a tag-bound table", () => {
@@ -184,9 +194,9 @@ describe("AnkiDeckRenderer", () => {
       templateRow: { headers: ["Text", "Extra"], cells: ["Du trinkst ==jeden Tag== Bier.", "![[img.jpg]]"] },
     });
     const [deck] = AnkiDeckRenderer.render([cloze], "decks/anki", 2);
-    expect(deck.content).toContain("#anki-tpl-cloze/m");
-    expect(deck.content).toContain("| Text | Extra |");
-    expect(deck.content).toContain("| Du trinkst ==jeden Tag== Bier. | ![[img.jpg]] |");
+    expect(clean(deck.content)).toContain("#anki-tpl-cloze/m");
+    expect(clean(deck.content)).toContain("| Text | Extra |");
+    expect(clean(deck.content)).toContain("| Du trinkst ==jeden Tag== Bier. | ![[img.jpg]] |");
   });
 
   it("emits a 1-col cloze table with the sentence as the cell", () => {
@@ -199,20 +209,20 @@ describe("AnkiDeckRenderer", () => {
       clozeOrder: 0,
     });
     const [deck] = AnkiDeckRenderer.render([cloze], "decks/anki", 2);
-    expect(deck.content).toContain("| Front |\n| --- |\n| Du trinkst ==jeden Tag== Bier. |");
+    expect(clean(deck.content)).toContain("| Front |\n| --- |\n| Du trinkst ==jeden Tag== Bier. |");
   });
 
   it("escapes pipes and newlines in table cells", () => {
     const cards = [basic({ front: "a|b", back: "line1\nline2", tableLayout: true })];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| a\\|b | line1<br>line2 |");
+    expect(clean(deck.content)).toContain("| a\\|b | line1<br>line2 |");
   });
 
   it("trims trailing whitespace in table cells (no padded columns)", () => {
     const cards = [basic({ front: "Q   ", back: "answer line   \n   more   ", tableLayout: true })];
     const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-    expect(deck.content).toContain("| Q | answer line<br>   more |");
-    expect(deck.content).not.toContain("  |"); // no padded trailing whitespace before a pipe
+    expect(clean(deck.content)).toContain("| Q | answer line<br>   more |");
+    expect(clean(deck.content)).not.toContain("  |"); // no padded trailing whitespace before a pipe
   });
 
   it("renders template cards as a tag-bound multi-field table", () => {
@@ -225,9 +235,9 @@ describe("AnkiDeckRenderer", () => {
       templateRow: { headers: ["Word", "Reading", "Meaning"], cells: ["火", "ひ", "fire"] },
     });
     const [deck] = AnkiDeckRenderer.render([tpl], "decks/anki", 2);
-    expect(deck.content).toContain("## Vocab #anki-tpl/vocab-0");
-    expect(deck.content).toContain("| Word | Reading | Meaning |");
-    expect(deck.content).toContain("| 火 | ひ | fire |");
+    expect(clean(deck.content)).toContain("## Vocab #anki-tpl/vocab-0");
+    expect(clean(deck.content)).toContain("| Word | Reading | Meaning |");
+    expect(clean(deck.content)).toContain("| 火 | ひ | fire |");
   });
 
   it("renders occlusion cards as one decks-occlusion block per image", () => {
@@ -246,12 +256,12 @@ describe("AnkiDeckRenderer", () => {
         ],
       });
     const [deck] = AnkiDeckRenderer.render([occ("m1"), occ("m2")], "decks/anki", 2);
-    expect(deck.content).toContain("```decks-occlusion");
-    expect(deck.content).toContain("image: '[[heart.png]]'");
-    expect(deck.content).toContain("id: m1");
-    expect(deck.content).toContain("id: m2");
+    expect(clean(deck.content)).toContain("```decks-occlusion");
+    expect(clean(deck.content)).toContain("image: '[[heart.png]]'");
+    expect(clean(deck.content)).toContain("id: m1");
+    expect(clean(deck.content)).toContain("id: m2");
     // One block for the shared image (not one per mask).
-    expect(deck.content.split("```decks-occlusion").length - 1).toBe(1);
+    expect(clean(deck.content).split("```decks-occlusion").length - 1).toBe(1);
   });
 
   describe("note tags (grouped by tag-set)", () => {
@@ -259,7 +269,7 @@ describe("AnkiDeckRenderer", () => {
       const cards = [basic({ front: "Hallo", back: "Hello", tags: ["greetings", "01-basics"] })];
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
       // Sorted, each prefixed with #.
-      expect(deck.content).toContain("## Hallo #01-basics #greetings\n\nHello");
+      expect(clean(deck.content)).toContain("## Hallo #01-basics #greetings\n\nHello");
     });
 
     it("splits a table into one section per tag-set, tags on the header", () => {
@@ -270,8 +280,8 @@ describe("AnkiDeckRenderer", () => {
       ];
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
       // Two tables — #x groups A+B, #y has C.
-      expect(deck.content).toContain("## Deck #x\n\n| Front | Back |\n| --- | --- |\n| A | 1 |\n| B | 2 |");
-      expect(deck.content).toContain("## Deck #y\n\n| Front | Back |\n| --- | --- |\n| C | 3 |");
+      expect(clean(deck.content)).toContain("## Deck #x\n\n| Front | Back |\n| --- | --- |\n| A | 1 |\n| B | 2 |");
+      expect(clean(deck.content)).toContain("## Deck #y\n\n| Front | Back |\n| --- | --- |\n| C | 3 |");
     });
 
     it("aggregates same-tag cards into a single table", () => {
@@ -280,7 +290,7 @@ describe("AnkiDeckRenderer", () => {
         basic({ noteId: 2, cardId: 11, front: "B", back: "2", tableLayout: true, tags: ["x"] }),
       ];
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-      expect(deck.content.match(/\| Front \| Back \|/g) ?? []).toHaveLength(1);
+      expect(clean(deck.content).match(/\| Front \| Back \|/g) ?? []).toHaveLength(1);
     });
   });
 
@@ -294,7 +304,7 @@ describe("AnkiDeckRenderer", () => {
         basic({ noteId: 5, cardId: 5, front: "Kiwi", back: "k", tags: ["beta"] }),
       ];
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-      const at = (h: string): number => deck.content.indexOf(`## ${h}`);
+      const at = (h: string): number => clean(deck.content).indexOf(`## ${h}`);
       // Untagged (Mango, Zebra) come before any tagged section.
       expect(at("Mango")).toBeLessThan(at("Apple #alpha"));
       expect(at("Zebra")).toBeLessThan(at("Apple #alpha"));
@@ -316,16 +326,16 @@ describe("AnkiDeckRenderer", () => {
 
     it("renders a multi-paragraph cloze with a title line as header-paragraph", () => {
       const [deck] = AnkiDeckRenderer.render([longCloze()], "decks/anki", 2);
-      expect(deck.content).toContain(
+      expect(clean(deck.content)).toContain(
         "## Plan d'étude d'un arc paramétré\n\na) ==Réduction de l'intervalle==\n\nb) ==Etude aux bornes=="
       );
       // No flattened table row for this card.
-      expect(deck.content).not.toContain("<br><br>");
+      expect(clean(deck.content)).not.toContain("<br><br>");
     });
 
     it("puts the cloze's tags on its header-paragraph header", () => {
       const [deck] = AnkiDeckRenderer.render([longCloze({ tags: ["09-courbes"] })], "decks/anki", 2);
-      expect(deck.content).toContain("## Plan d'étude d'un arc paramétré #09-courbes\n\n");
+      expect(clean(deck.content)).toContain("## Plan d'étude d'un arc paramétré #09-courbes\n\n");
     });
 
     it("keeps a short single-paragraph cloze in the 1-col table", () => {
@@ -337,7 +347,7 @@ describe("AnkiDeckRenderer", () => {
         clozeOrder: 0,
       });
       const [deck] = AnkiDeckRenderer.render([short], "decks/anki", 2);
-      expect(deck.content).toContain("| Front |\n| --- |\n| Du trinkst ==Bier==. |");
+      expect(clean(deck.content)).toContain("| Front |\n| --- |\n| Du trinkst ==Bier==. |");
     });
   });
 
@@ -442,7 +452,7 @@ describe("AnkiDeckRenderer", () => {
       const idx = decks.findIndex((d) => d.cards.some((c) => c.cardId === 9000));
       expect(decks[idx].cards.filter((c) => c.cardId >= 9000)).toHaveLength(2);
       // The deduped cloze entry renders exactly once in that chunk.
-      const occurrences = decks[idx].content.split("Ich ==trinke== ==Bier==.").length - 1;
+      const occurrences = clean(decks[idx].content).split("Ich ==trinke== ==Bier==.").length - 1;
       expect(occurrences).toBe(1);
     });
 
@@ -511,8 +521,8 @@ describe("AnkiDeckRenderer", () => {
       const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
       const d1 = decks.find((d) => d.relativePath === "Book/1")!;
       const d2 = decks.find((d) => d.relativePath === "Book/2")!;
-      expect(d1.content).toContain("## object\n");
-      expect(d2.content).toContain("## object (2)\n");
+      expect(clean(d1.content)).toContain("## object\n");
+      expect(clean(d2.content)).toContain("## object (2)\n");
       // Lowest (noteId, ord, cardId) keeps the clean front; mutation is in place.
       expect(cards.find((c) => c.noteId === 1)!.front).toBe("object");
       expect(cards.find((c) => c.noteId === 2)!.front).toBe("object (2)");
@@ -524,8 +534,8 @@ describe("AnkiDeckRenderer", () => {
         basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "found", back: "to establish" }),
         basic({ noteId: 3, cardId: 30, deckName: "Book::3", front: "found", back: "molten metal" }),
       ];
-      const forward = AnkiDeckRenderer.render(make(), "decks/anki", 2).map((d) => d.content);
-      const reversed = AnkiDeckRenderer.render(make().reverse(), "decks/anki", 2).map((d) => d.content);
+      const forward = AnkiDeckRenderer.render(make(), "decks/anki", 2).map((d) => clean(d.content));
+      const reversed = AnkiDeckRenderer.render(make().reverse(), "decks/anki", 2).map((d) => clean(d.content));
       expect(reversed).toEqual(forward);
 
       const cards = make();
@@ -609,7 +619,7 @@ describe("AnkiDeckRenderer", () => {
       expect(second.front).toBe("cube (2)");
       expect(second.templateRow!.cells[0]).toBe("cube (2)");
       expect(cards.find((c) => c.noteId === 1)!.templateRow!.cells[0]).toBe("cube");
-      expect(decks.find((d) => d.relativePath === "Book/2")!.content).toContain("| cube (2) |");
+      expect(clean(decks.find((d) => d.relativePath === "Book/2")!.content)).toContain("| cube (2) |");
     });
 
     it("leaves cloze fronts untouched", () => {
@@ -628,6 +638,72 @@ describe("AnkiDeckRenderer", () => {
       const cards = [cloze(1, 10, "Book::1"), cloze(2, 20, "Book::2")];
       AnkiDeckRenderer.render(cards, "decks/anki", 2);
       expect(cards.every((c) => c.front === "The ==sun== is a star.")).toBe(true);
+    });
+  });
+
+  describe("anchor token emission", () => {
+    it("emits an own-line h token for header cards, bound to the history id", () => {
+      const cards = [basic({ front: "Hallo", back: "Hello", deckName: "Deck" })];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+
+      const anchorId = AnkiDeckRenderer.cardAnchorId(cards[0]);
+      expect(deck.content).toContain(`Hello\n%%dk:h:${anchorId}%%`);
+      expect(deck.bindings).toContainEqual({
+        anchor: `h:${anchorId}`,
+        flashcardId: AnkiDeckRenderer.decksCardId(cards[0]),
+      });
+    });
+
+    it("emits a t token in the first cell for table cards", () => {
+      const cards = [
+        basic({ front: "Hallo", back: "Hello", deckName: "Deck", tableLayout: true }),
+      ];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+
+      const anchorId = AnkiDeckRenderer.cardAnchorId(cards[0]);
+      expect(deck.content).toContain(`| Hallo %%dk:t:${anchorId}%% | Hello |`);
+      expect(deck.bindings).toContainEqual({
+        anchor: `t:${anchorId}`,
+        flashcardId: AnkiDeckRenderer.decksCardId(cards[0]),
+      });
+    });
+
+    it("binds every cloze ord of a 1-col cloze table row", () => {
+      const sentence = "Du trinkst ==jeden Tag== ==Bier==.";
+      const cards = [0, 1].map((ord) =>
+        basic({
+          noteId: 7,
+          cardId: 70 + ord,
+          ord,
+          isCloze: true,
+          clozeBody: sentence,
+          back: sentence,
+          clozeText: ord === 0 ? "jeden Tag" : "Bier",
+          clozeOrder: ord,
+          deckName: "Deck",
+        })
+      );
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+
+      // One deduped row for the note; bindings cover both ords keyed exactly
+      // like the history importer.
+      const tokenBindings = deck.bindings.filter((b) => b.anchor.startsWith("t:"));
+      expect(tokenBindings).toHaveLength(2);
+      expect(tokenBindings.map((b) => b.flashcardId).sort()).toEqual(
+        cards.map((c) => AnkiDeckRenderer.decksCardId(c)).sort()
+      );
+    });
+
+    it("re-renders byte-identically (tokens and bindings are deterministic)", () => {
+      const cards = () => [
+        basic({ front: "Hallo", back: "Hello", deckName: "Deck" }),
+        basic({ noteId: 2, cardId: 20, front: "Tschüss", back: "Bye", deckName: "Deck", tableLayout: true }),
+      ];
+      const first = AnkiDeckRenderer.render(cards(), "decks/anki", 2);
+      const second = AnkiDeckRenderer.render(cards(), "decks/anki", 2);
+
+      expect(second[0].content).toBe(first[0].content);
+      expect(second[0].bindings).toEqual(first[0].bindings);
     });
   });
 });

@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 36;
+export const CURRENT_SCHEMA_VERSION = 37;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -154,6 +154,9 @@ export const CREATE_TABLES_SQL = `
     -- JSON { headers, cells, rowTags } captured for table rows, enabling
     -- render-time template merge ({{ColumnName}}/{{1..N}}) + tag binding.
     template_row TEXT,
+    -- Anchor binding key currently present in the source file (locator; the
+    -- durable record lives in anchor_bindings).
+    anchor TEXT,
     FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
   );
 
@@ -264,6 +267,15 @@ export const CREATE_TABLES_SQL = `
     byte_offset INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Durable anchor-key -> card-id bindings. Preserved across migrations and
+  -- merged append-only, so a rebuilt or fresh database can re-attach cards
+  -- parsed from anchored files to their original ids and review history.
+  CREATE TABLE IF NOT EXISTS anchor_bindings (
+    anchor TEXT PRIMARY KEY,
+    flashcard_id TEXT NOT NULL,
+    created TEXT NOT NULL
+  );
+
   -- Cram (drill) sessions: isolated from real scheduling — no review_logs,
   -- no flashcard mutations. deck_key is FileDeck.id / DeckGroup.tag / CustomDeck.id.
   CREATE TABLE IF NOT EXISTS cram_sessions (
@@ -344,6 +356,10 @@ export const CREATE_TABLES_SQL = `
   -- Cloze sibling/group lookups filter by (deck_id, front).
   CREATE INDEX IF NOT EXISTS idx_flashcards_deck_front ON flashcards(deck_id, front);
 
+  -- Anchor indexes
+  CREATE INDEX IF NOT EXISTS idx_flashcards_anchor ON flashcards(anchor);
+  CREATE INDEX IF NOT EXISTS idx_anchor_bindings_flashcard ON anchor_bindings(flashcard_id);
+
   -- Custom deck indexes
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
@@ -397,6 +413,8 @@ export function buildMigrationSQL(db: Database): string {
   const customDecksColumns = getColumnNames(db, "custom_decks");
   const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
+  const tagMappingColumns = getColumnNames(db, "profile_tag_mappings");
+  const tagMappingHasDeletedAt = tagMappingColumns.includes("deleted_at");
 
   // Helper: pick current column, fall back to old renamed column, then default
   const col = (
@@ -648,8 +666,8 @@ export function buildMigrationSQL(db: Database): string {
       UNIQUE(tag)
     );
 
-    INSERT OR IGNORE INTO profile_tag_mappings_new (id, profile_id, tag, created)
-    SELECT id, profile_id, tag, created
+    INSERT OR IGNORE INTO profile_tag_mappings_new (id, profile_id, tag, created, deleted_at)
+    SELECT id, profile_id, tag, created, ${tagMappingHasDeletedAt ? "deleted_at" : "NULL"}
     FROM profile_tag_mappings
     ORDER BY created DESC;
 
@@ -795,6 +813,7 @@ export function buildMigrationSQL(db: Database): string {
       suspended_at TEXT,
       buried_until TEXT,
       template_row TEXT,
+      anchor TEXT,
       FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
     );
 
@@ -847,6 +866,14 @@ export function buildMigrationSQL(db: Database): string {
       byte_offset INTEGER NOT NULL DEFAULT 0
     );
 
+    -- Durable anchor-key -> card-id bindings (preserved; never dropped here so
+    -- rebuilt flashcards re-attach to their original ids and review history).
+    CREATE TABLE IF NOT EXISTS anchor_bindings (
+      anchor TEXT PRIMARY KEY,
+      flashcard_id TEXT NOT NULL,
+      created TEXT NOT NULL
+    );
+
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_deckprofiles_name ON deckprofiles(name);
     CREATE INDEX IF NOT EXISTS idx_deckprofiles_is_default ON deckprofiles(is_default);
@@ -866,6 +893,8 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck_due ON flashcards(deck_id, due_date);
     CREATE INDEX IF NOT EXISTS idx_review_logs_join ON review_logs(flashcard_id, reviewed_at);
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck_front ON flashcards(deck_id, front);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_anchor ON flashcards(anchor);
+    CREATE INDEX IF NOT EXISTS idx_anchor_bindings_flashcard ON anchor_bindings(flashcard_id);
     CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
     CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
 

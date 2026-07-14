@@ -14,6 +14,7 @@ import {
 } from "../utils/hash";
 import { occlusionV2HashInput, occlusionImageName } from "./occlusion/OcclusionV2";
 import { levenshteinSimilarityAbove } from "../utils/string";
+import { reverseBindingKey } from "../utils/anchors";
 
 export interface FlashcardUpdates {
   front: string;
@@ -27,6 +28,7 @@ export interface FlashcardUpdates {
   clozeText: string | null;
   clozeOrder: number | null;
   templateRow: TemplateRow | null;
+  anchor: string | null;
 }
 
 function serializeTemplateRow(row: TemplateRow | null | undefined): string | null {
@@ -49,12 +51,15 @@ function tagsEqual(a: string[], b: string[]): boolean {
 }
 
 export interface BatchOperation {
-  type: "create" | "update" | "delete" | "migrate";
+  type: "create" | "update" | "delete" | "migrate" | "bind";
   flashcardId?: string;
   flashcard?: Omit<Flashcard, "created" | "modified">;
   updates?: FlashcardUpdates;
   oldId?: string;
   newId?: string;
+  // Durable anchor->id binding to record with this op (adopt case only —
+  // written when the card provably owns the anchor's history).
+  bindAnchor?: { anchor: string; flashcardId: string };
 }
 
 export interface SyncResult {
@@ -105,6 +110,13 @@ export class FlashcardSynchronizer {
    */
   executeBatchOperations(operations: BatchOperation[]): void {
     for (const op of operations) {
+      if (op.bindAnchor) {
+        const bindStmt = this.db.prepare(
+          "INSERT OR IGNORE INTO anchor_bindings (anchor, flashcard_id, created) VALUES (?, ?, datetime('now'))"
+        );
+        bindStmt.run([op.bindAnchor.anchor, op.bindAnchor.flashcardId]);
+        bindStmt.free();
+      }
       if (op.type === "migrate" && op.oldId && op.flashcard) {
         // Safety check: if target ID already exists (hash collision), just delete the old card
         const card = op.flashcard;
@@ -124,7 +136,7 @@ export class FlashcardSynchronizer {
                     UPDATE flashcards
                     SET id = ?, front = ?, back = ?, content_hash = ?, breadcrumb = ?, notes = ?,
                         type = ?, cloze_text = ?, cloze_order = ?, source_node_id = ?, edge_id = ?,
-                        hint = ?, tags = ?, template_row = ?, modified = datetime('now')
+                        hint = ?, tags = ?, template_row = ?, anchor = ?, modified = datetime('now')
                     WHERE id = ?
                 `);
         updateStmt.run([
@@ -142,6 +154,7 @@ export class FlashcardSynchronizer {
           card.hint || "",
           serializeTagsForSql(card.tags),
           serializeTemplateRow(card.templateRow),
+          card.anchor ?? null,
           op.oldId,
         ]);
         updateStmt.free();
@@ -173,8 +186,8 @@ export class FlashcardSynchronizer {
                         cloze_text, cloze_order, source_node_id, edge_id, hint,
                         state, due_date, interval, repetitions, difficulty, stability,
                         lapses, last_reviewed, created, modified, tags,
-                        suspended_at, buried_until, template_row
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)
+                        suspended_at, buried_until, template_row, anchor
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         deck_id = excluded.deck_id,
                         front = excluded.front,
@@ -191,6 +204,7 @@ export class FlashcardSynchronizer {
                         hint = excluded.hint,
                         tags = excluded.tags,
                         template_row = excluded.template_row,
+                        anchor = excluded.anchor,
                         modified = datetime('now')
                     WHERE (SELECT 1 FROM decks d WHERE d.id = flashcards.deck_id) IS NULL
                 `);
@@ -221,6 +235,7 @@ export class FlashcardSynchronizer {
           card.suspendedAt ?? null,
           card.buriedUntil ?? null,
           serializeTemplateRow(card.templateRow),
+          card.anchor ?? null,
         ]);
         stmt.free();
       } else if (op.type === "update" && op.flashcardId && op.updates) {
@@ -228,7 +243,7 @@ export class FlashcardSynchronizer {
                     UPDATE flashcards
                     SET front = ?, back = ?, type = ?, content_hash = ?, breadcrumb = ?, notes = ?,
                         cloze_text = ?, cloze_order = ?, hint = ?, tags = ?, template_row = ?,
-                        modified = datetime('now')
+                        anchor = ?, modified = datetime('now')
                     WHERE id = ?
                 `);
         stmt.run([
@@ -243,6 +258,7 @@ export class FlashcardSynchronizer {
           op.updates.hint || "",
           serializeTagsForSql(op.updates.tags),
           serializeTemplateRow(op.updates.templateRow),
+          op.updates.anchor,
           op.flashcardId,
         ]);
         stmt.free();
@@ -302,6 +318,9 @@ export class FlashcardSynchronizer {
               tags: [...card.tags],
               isReverse: true,
               sourceNodeId: card.sourceNodeId,
+              ...(card.anchorKey
+                ? { anchorKey: reverseBindingKey(card.anchorKey) }
+                : {}),
             });
           }
         }
@@ -349,6 +368,7 @@ export class FlashcardSynchronizer {
           tags,
           suspendedAt: (row.suspended_at as string) ?? null,
           buriedUntil: (row.buried_until as string) ?? null,
+          anchor: (row.anchor as string) ?? null,
         });
       }
       stmt.free();
@@ -358,6 +378,19 @@ export class FlashcardSynchronizer {
       existingFlashcards.forEach((flashcard) => {
         existingById.set(flashcard.id, flashcard);
       });
+
+      // Durable anchor-key -> card-id bindings. Loaded globally: bindings are
+      // deck-independent (cards move between files) and one row per reviewed
+      // card keeps the table small.
+      const bindings = new Map<string, string>();
+      const bindingsStmt = this.db.prepare(
+        "SELECT anchor, flashcard_id FROM anchor_bindings"
+      );
+      while (bindingsStmt.step()) {
+        const row = bindingsStmt.getAsObject();
+        bindings.set(row.anchor as string, row.flashcard_id as string);
+      }
+      bindingsStmt.free();
 
       // Safety: an EMPTY file read for a deck that still has cards is a read race,
       // not a real edit — a live deck file always has at least its frontmatter tag,
@@ -400,6 +433,7 @@ export class FlashcardSynchronizer {
           edgeId?: string;
           hint?: string;
           templateRow?: TemplateRow;
+          anchorKey?: string;
         };
         flashcardId: string;
         contentHash: string;
@@ -407,6 +441,7 @@ export class FlashcardSynchronizer {
       const cardsToCreate: ParsedCardData[] = [];
       const reverseCardsToCreate: ParsedCardData[] = [];
       const spatialCardsToCreate: ParsedCardData[] = [];
+      const anchoredCardsToCreate: ParsedCardData[] = [];
       const cardsToDelete: Flashcard[] = [];
 
       // Process parsed cards - first pass: identify creates and updates
@@ -469,6 +504,16 @@ export class FlashcardSynchronizer {
         } else {
           flashcardId = generateFlashcardId(parsed.front, parsed.sourceNodeId);
         }
+        // Anchor-first matching: a bound key overrides content-derived
+        // identity, so any content edit keeps the card's immutable id.
+        let anchored = false;
+        if (parsed.anchorKey) {
+          const boundId = bindings.get(parsed.anchorKey);
+          if (boundId) {
+            flashcardId = boundId;
+            anchored = true;
+          }
+        }
         // Table rows fold their full cells into the hash so editing any column
         // (even ones only a template reads) triggers a re-sync of the card.
         // V2 occlusion hashes only the active mask, so editing one box never
@@ -489,8 +534,9 @@ export class FlashcardSynchronizer {
         processedIds.add(flashcardId);
 
         if (existingCard) {
-          // Update if content, breadcrumb, notes, front, type, tags, or hint changed.
-          // Tags and hint are excluded from contentHash, so they need explicit comparisons.
+          // Update if content, breadcrumb, notes, front, type, tags, hint, or
+          // anchor changed. Tags/hint/anchor are excluded from contentHash, so
+          // they need explicit comparisons.
           if (
             existingCard.contentHash !== contentHash ||
             existingCard.breadcrumb !== parsed.breadcrumb ||
@@ -498,6 +544,7 @@ export class FlashcardSynchronizer {
             existingCard.front !== parsed.front ||
             existingCard.type !== parsed.type ||
             (existingCard.hint || "") !== (parsed.hint || "") ||
+            (existingCard.anchor ?? null) !== (parsed.anchorKey ?? null) ||
             !tagsEqual(existingCard.tags, parsed.tags)
           ) {
             batchOperations.push({
@@ -515,15 +562,34 @@ export class FlashcardSynchronizer {
                 clozeText: parsed.clozeText ?? null,
                 clozeOrder: parsed.clozeOrder ?? null,
                 templateRow: parsed.templateRow ?? null,
+                anchor: parsed.anchorKey ?? null,
+              },
+            });
+          }
+          // Adopt: the file carries a key with no binding, and this card owns
+          // the key's history (it has been reviewed). Bindings are never
+          // written speculatively — a fresh device must wait for the merge.
+          if (
+            !anchored &&
+            parsed.anchorKey &&
+            (existingCard.lastReviewed !== null || existingCard.repetitions > 0)
+          ) {
+            batchOperations.push({
+              type: "bind",
+              bindAnchor: {
+                anchor: parsed.anchorKey,
+                flashcardId: existingCard.id,
               },
             });
           }
         } else {
           // Card doesn't exist — route to the appropriate create list.
-          // Spatial cards (canvas edges) and V2 occlusion cards get a
-          // deterministic id (from the edge / mask id), so they skip rename
+          // Anchor-matched cards, spatial cards (canvas edges) and V2
+          // occlusion cards have deterministic identity, so they skip rename
           // fuzzy-match — siblings sharing a front must never cross-migrate.
-          if (hasEdge || isOcclusionV2) {
+          if (anchored) {
+            anchoredCardsToCreate.push({ parsed, flashcardId, contentHash });
+          } else if (hasEdge || isOcclusionV2) {
             spatialCardsToCreate.push({ parsed, flashcardId, contentHash });
           } else if (parsed.isReverse) {
             reverseCardsToCreate.push({ parsed, flashcardId, contentHash });
@@ -576,6 +642,7 @@ export class FlashcardSynchronizer {
             sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
             edgeId: newCardData.parsed.edgeId ?? null,
             templateRow: newCardData.parsed.templateRow ?? null,
+            anchor: newCardData.parsed.anchorKey ?? null,
             state: oldCard.state,
             dueDate: oldCard.dueDate,
             interval: oldCard.interval,
@@ -587,12 +654,25 @@ export class FlashcardSynchronizer {
             suspendedAt: oldCard.suspendedAt,
             buriedUntil: oldCard.buriedUntil,
           },
+          // A migrate carries the old card's history onto the new id, so a
+          // key in the file is adopt-worthy here.
+          ...(newCardData.parsed.anchorKey
+            ? {
+                bindAnchor: {
+                  anchor: newCardData.parsed.anchorKey,
+                  flashcardId: newCardData.flashcardId,
+                },
+              }
+            : {}),
         });
       };
 
       // Strong pass: identical back → first unmatched delete with that back.
+      // Anchored rows never participate: a vanished anchored card follows
+      // intended-reset semantics, not fuzzy re-attachment.
       const deletesByBack = new Map<string, number[]>();
       for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
+        if (cardsToDelete[deleteIdx].anchor) continue;
         const queue = deletesByBack.get(cardsToDelete[deleteIdx].back);
         if (queue) queue.push(deleteIdx);
         else deletesByBack.set(cardsToDelete[deleteIdx].back, [deleteIdx]);
@@ -620,6 +700,7 @@ export class FlashcardSynchronizer {
           for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
             if (matchedDeletes.has(deleteIdx)) continue;
             const oldCard = cardsToDelete[deleteIdx];
+            if (oldCard.anchor) continue;
 
             if (!levenshteinSimilarityAbove(newCardData.parsed.front, oldCard.front, 80)) {
               continue;
@@ -675,6 +756,75 @@ export class FlashcardSynchronizer {
           sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
           edgeId: newCardData.parsed.edgeId ?? null,
           templateRow: newCardData.parsed.templateRow ?? null,
+          anchor: newCardData.parsed.anchorKey ?? null,
+          state: reviewLogRow ? (reviewLogRow[0] as "new" | "review") : "new",
+          dueDate:
+            reviewLogRow && reviewLogRow[6] && reviewLogRow[1]
+              ? new Date(
+                  new Date(reviewLogRow[6] as string).getTime() +
+                    (reviewLogRow[1] as number) * 60 * 1000
+                ).toISOString()
+              : new Date().toISOString(),
+          interval: reviewLogRow ? (reviewLogRow[1] as number) : 0,
+          repetitions: reviewLogRow ? (reviewLogRow[2] as number) : 0,
+          difficulty: reviewLogRow ? (reviewLogRow[3] as number) : 5.0,
+          stability: reviewLogRow ? (reviewLogRow[4] as number) : 2.5,
+          lapses: reviewLogRow ? (reviewLogRow[5] as number) : 0,
+          lastReviewed: reviewLogRow ? (reviewLogRow[6] as string) : null,
+          suspendedAt: null,
+          buriedUntil: null,
+        };
+
+        batchOperations.push({
+          type: "create",
+          flashcard: flashcard,
+          // Restored history proves ownership of the key in the file.
+          ...(reviewLogRow && newCardData.parsed.anchorKey
+            ? {
+                bindAnchor: {
+                  anchor: newCardData.parsed.anchorKey,
+                  flashcardId: newCardData.flashcardId,
+                },
+              }
+            : {}),
+        });
+      }
+
+      // Process anchored creates: the binding already fixed their identity, so
+      // they never participate in rename detection. Restoration is keyed by
+      // the bound id — this is what re-attaches history on a rebuilt or fresh
+      // database even after the card's content was edited.
+      for (const newCardData of anchoredCardsToCreate) {
+        const reviewLogStmt = this.db.prepare(`
+                    SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
+                           new_stability, new_lapses, reviewed_at
+                    FROM review_logs
+                    WHERE flashcard_id = ?
+                    ORDER BY reviewed_at DESC
+                    LIMIT 1
+                `);
+        reviewLogStmt.bind([newCardData.flashcardId]);
+        const reviewLogRow = reviewLogStmt.step() ? reviewLogStmt.get() : null;
+        reviewLogStmt.free();
+
+        const flashcard: Omit<Flashcard, "created" | "modified"> = {
+          id: newCardData.flashcardId,
+          deckId: data.deckId,
+          front: newCardData.parsed.front,
+          back: newCardData.parsed.back,
+          notes: newCardData.parsed.notes || "",
+          type: newCardData.parsed.type,
+          sourceFile: data.deckFilepath,
+          contentHash: newCardData.contentHash,
+          breadcrumb: newCardData.parsed.breadcrumb,
+          tags: newCardData.parsed.tags,
+          hint: newCardData.parsed.hint || "",
+          clozeText: newCardData.parsed.clozeText ?? null,
+          clozeOrder: newCardData.parsed.clozeOrder ?? null,
+          sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
+          edgeId: newCardData.parsed.edgeId ?? null,
+          templateRow: newCardData.parsed.templateRow ?? null,
+          anchor: newCardData.parsed.anchorKey ?? null,
           state: reviewLogRow ? (reviewLogRow[0] as "new" | "review") : "new",
           dueDate:
             reviewLogRow && reviewLogRow[6] && reviewLogRow[1]
@@ -730,6 +880,7 @@ export class FlashcardSynchronizer {
           sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
           edgeId: null,
           templateRow: null,
+          anchor: newCardData.parsed.anchorKey ?? null,
           state: reviewLogRow ? (reviewLogRow[0] as "new" | "review") : "new",
           dueDate:
             reviewLogRow && reviewLogRow[6] && reviewLogRow[1]
@@ -751,6 +902,14 @@ export class FlashcardSynchronizer {
         batchOperations.push({
           type: "create",
           flashcard: flashcard,
+          ...(reviewLogRow && newCardData.parsed.anchorKey
+            ? {
+                bindAnchor: {
+                  anchor: newCardData.parsed.anchorKey,
+                  flashcardId: newCardData.flashcardId,
+                },
+              }
+            : {}),
         });
       }
 
@@ -786,6 +945,7 @@ export class FlashcardSynchronizer {
           sourceNodeId: newCardData.parsed.sourceNodeId ?? null,
           edgeId: newCardData.parsed.edgeId ?? null,
           templateRow: newCardData.parsed.templateRow ?? null,
+          anchor: newCardData.parsed.anchorKey ?? null,
           state: reviewLogRow ? (reviewLogRow[0] as "new" | "review") : "new",
           dueDate:
             reviewLogRow && reviewLogRow[6] && reviewLogRow[1]
@@ -807,6 +967,14 @@ export class FlashcardSynchronizer {
         batchOperations.push({
           type: "create",
           flashcard: flashcard,
+          ...(reviewLogRow && newCardData.parsed.anchorKey
+            ? {
+                bindAnchor: {
+                  anchor: newCardData.parsed.anchorKey,
+                  flashcardId: newCardData.flashcardId,
+                },
+              }
+            : {}),
         });
       }
 

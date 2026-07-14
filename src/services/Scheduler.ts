@@ -918,6 +918,7 @@ export class Scheduler {
       suspendedAt: (row[25] as string) ?? null,
       buriedUntil: (row[26] as string) ?? null,
       templateRow: row[27] ? JSON.parse(row[27] as string) : null,
+      anchor: (row[28] as string) ?? null,
     };
   }
 

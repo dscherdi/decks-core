@@ -1,4 +1,17 @@
 import { splitTableLine, unescapeTableCell } from "../utils/markdown-table";
+import {
+  clozeBindingKey,
+  extractAnchorTokens,
+  extractLineAnchors,
+  headerBindingKey,
+  isAnchorCommentBody,
+  occlusionBindingKey,
+  stripAnchorTokens,
+  tableBindingKey,
+  titleBindingKey,
+  titleClozeBindingKey,
+  type LineAnchor,
+} from "../utils/anchors";
 import type { TemplateRow } from "../database/types";
 import { OcclusionV2Parser } from "./occlusion/OcclusionV2Parser";
 
@@ -25,6 +38,12 @@ export interface ParsedFlashcard {
   hint?: string;
   // Table rows carry their headers/cells/row-tags for render-time template binding.
   templateRow?: TemplateRow;
+  // Anchor binding key derived from a dk token / frontmatter id / canvas id,
+  // when the source carries one. Used for identity matching, never content.
+  anchorKey?: string;
+  // Cloze cards: index of this cloze within its own line (binding keys only;
+  // clozeOrder stays body-scoped and feeds card ids).
+  clozeLineIndex?: number;
 }
 
 /**
@@ -80,10 +99,11 @@ export class FlashcardParser {
   } {
     const noteParts: string[] = [];
 
-    // 1. Obsidian comments anywhere in the body become notes.
+    // 1. Obsidian comments anywhere in the body become notes; anchor tokens
+    //    (`dk:` comments) carry identity and are never notes.
     let body = back.replace(/%%([\s\S]*?)%%/g, (_m, inner: string) => {
       const trimmed = inner.trim();
-      if (trimmed) noteParts.push(trimmed);
+      if (trimmed && !isAnchorCommentBody(trimmed)) noteParts.push(trimmed);
       return "";
     });
 
@@ -123,14 +143,13 @@ export class FlashcardParser {
    * content so the downstream header/table parser never misreads YAML `|` block
    * scalars or `#` comments as headings/tables.
    *
-   * Cards are only generated when `clozeEnabled` and the block sits inside a
-   * section header at the configured `headerLevel` (mirrors legacy occlusion and
-   * header-paragraph cards). Blocks are always stripped so they can't become
-   * stray header-paragraph cards.
+   * Cards are generated whenever the block sits inside a section header at the
+   * configured `headerLevel` (mirrors header-paragraph cards); the block syntax
+   * is unambiguous so it does not depend on the cloze setting. Blocks are
+   * always stripped so they can't become stray header-paragraph cards.
    */
   private static extractOcclusionV2Blocks(
     content: string,
-    clozeEnabled: boolean,
     levelSet: Set<number>
   ): { cards: ParsedFlashcard[]; maskedContent: string } {
     const lines = content.split("\n");
@@ -187,7 +206,7 @@ export class FlashcardParser {
         const top = headerStack[headerStack.length - 1];
         const inConfiguredHeader =
           levelSet.has(0) || (!!top && levelSet.has(top.level));
-        if (clozeEnabled && inConfiguredHeader) {
+        if (inConfiguredHeader) {
           const breadcrumb = headerStack.map((h) => h.text).join(" > ");
           const tags = FlashcardParser.collectStackTags(headerStack);
           cards.push(...OcclusionV2Parser.parse(body.join("\n"), breadcrumb, tags));
@@ -215,14 +234,29 @@ export class FlashcardParser {
     breadcrumb: string,
     tags: string[],
     clozeSource: string = back,
-    templateRow?: TemplateRow
+    templateRow?: TemplateRow,
+    lineTokenIds?: ReadonlyMap<number, string>
   ): ParsedFlashcard[] {
-    const matches: { text: string; index: number }[] = [];
-    let match: RegExpExecArray | null;
-    const regex = new RegExp(FlashcardParser.CLOZE_REGEX.source, "g");
-
-    while ((match = regex.exec(clozeSource)) !== null) {
-      matches.push({ text: match[1], index: matches.length });
+    // Line-by-line scan: cloze markers never span lines, so document order
+    // (and therefore clozeOrder) is identical to a global scan, while the
+    // line index enables line-scoped anchor keys.
+    const matches: {
+      text: string;
+      order: number;
+      lineIndex: number;
+      indexInLine: number;
+    }[] = [];
+    const sourceLines = clozeSource.split("\n");
+    let order = 0;
+    for (let lineIndex = 0; lineIndex < sourceLines.length; lineIndex++) {
+      const regex = new RegExp(FlashcardParser.CLOZE_REGEX.source, "g");
+      let match: RegExpExecArray | null;
+      let indexInLine = 0;
+      while ((match = regex.exec(sourceLines[lineIndex])) !== null) {
+        matches.push({ text: match[1], order, lineIndex, indexInLine });
+        order++;
+        indexInLine++;
+      }
     }
 
     if (matches.length === 0) {
@@ -239,17 +273,22 @@ export class FlashcardParser {
       }];
     }
 
-    return matches.map((m) => ({
-      front,
-      back,
-      notes,
-      type: "cloze" as const,
-      breadcrumb,
-      tags: [...tags],
-      clozeText: m.text,
-      clozeOrder: m.index,
-      ...(templateRow ? { templateRow } : {}),
-    }));
+    return matches.map((m) => {
+      const tokenId = lineTokenIds?.get(m.lineIndex);
+      return {
+        front,
+        back,
+        notes,
+        type: "cloze" as const,
+        breadcrumb,
+        tags: [...tags],
+        clozeText: m.text,
+        clozeOrder: m.order,
+        clozeLineIndex: m.indexInLine,
+        ...(tokenId ? { anchorKey: clozeBindingKey(tokenId, m.indexInLine) } : {}),
+        ...(templateRow ? { templateRow } : {}),
+      };
+    });
   }
 
   /**
@@ -273,18 +312,29 @@ export class FlashcardParser {
 
     // Pre-pass: pull out V2 occlusion codeblocks and strip them from the
     // content so they never reach the header/table parser below.
-    const occlusion = FlashcardParser.extractOcclusionV2Blocks(content, clozeEnabled, levelSet);
+    const occlusion = FlashcardParser.extractOcclusionV2Blocks(content, levelSet);
     content = occlusion.maskedContent;
     const occlusionCards = occlusion.cards;
 
     if (levelSet.has(0)) {
       if (!fileTitle) return occlusionCards;
-      const back = FlashcardParser.stripFrontmatter(content).trim();
+      const back = stripAnchorTokens(
+        FlashcardParser.stripFrontmatter(content)
+      ).trim();
+      const titleId = FlashcardParser.extractDecksId(content);
       if (clozeEnabled) {
-        return [
-          ...occlusionCards,
-          ...FlashcardParser.expandClozes(fileTitle, back, "", "header-paragraph", "", []),
-        ];
+        const cards = FlashcardParser.expandClozes(
+          fileTitle, back, "", "header-paragraph", "", []
+        );
+        if (titleId) {
+          for (const card of cards) {
+            card.anchorKey =
+              card.type === "cloze" && card.clozeOrder !== undefined
+                ? titleClozeBindingKey(titleId, card.clozeOrder)
+                : titleBindingKey(titleId);
+          }
+        }
+        return [...occlusionCards, ...cards];
       }
       return [
         ...occlusionCards,
@@ -295,6 +345,7 @@ export class FlashcardParser {
           type: "header-paragraph",
           breadcrumb: "",
           tags: [],
+          ...(titleId ? { anchorKey: titleBindingKey(titleId) } : {}),
         },
       ];
     }
@@ -351,7 +402,7 @@ export class FlashcardParser {
           // skip it and the separator (row 2) from card generation.
           if (tableRowCount === 1) {
             currentTableHeaders = splitTableLine(trimmedLine.slice(1, -1)).map(
-              (cell) => unescapeTableCell(cell.trim()),
+              (cell) => unescapeTableCell(stripAnchorTokens(cell).trim()),
             );
             continue;
           }
@@ -361,8 +412,17 @@ export class FlashcardParser {
 
           // Parse table row. Pipes preceded by a backslash are treated as
           // literal cell content (`\|` → `|`); `<br>` is treated as a newline.
+          // Anchor tokens are extracted (the first t-role token in any cell
+          // carries the row's identity) and stripped before cell processing.
+          let rowTokenId: string | undefined;
           const cells = splitTableLine(trimmedLine.slice(1, -1)).map(
-            (cell) => unescapeTableCell(cell.trim()),
+            (cell) => {
+              const { cleaned, tokens } = extractAnchorTokens(cell);
+              if (!rowTokenId) {
+                rowTokenId = tokens.find((t) => t.role === "t")?.id;
+              }
+              return unescapeTableCell(cleaned.trim());
+            },
           );
 
           if (cells.length >= 1 && cells[0]) {
@@ -380,11 +440,12 @@ export class FlashcardParser {
               headers: currentTableHeaders,
               cells,
             };
+            const rowCards: ParsedFlashcard[] = [];
             if (frontIsCloze) {
               // The cloze lives in the front cell → a front-only cloze (blanked on
               // the front). Other columns stay available to a bound template; the
               // row still carries templateRow so the template can render them.
-              flashcards.push(
+              rowCards.push(
                 ...FlashcardParser.expandClozes(
                   cells[0], "", rowNotes, "table", breadcrumb, rowTags, cells[0], templateRow
                 )
@@ -392,19 +453,28 @@ export class FlashcardParser {
             } else if (back.length > 0) {
               // Standard 2-column row (front + back; the back may hold a cloze).
               if (clozeEnabled) {
-                flashcards.push(
+                rowCards.push(
                   ...FlashcardParser.expandClozes(
                     cells[0], back, rowNotes, "table", breadcrumb, rowTags, back, templateRow
                   )
                 );
               } else {
-                flashcards.push({
+                rowCards.push({
                   front: cells[0], back, notes: rowNotes, type: "table", breadcrumb, tags: rowTags,
                   templateRow,
                 });
               }
             }
             // else: a non-cloze row with no back is an incomplete row — ignore.
+            if (rowTokenId) {
+              for (const rowCard of rowCards) {
+                rowCard.anchorKey =
+                  rowCard.type === "cloze" && rowCard.clozeOrder !== undefined
+                    ? tableBindingKey(rowTokenId, rowCard.clozeOrder)
+                    : tableBindingKey(rowTokenId);
+              }
+            }
+            flashcards.push(...rowCards);
           }
         } else {
           // Table under wrong header level or has non-table content - treat as regular content
@@ -431,7 +501,9 @@ export class FlashcardParser {
         const headerMatch = FlashcardParser.HEADER_REGEX.exec(line);
         if (headerMatch) {
           const currentHeaderLevel = headerMatch[1].length;
-          const rawHeaderText = line.replace(/^#{1,6}\s+/, "");
+          const rawHeaderText = stripAnchorTokens(
+            line.replace(/^#{1,6}\s+/, "")
+          );
           const { cleaned: headerText, tags: headerTags } =
             FlashcardParser.extractAndStripTags(rawHeaderText);
 
@@ -546,6 +618,19 @@ export class FlashcardParser {
     return lines.slice(end + 1).join("\n");
   }
 
+  /** Read the `decks-id` frontmatter property (title-mode card identity). */
+  private static extractDecksId(content: string): string | null {
+    const lines = content.split("\n");
+    if (lines[0]?.trim() !== "---") return null;
+    const end = lines.indexOf("---", 1);
+    if (end === -1) return null;
+    for (let i = 1; i < end; i++) {
+      const match = /^decks-id:\s*("?)([A-Za-z0-9_-]+)\1\s*$/.exec(lines[i]);
+      if (match) return match[2];
+    }
+    return null;
+  }
+
   /**
    * Expand an image occlusion block into one card per numbered list item.
    * Each list item becomes one card regardless of how many ==cloze== markers it contains.
@@ -556,7 +641,8 @@ export class FlashcardParser {
     back: string,
     listItems: string[],
     breadcrumb: string,
-    tags: string[]
+    tags: string[],
+    itemAnchorIds?: (string | undefined)[]
   ): ParsedFlashcard[] {
     const cards: ParsedFlashcard[] = [];
     let order = 0;
@@ -566,6 +652,7 @@ export class FlashcardParser {
       if (!trimmed) continue;
 
       const clozeText = trimmed.replace(/==((?:(?!==).)+)==/g, "$1");
+      const anchorId = itemAnchorIds?.[order];
       cards.push({
         front: imageEmbed,
         back,
@@ -575,6 +662,7 @@ export class FlashcardParser {
         tags: [...tags],
         clozeText,
         clozeOrder: order,
+        ...(anchorId ? { anchorKey: occlusionBindingKey(anchorId) } : {}),
       });
       order++;
     }
@@ -625,45 +713,81 @@ export class FlashcardParser {
       currentContent.length > 0 &&
       targetLevels.has(currentHeader.level)
     ) {
+      // Anchor tokens are identity markers, not content: strip them before
+      // any body processing so tokened and clean sources parse identically.
+      const { lines: cleanContent, anchors } = extractLineAnchors(currentContent);
+
       // A header section whose only content is blank lines or a thematic break
       // (e.g. a trailing `---` separator left after its table) is not a real card.
-      const hasRealContent = currentContent.some((line) => {
+      const hasRealContent = cleanContent.some((line) => {
         const t = line.trim();
         return t !== "" && !/^(-{3,}|\*{3,}|_{3,})$/.test(t);
       });
       if (!hasRealContent) return;
 
-      const rawFront = currentHeader.text.replace(/^#{1,6}\s+/, "");
+      const rawFront = stripAnchorTokens(
+        currentHeader.text.replace(/^#{1,6}\s+/, "")
+      );
       const { cleaned: front } = FlashcardParser.extractAndStripTags(rawFront);
-      const back = currentContent.join("\n").trim();
+      const back = cleanContent.join("\n").trim();
       const tags = [...stackTags];
 
-      if (clozeEnabled) {
-        const imageOcclusion = FlashcardParser.detectImageOcclusion(currentContent);
-        if (imageOcclusion) {
-          const backWithoutImage = currentContent
-            .filter((l) => l.trim() !== imageOcclusion.imageEmbed)
-            .join("\n")
-            .trim();
-          const imageOcclusionBreadcrumb = breadcrumb
-            ? `${breadcrumb} > ${front}`
-            : front;
-          const expanded = FlashcardParser.expandImageOcclusion(
-            imageOcclusion.imageEmbed, backWithoutImage, imageOcclusion.listItems, imageOcclusionBreadcrumb, tags
-          );
-          flashcards.push(...expanded);
-          return;
+      // Image occlusion syntax is unambiguous, so it parses regardless of
+      // the cloze setting.
+      const imageOcclusion = FlashcardParser.detectImageOcclusion(cleanContent);
+      if (imageOcclusion) {
+        // Map o-role anchors to item ordinals: every numbered non-empty line
+        // is an item, in document order (detectImageOcclusion guarantees it).
+        const anchorByLine = new Map<number, string>();
+        for (const anchor of anchors) {
+          if (anchor.role === "o") anchorByLine.set(anchor.lineIndex, anchor.id);
         }
-
-        const { back: clozeBack, notes: clozeNotes } =
-          FlashcardParser.extractHeaderParagraphNotes(back);
-        const expanded = FlashcardParser.expandClozes(
-          front, clozeBack, clozeNotes, "header-paragraph", breadcrumb, tags
+        const itemAnchorIds: (string | undefined)[] = [];
+        for (let li = 0; li < cleanContent.length; li++) {
+          const trimmed = cleanContent[li].trim();
+          if (trimmed === "") continue;
+          if (FlashcardParser.NUMBERED_LIST_REGEX.test(trimmed)) {
+            itemAnchorIds.push(anchorByLine.get(li));
+          }
+        }
+        const backWithoutImage = cleanContent
+          .filter((l) => l.trim() !== imageOcclusion.imageEmbed)
+          .join("\n")
+          .trim();
+        const imageOcclusionBreadcrumb = breadcrumb
+          ? `${breadcrumb} > ${front}`
+          : front;
+        const expanded = FlashcardParser.expandImageOcclusion(
+          imageOcclusion.imageEmbed, backWithoutImage, imageOcclusion.listItems, imageOcclusionBreadcrumb, tags, itemAnchorIds
         );
         flashcards.push(...expanded);
+        return;
+      }
+
+      const headerAnchor = anchors.find((a) => a.role === "h");
+      const headerKey = headerAnchor
+        ? headerBindingKey(headerAnchor.id)
+        : undefined;
+
+      const { back: cleanBack, notes } =
+        FlashcardParser.extractHeaderParagraphNotes(back);
+      if (clozeEnabled) {
+        const lineTokenIds = FlashcardParser.clozeLineTokenMap(
+          cleanContent,
+          anchors,
+          cleanBack
+        );
+        const expanded = FlashcardParser.expandClozes(
+          front, cleanBack, notes, "header-paragraph", breadcrumb, tags,
+          cleanBack, undefined, lineTokenIds
+        );
+        if (headerKey) {
+          for (const card of expanded) {
+            if (card.type === "header-paragraph") card.anchorKey = headerKey;
+          }
+        }
+        flashcards.push(...expanded);
       } else {
-        const { back: cleanBack, notes } =
-          FlashcardParser.extractHeaderParagraphNotes(back);
         flashcards.push({
           front,
           back: cleanBack,
@@ -671,8 +795,40 @@ export class FlashcardParser {
           type: "header-paragraph",
           breadcrumb,
           tags,
+          ...(headerKey ? { anchorKey: headerKey } : {}),
         });
       }
     }
+  }
+
+  /**
+   * Map `c`-role anchors onto the final cloze source's line indices. Notes
+   * extraction can reshape the body (multi-line comments, trailing notes), so
+   * each entry is kept only when its line provably survived unchanged —
+   * anything else drops the entry and the cloze falls back to content
+   * identity.
+   */
+  private static clozeLineTokenMap(
+    strippedLines: string[],
+    anchors: LineAnchor[],
+    cleanBack: string
+  ): Map<number, string> {
+    const map = new Map<number, string>();
+    const clozeAnchors = anchors.filter((a) => a.role === "c");
+    if (clozeAnchors.length === 0) return map;
+    const cleanLines = cleanBack.split("\n");
+    const withoutComments = (line: string): string =>
+      line.replace(/%%(?:(?!%%).)*%%/g, "");
+    for (const anchor of clozeAnchors) {
+      if (anchor.lineIndex >= cleanLines.length) continue;
+      if (
+        withoutComments(strippedLines[anchor.lineIndex]) !==
+        cleanLines[anchor.lineIndex]
+      ) {
+        continue;
+      }
+      map.set(anchor.lineIndex, anchor.id);
+    }
+    return map;
   }
 }

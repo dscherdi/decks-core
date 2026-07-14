@@ -69,6 +69,16 @@ export function generateContentHash(backText: string): string {
 }
 
 /**
+ * Mint a deterministic anchor-token id from card content. Two devices
+ * minting for the same content produce identical ids; `occurrence` salts
+ * away in-file or cross-binding collisions.
+ */
+export function generateAnchorId(input: string, occurrence = 0): string {
+    const seed = occurrence === 0 ? input : `${input}#${occurrence}`;
+    return simpleHash(seed).toString(36);
+}
+
+/**
  * Generate deck ID using hash of filepath
  * @param filepath The filepath of the deck
  * @returns A deterministic ID in format "deck_HASH"

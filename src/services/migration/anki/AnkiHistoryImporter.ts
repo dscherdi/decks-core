@@ -4,15 +4,8 @@ import {
   getMinMinutesForProfile,
   normalizeProfile,
 } from "../../../algorithm/fsrs-weights";
-import {
-  generateClozeFlashcardId,
-  generateContentHash,
-  generateFlashcardId,
-  generateOcclusionV2FlashcardId,
-} from "../../../utils/hash";
-import { splitClozeHeader } from "./ClozeLayout";
+import { generateContentHash } from "../../../utils/hash";
 import { AnkiDeckRenderer } from "./AnkiDeckRenderer";
-import { occlusionImageName } from "../../occlusion/OcclusionV2";
 import type { FsrsState } from "../LegacySrMigrator";
 import { SrHistoryImporter } from "../SrHistoryImporter";
 import type { HistoryDb, MigrationProfileFsrs } from "../SrHistoryImporter";
@@ -205,31 +198,9 @@ export class AnkiHistoryImporter {
   }
 
   private static decksCardId(card: AnkiParsedCard): string {
-    if (card.kind === "occlusion" && card.maskId) {
-      // Keyed on the heading the renderer emits (`## leafLabel(deckName)`) plus
-      // the image file name, so the injected history links to the occlusion card
-      // created on the next sync.
-      return generateOcclusionV2FlashcardId(
-        AnkiDeckRenderer.leafLabel(card.deckName),
-        occlusionImageName(card.imagePath ?? ""),
-        card.maskId
-      );
-    }
-    if (card.isCloze) {
-      // The parser hashes the rendered front: a compact cloze stays a table cell
-      // (front = the whole sentence); a multi-paragraph one becomes header-
-      // paragraph (front = the title line). The leading line carries no highlight,
-      // so cloze order/text are unchanged either way.
-      const full = (card.clozeBody ?? card.back).trim();
-      const split = splitClozeHeader(full);
-      const front = split ? split.header : full;
-      return generateClozeFlashcardId(
-        front,
-        card.clozeText ?? "",
-        card.clozeOrder ?? card.ord
-      );
-    }
-    return generateFlashcardId(card.front);
+    // Single source shared with the renderer's anchor bindings, so injected
+    // history and emitted tokens always resolve to the same card.
+    return AnkiDeckRenderer.decksCardId(card);
   }
 
   // Best-effort: one ReviewLog per real Anki revlog row. Anki does not store FSRS
