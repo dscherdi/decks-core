@@ -8,7 +8,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 37;
+export const CURRENT_SCHEMA_VERSION = 38;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -276,6 +276,16 @@ export const CREATE_TABLES_SQL = `
     created TEXT NOT NULL
   );
 
+  -- Durable per-card suspend/bury state. Preserved across migrations and
+  -- merged last-writer-wins on its own modified timestamp; the matching
+  -- flashcards columns are a query-time cache mirrored from these rows.
+  CREATE TABLE IF NOT EXISTS card_state_overlays (
+    flashcard_id TEXT PRIMARY KEY,
+    suspended_at TEXT,
+    buried_until TEXT,
+    modified TEXT NOT NULL
+  );
+
   -- Cram (drill) sessions: isolated from real scheduling — no review_logs,
   -- no flashcard mutations. deck_key is FileDeck.id / DeckGroup.tag / CustomDeck.id.
   CREATE TABLE IF NOT EXISTS cram_sessions (
@@ -415,6 +425,10 @@ export function buildMigrationSQL(db: Database): string {
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
   const tagMappingColumns = getColumnNames(db, "profile_tag_mappings");
   const tagMappingHasDeletedAt = tagMappingColumns.includes("deleted_at");
+  const flashcardsColumns = getColumnNames(db, "flashcards");
+  const canSeedOverlays =
+    flashcardsColumns.includes("suspended_at") &&
+    flashcardsColumns.includes("buried_until");
 
   // Helper: pick current column, fall back to old renamed column, then default
   const col = (
@@ -750,6 +764,25 @@ export function buildMigrationSQL(db: Database): string {
       modified TEXT NOT NULL,
       deleted_at TEXT
     );
+
+    -- Durable suspend/bury state (preserved; seeded once from the legacy
+    -- flashcards columns before that table is dropped below). INSERT OR
+    -- IGNORE keeps existing overlay rows authoritative on re-migrations.
+    CREATE TABLE IF NOT EXISTS card_state_overlays (
+      flashcard_id TEXT PRIMARY KEY,
+      suspended_at TEXT,
+      buried_until TEXT,
+      modified TEXT NOT NULL
+    );
+
+    ${
+      canSeedOverlays
+        ? `INSERT OR IGNORE INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+    SELECT id, suspended_at, buried_until, COALESCE(modified, datetime('now'))
+    FROM flashcards
+    WHERE suspended_at IS NOT NULL OR buried_until IS NOT NULL;`
+        : ""
+    }
 
     -- Drop and recreate decks/flashcards/deck_templates fresh (all rebuilt
     -- from the vault / template folder by sync).

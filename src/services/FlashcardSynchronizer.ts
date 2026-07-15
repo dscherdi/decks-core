@@ -105,6 +105,53 @@ export interface RawStatement {
 export class FlashcardSynchronizer {
   constructor(private db: RawDatabase) {}
 
+  // Durable suspend/bury state for a card id; falls back to clear state on
+  // databases that predate the card_state_overlays table.
+  private overlayState(flashcardId: string): {
+    suspendedAt: string | null;
+    buriedUntil: string | null;
+  } {
+    try {
+      const stmt = this.db.prepare(
+        "SELECT suspended_at, buried_until FROM card_state_overlays WHERE flashcard_id = ?"
+      );
+      stmt.bind([flashcardId]);
+      const row = stmt.step() ? stmt.get() : null;
+      stmt.free();
+      return {
+        suspendedAt: (row?.[0] as string) ?? null,
+        buriedUntil: (row?.[1] as string) ?? null,
+      };
+    } catch {
+      return { suspendedAt: null, buriedUntil: null };
+    }
+  }
+
+  // Re-point an overlay row when a card's id migrates, keeping the newer
+  // record if the target id already has one.
+  private repointOverlay(oldId: string, newId: string): void {
+    try {
+      const copyStmt = this.db.prepare(`
+        INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+        SELECT ?, suspended_at, buried_until, modified FROM card_state_overlays WHERE flashcard_id = ?
+        ON CONFLICT(flashcard_id) DO UPDATE SET
+          suspended_at = excluded.suspended_at,
+          buried_until = excluded.buried_until,
+          modified = excluded.modified
+        WHERE excluded.modified > card_state_overlays.modified
+      `);
+      copyStmt.run([newId, oldId]);
+      copyStmt.free();
+      const deleteStmt = this.db.prepare(
+        "DELETE FROM card_state_overlays WHERE flashcard_id = ?"
+      );
+      deleteStmt.run([oldId]);
+      deleteStmt.free();
+    } catch {
+      // Table absent on databases that predate it.
+    }
+  }
+
   /**
    * Execute batch database operations using raw SQL
    */
@@ -125,6 +172,7 @@ export class FlashcardSynchronizer {
         const targetExists = checkStmt.step();
         checkStmt.free();
         if (targetExists) {
+          this.repointOverlay(op.oldId, card.id);
           const deleteStmt = this.db.prepare("DELETE FROM flashcards WHERE id = ?");
           deleteStmt.run([op.oldId]);
           deleteStmt.free();
@@ -165,6 +213,8 @@ export class FlashcardSynchronizer {
         );
         reviewLogStmt.run([card.id, op.oldId]);
         reviewLogStmt.free();
+
+        this.repointOverlay(op.oldId, card.id);
       } else if (op.type === "delete" && op.flashcardId) {
         const stmt = this.db.prepare("DELETE FROM flashcards WHERE id = ?");
         stmt.run([op.flashcardId]);
@@ -771,8 +821,7 @@ export class FlashcardSynchronizer {
           stability: reviewLogRow ? (reviewLogRow[4] as number) : 2.5,
           lapses: reviewLogRow ? (reviewLogRow[5] as number) : 0,
           lastReviewed: reviewLogRow ? (reviewLogRow[6] as string) : null,
-          suspendedAt: null,
-          buriedUntil: null,
+          ...this.overlayState(newCardData.flashcardId),
         };
 
         batchOperations.push({
@@ -839,8 +888,7 @@ export class FlashcardSynchronizer {
           stability: reviewLogRow ? (reviewLogRow[4] as number) : 2.5,
           lapses: reviewLogRow ? (reviewLogRow[5] as number) : 0,
           lastReviewed: reviewLogRow ? (reviewLogRow[6] as string) : null,
-          suspendedAt: null,
-          buriedUntil: null,
+          ...this.overlayState(newCardData.flashcardId),
         };
 
         batchOperations.push({
@@ -895,8 +943,7 @@ export class FlashcardSynchronizer {
           stability: reviewLogRow ? (reviewLogRow[4] as number) : 2.5,
           lapses: reviewLogRow ? (reviewLogRow[5] as number) : 0,
           lastReviewed: reviewLogRow ? (reviewLogRow[6] as string) : null,
-          suspendedAt: null,
-          buriedUntil: null,
+          ...this.overlayState(newCardData.flashcardId),
         };
 
         batchOperations.push({
@@ -960,8 +1007,7 @@ export class FlashcardSynchronizer {
           stability: reviewLogRow ? (reviewLogRow[4] as number) : 2.5,
           lapses: reviewLogRow ? (reviewLogRow[5] as number) : 0,
           lastReviewed: reviewLogRow ? (reviewLogRow[6] as string) : null,
-          suspendedAt: null,
-          buriedUntil: null,
+          ...this.overlayState(newCardData.flashcardId),
         };
 
         batchOperations.push({

@@ -297,6 +297,14 @@ export interface Flashcard {
   modified: string;
 }
 
+// Durable per-card suspend/bury record backing the flashcards cache columns.
+export interface CardStateOverlay {
+  flashcardId: string;
+  suspendedAt: string | null;
+  buriedUntil: string | null;
+  modified: string;
+}
+
 export interface ReviewSession {
   id: string;
   deckId: string;

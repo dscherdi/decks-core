@@ -307,11 +307,11 @@ export interface CustomDeckCardRemoveOp {
 //
 // These ops are emitted by BaseDatabaseService.{suspend,unsuspend,bury,
 // unbury,reset}Card and applied through SyncLog.handlers. Each carries a
-// wall-clock `at` so the receiving device can apply only-if-newer relative
-// to the local card's `modified` (suspend/bury/unbury) or use it as a
-// reset cutoff like `deck_reset`. `suspended_at` and `buried_until` are
-// excluded from the bulk flashcards merge in worker-entry so their state
-// converges exclusively through these op replays.
+// wall-clock `at` compared against the card's card_state_overlays row
+// (only-if-newer upsert, then mirror onto the flashcards cache columns);
+// for reset, `at` is additionally the review-log cutoff like `deck_reset`.
+// The overlay table also merges last-writer-wins during bulk DB merges, so
+// state survives even when the op log has been compacted.
 
 export interface CardSuspendOp {
   o: "card_suspend";

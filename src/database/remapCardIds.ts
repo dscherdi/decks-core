@@ -79,6 +79,8 @@ const CHILD_TABLES: ReadonlyArray<{ name: string; ignore: boolean }> = [
   { name: "review_logs", ignore: false },
   { name: "custom_deck_cards", ignore: true },
   { name: "custom_deck_card_tombstones", ignore: true },
+  // flashcard_id is the PK, so two old IDs collapsing to one new ID must not abort.
+  { name: "card_state_overlays", ignore: true },
 ];
 
 /**
