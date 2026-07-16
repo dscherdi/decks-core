@@ -54,7 +54,42 @@ export { StatisticsService } from "./services/StatisticsService";
 export { CustomDeckService } from "./services/CustomDeckService";
 export { TagGroupService } from "./services/TagGroupService";
 export { computeCardHealth, isCardLeech, isCardDense } from "./services/CardHealth";
-export type { CardHealthThresholds, CardHealth } from "./services/CardHealth";
+export type {
+  CardHealthThresholds,
+  CardHealth,
+  ExamHealthContext,
+  ExamHealthIssue,
+} from "./services/CardHealth";
+export { classifyExamBody } from "./services/ExamClassifier";
+export type {
+  ExamOption,
+  ExamInvalidReason,
+  ExamBodyClassification,
+} from "./services/ExamClassifier";
+export {
+  stripInlineMarkdown,
+  normalizeExamAnswer,
+  isTypedAnswerCorrect,
+  indexSetsEqual,
+  getTypeInAnswerLine,
+  checkTypeInGradability,
+} from "./services/ExamGrading";
+export type { TypeInGradability } from "./services/ExamGrading";
+export { shuffleInPlace, sampleWithoutReplacement } from "./utils/sampling";
+export {
+  ExamAttempt,
+  buildExamPool,
+  drawExamQuestions,
+  EXAM_TARGET_BLANK,
+  EXAM_INERT_BLANK,
+} from "./services/ExamAttempt";
+export type {
+  ExamQuestion,
+  ExamGivenAnswer,
+  ExamQuestionOutcome,
+  ExamSkipReason,
+  ExamPool,
+} from "./services/ExamAttempt";
 export { FsrsOptimizationService } from "./services/FsrsOptimizationService";
 export { FlashcardSynchronizer } from "./services/FlashcardSynchronizer";
 export type {
@@ -238,6 +273,7 @@ export {
   titleClozeBindingKey,
   tableBindingKey,
   occlusionBindingKey,
+  questionBindingKey,
   edgeBindingKey,
   nodeBindingKey,
 } from "./utils/anchors";
@@ -258,7 +294,12 @@ export {
 } from "./utils/step-parser";
 export { yieldToUI, yieldEvery, processWithYielding } from "./utils/ui";
 export { mapWithConcurrency } from "./utils/concurrency";
-export { levenshteinSimilarity, naturalCompare } from "./utils/string";
+export {
+  levenshteinSimilarity,
+  levenshteinSimilarityAbove,
+  levenshteinDistance,
+  naturalCompare,
+} from "./utils/string";
 export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
 export { MinHeap } from "./utils/min-heap";
 export { formatTime, formatPace } from "./utils/formatting";

@@ -82,6 +82,7 @@ export interface SyncData {
   fileTitle?: string;
   reverseCards?: boolean;
   clozeEnabled?: boolean;
+  examEnabled?: boolean;
 }
 
 /**
@@ -343,11 +344,13 @@ export class FlashcardSynchronizer {
             headerLevels,
             data.fileTitle,
             data.clozeEnabled,
+            data.examEnabled,
           );
 
-      // Expand with reverse cards if enabled. Cloze, image-occlusion, and
-      // spatial cards never reverse — spatial edges are directional, and the
-      // cloze/image-occlusion formats don't support a sensible flip either.
+      // Expand with reverse cards if enabled. Cloze, image-occlusion, spatial
+      // and multiple-choice cards never reverse — spatial edges are
+      // directional, and flipping the other formats (options as a front, a
+      // deleted word as a question) makes no sensible card.
       const expandedCards = [...parsedCards];
       if (data.reverseCards) {
         for (const card of parsedCards) {
@@ -357,6 +360,7 @@ export class FlashcardSynchronizer {
             card.type !== "image-occlusion" &&
             card.type !== "image-occlusion-v2" &&
             card.type !== "spatial" &&
+            card.type !== "multiple-choice" &&
             !card.edgeId
           ) {
             expandedCards.push({

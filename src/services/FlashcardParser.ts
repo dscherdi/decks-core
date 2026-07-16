@@ -6,6 +6,7 @@ import {
   headerBindingKey,
   isAnchorCommentBody,
   occlusionBindingKey,
+  questionBindingKey,
   stripAnchorTokens,
   tableBindingKey,
   titleBindingKey,
@@ -14,12 +15,13 @@ import {
 } from "../utils/anchors";
 import type { TemplateRow } from "../database/types";
 import { OcclusionV2Parser } from "./occlusion/OcclusionV2Parser";
+import { classifyExamBody } from "./ExamClassifier";
 
 export interface ParsedFlashcard {
   front: string;
   back: string;
   notes: string;
-  type: "header-paragraph" | "table" | "cloze" | "image-occlusion" | "image-occlusion-v2" | "spatial";
+  type: "header-paragraph" | "table" | "cloze" | "image-occlusion" | "image-occlusion-v2" | "spatial" | "multiple-choice";
   breadcrumb: string;
   tags: string[];
   isReverse?: boolean;
@@ -298,13 +300,16 @@ export class FlashcardParser {
    *   (1-6, default: 2), or 0 for title mode. Accepts a single level or a set of levels.
    * @param fileTitle - File title used as card front when in title mode (level 0)
    * @param clozeEnabled - When true, ==highlighted== text generates cloze cards
+   * @param examEnabled - When true, a task list under a heading generates a
+   *   multiple-choice card
    * @returns Array of parsed flashcards
    */
   static parseFlashcardsFromContent(
     content: string,
     headerLevel: number | number[] = 2,
     fileTitle?: string,
-    clozeEnabled = false
+    clozeEnabled = false,
+    examEnabled = false
   ): ParsedFlashcard[] {
     const levelSet = new Set(
       Array.isArray(headerLevel) ? headerLevel : [headerLevel]
@@ -523,7 +528,8 @@ export class FlashcardParser {
               levelSet,
               breadcrumb,
               stackTags,
-              clozeEnabled
+              clozeEnabled,
+              examEnabled
             );
             currentHeader = null;
             currentContent = [];
@@ -553,7 +559,8 @@ export class FlashcardParser {
             levelSet,
             breadcrumb,
             stackTags,
-            clozeEnabled
+            clozeEnabled,
+            examEnabled
           );
 
           // Update header stack: pop all headers at same or deeper level
@@ -604,7 +611,8 @@ export class FlashcardParser {
       levelSet,
       finalBreadcrumb,
       finalStackTags,
-      clozeEnabled
+      clozeEnabled,
+      examEnabled
     );
 
     return flashcards;
@@ -706,7 +714,8 @@ export class FlashcardParser {
     targetLevels: Set<number>,
     breadcrumb: string,
     stackTags: string[],
-    clozeEnabled = false
+    clozeEnabled = false,
+    examEnabled = false
   ): void {
     if (
       currentHeader &&
@@ -771,6 +780,30 @@ export class FlashcardParser {
 
       const { back: cleanBack, notes } =
         FlashcardParser.extractHeaderParagraphNotes(back);
+
+      // Task-list question rule: a body classifying as a valid question wins
+      // outright over cloze/plain. Invalid or plain bodies fall through to the
+      // existing paths unchanged (no silent question creation, no data loss).
+      // The back stays byte-identical to the header-paragraph fallback so a
+      // type flip between mixed plugin versions only flaps the type column.
+      // Role separation: a question adopts only its own q token; the dormant
+      // h token stays inert for it (and vice versa).
+      if (examEnabled && classifyExamBody(cleanBack).kind === "mcq") {
+        const questionAnchor = anchors.find((a) => a.role === "q");
+        flashcards.push({
+          front,
+          back: cleanBack,
+          notes,
+          type: "multiple-choice",
+          breadcrumb,
+          tags,
+          ...(questionAnchor
+            ? { anchorKey: questionBindingKey(questionAnchor.id) }
+            : {}),
+        });
+        return;
+      }
+
       if (clozeEnabled) {
         const lineTokenIds = FlashcardParser.clozeLineTokenMap(
           cleanContent,

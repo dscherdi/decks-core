@@ -21,7 +21,7 @@ export function naturalCompare(a: string, b: string): number {
  * early once every cell of a row exceeds it — the true distance can then only
  * be larger, so `maxDistance + 1` is returned as a "too far apart" sentinel.
  */
-function levenshteinDistance(a: string, b: string, maxDistance?: number): number {
+export function levenshteinDistance(a: string, b: string, maxDistance?: number): number {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
 

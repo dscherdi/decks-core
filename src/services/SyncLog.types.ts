@@ -9,6 +9,7 @@
 // which materially affects how fast iCloud uploads small log files.
 
 import type { HLCValue } from "./HLC";
+import type { ExamAnswer, ExamSession, ExamSettings } from "../database/types";
 
 export interface SyncLogEntryHeader {
   hlc: HLCValue;
@@ -37,7 +38,8 @@ export type SyncOpV1 =
   | CardBuryOp
   | CardUnburyOp
   | CardResetOp
-  | WeightSetUpsertOp;
+  | WeightSetUpsertOp
+  | ExamSessionCompleteOp;
 
 export type SyncLogEntry = SyncLogEntryHeader & SyncOpV1;
 
@@ -205,9 +207,27 @@ export interface ProfileUpsertOp {
     fsrsProfile: "STANDARD" | "TRAINED" | "INTENSIVE";
     clozeEnabled: boolean;
     clozeShowContext: "open" | "hidden";
+    // Optional (added at v39): absent on ops from older clients — apply
+    // falls back to the column defaults.
+    examEnabled?: boolean;
+    examSettings?: ExamSettings;
     isDefault: boolean;
     created: string;
     modified: string;
+  };
+}
+
+// ---------- Exam attempts ---------------------------------------------------
+
+// One completed exam attempt, carried as a single unit. Answers omit their
+// derivable fields (id = `${session.id}:${ordinal}`, sessionId, created =
+// session.created), which bounds the payload for large attempts. Apply is an
+// idempotent union insert; in-progress attempts never emit anything.
+export interface ExamSessionCompleteOp {
+  o: "exam_session_complete";
+  p: {
+    session: ExamSession;
+    answers: Array<Omit<ExamAnswer, "id" | "sessionId" | "created">>;
   };
 }
 
@@ -363,4 +383,6 @@ export const KNOWN_OP_TYPES_V1: ReadonlySet<SyncOpV1["o"]> = new Set([
   "card_bury",
   "card_unbury",
   "card_reset",
+  "weight_set_upsert",
+  "exam_session_complete",
 ]);

@@ -14,6 +14,9 @@ export function cardFieldDefs(type: FlashcardType): CardFieldDef[] {
   const ef = I18n.t.modals.editFlashcard;
   switch (type) {
     case "header-paragraph":
+    case "multiple-choice":
+      // Question cards keep their raw task-list body and edit like any
+      // header card — no question-specific fields.
       return [
         { label: ef.fieldHeader, refKey: "front", isFront: true },
         { label: ef.fieldBody, refKey: "back" },

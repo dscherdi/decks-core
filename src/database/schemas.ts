@@ -1,5 +1,7 @@
 import type { Database } from "sql.js";
 import {
+  EXAMS_PROFILE_ID,
+  EXAMS_PROFILE_NAME,
   PRESET_HEADING_LEVELS,
   REVIEW_PROFILE_ID,
   REVIEW_PROFILE_NAME,
@@ -8,7 +10,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 38;
+export const CURRENT_SCHEMA_VERSION = 39;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -19,7 +21,8 @@ const presetProfileRow = (
   id: string,
   name: string,
   headerLevel: number,
-  clozeEnabled: number
+  clozeEnabled: number,
+  opts?: { examEnabled?: number; hasNewCardsLimitEnabled?: number; newCardsPerDay?: number }
 ): string => `
   INSERT OR IGNORE INTO deckprofiles (
     id, name,
@@ -29,14 +32,16 @@ const presetProfileRow = (
     learning_steps, relearning_steps,
     fsrs_request_retention, fsrs_profile,
     cloze_enabled, cloze_show_context,
+    exam_enabled,
     is_default, created, modified
   ) VALUES (
     '${id}', '${name}',
-    0, 20, 0, 100,
+    ${opts?.hasNewCardsLimitEnabled ?? 0}, ${opts?.newCardsPerDay ?? 20}, 0, 100,
     ${headerLevel}, 'due-date',
     '1m', '10m',
     0.9, 'STANDARD',
     ${clozeEnabled}, 'hidden',
+    ${opts?.examEnabled ?? 0},
     0, datetime('now'), datetime('now')
   );`;
 
@@ -45,6 +50,11 @@ export const SEED_PRESET_PROFILES_SQL = [
     presetProfileRow(headingProfileId(level), headingProfileName(level), level, 1)
   ),
   presetProfileRow(REVIEW_PROFILE_ID, REVIEW_PROFILE_NAME, 0, 0),
+  presetProfileRow(EXAMS_PROFILE_ID, EXAMS_PROFILE_NAME, 2, 0, {
+    examEnabled: 1,
+    hasNewCardsLimitEnabled: 1,
+    newCardsPerDay: 0,
+  }),
 ].join("\n");
 
 // SQL Table Creation Schema - Used when database file doesn't exist
@@ -69,6 +79,8 @@ export const CREATE_TABLES_SQL = `
     fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
     cloze_enabled INTEGER NOT NULL DEFAULT 1,
     cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
+    exam_enabled INTEGER NOT NULL DEFAULT 0,
+    exam_settings TEXT NOT NULL DEFAULT '{}',
     is_default INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL,
     modified TEXT NOT NULL,
@@ -127,7 +139,7 @@ export const CREATE_TABLES_SQL = `
     deck_id TEXT NOT NULL,
     front TEXT NOT NULL,
     back TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial')),
+    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial', 'multiple-choice')),
     source_file TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     breadcrumb TEXT NOT NULL DEFAULT '',
@@ -318,6 +330,46 @@ export const CREATE_TABLES_SQL = `
     FOREIGN KEY (flashcard_id) REFERENCES flashcards(id) ON DELETE CASCADE
   );
 
+  -- Exam attempts: append-only, immutable once ended; only ended attempts are
+  -- persisted (the session row is the commit marker for its answers). Merged
+  -- as a union by id. deck_key is FileDeck.id / DeckGroup.tag / CustomDeck.id.
+  -- No enum CHECKs: these tables persist across versions, so a CHECK would
+  -- force a rebuild the day a new value lands; the writer enforces values.
+  CREATE TABLE IF NOT EXISTS exam_sessions (
+    id TEXT PRIMARY KEY,
+    deck_key TEXT NOT NULL,
+    deck_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    question_count INTEGER NOT NULL,
+    correct_count INTEGER NOT NULL,
+    score_pct REAL NOT NULL,
+    passed INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    created TEXT NOT NULL
+  );
+
+  -- Per-question answer snapshots (display texts; grading is by option index
+  -- in memory). id is deterministic: sessionId || ':' || ordinal. No FKs at
+  -- all: flashcard_id outlives card deletion (review_logs semantics), and
+  -- session_id can't reference exam_sessions because answers are written
+  -- BEFORE their session row — the session row is the commit marker.
+  CREATE TABLE IF NOT EXISTS exam_answers (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    flashcard_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    question_type TEXT NOT NULL,
+    grading_method TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    correct_answer TEXT NOT NULL,
+    given_answer TEXT NOT NULL,
+    is_correct INTEGER NOT NULL,
+    time_ms INTEGER,
+    created TEXT NOT NULL
+  );
+
   -- Insert DEFAULT profile
   INSERT OR IGNORE INTO deckprofiles (
     id, name,
@@ -379,6 +431,10 @@ export const CREATE_TABLES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_cram_cards_flashcard ON cram_cards(flashcard_id);
   CREATE INDEX IF NOT EXISTS idx_cram_sessions_deck ON cram_sessions(deck_key);
 
+  -- Exam indexes (attempt history by selection; answers by session)
+  CREATE INDEX IF NOT EXISTS idx_exam_sessions_deck ON exam_sessions(deck_key);
+  CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_answers(session_id);
+
   -- Tombstone indexes (so live-row scans stay cheap)
   CREATE INDEX IF NOT EXISTS idx_deckprofiles_live ON deckprofiles(deleted_at);
   CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_live ON profile_tag_mappings(deleted_at);
@@ -420,6 +476,7 @@ export function buildMigrationSQL(db: Database): string {
   const needsUseTrained = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("fsrs_use_trained");
   const needsDeckprofilesDeletedAt = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("deleted_at");
   const needsExtraHeaderLevels = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("extra_header_levels");
+  const needsExamColumns = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("exam_enabled");
   const customDecksColumns = getColumnNames(db, "custom_decks");
   const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
@@ -554,6 +611,8 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_use_trained INTEGER NOT NULL DEFAULT 0,
       cloze_enabled INTEGER NOT NULL DEFAULT 0,
       cloze_show_context TEXT NOT NULL DEFAULT 'open' CHECK (cloze_show_context IN ('open', 'hidden')),
+      exam_enabled INTEGER NOT NULL DEFAULT 0,
+      exam_settings TEXT NOT NULL DEFAULT '{}',
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -581,6 +640,11 @@ export function buildMigrationSQL(db: Database): string {
 
     ${needsExtraHeaderLevels ? `
     ALTER TABLE deckprofiles ADD COLUMN extra_header_levels TEXT NOT NULL DEFAULT '[]';
+    ` : ""}
+
+    ${needsExamColumns ? `
+    ALTER TABLE deckprofiles ADD COLUMN exam_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE deckprofiles ADD COLUMN exam_settings TEXT NOT NULL DEFAULT '{}';
     ` : ""}
 
     INSERT OR IGNORE INTO deckprofiles (
@@ -624,6 +688,8 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
       cloze_enabled INTEGER NOT NULL DEFAULT 1,
       cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
+      exam_enabled INTEGER NOT NULL DEFAULT 0,
+      exam_settings TEXT NOT NULL DEFAULT '{}',
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -638,6 +704,7 @@ export function buildMigrationSQL(db: Database): string {
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
+      exam_enabled, exam_settings,
       is_default, created, modified, deleted_at
     )
     SELECT
@@ -653,6 +720,7 @@ export function buildMigrationSQL(db: Database): string {
         ELSE fsrs_profile
       END,
       cloze_enabled, cloze_show_context,
+      exam_enabled, exam_settings,
       is_default, created, modified, deleted_at
     FROM deckprofiles;
 
@@ -822,7 +890,7 @@ export function buildMigrationSQL(db: Database): string {
       deck_id TEXT NOT NULL,
       front TEXT NOT NULL,
       back TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial')),
+      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial', 'multiple-choice')),
       source_file TEXT NOT NULL,
       content_hash TEXT NOT NULL,
       breadcrumb TEXT NOT NULL DEFAULT '',
@@ -973,6 +1041,42 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_cram_cards_flashcard ON cram_cards(flashcard_id);
     CREATE INDEX IF NOT EXISTS idx_cram_sessions_deck ON cram_sessions(deck_key);
 
+    -- Exam tables. Created here (not just in CREATE_TABLES_SQL) because the
+    -- production worker migration path runs ONLY buildMigrationSQL. Append-only,
+    -- immutable once written; the session row is the commit marker for its
+    -- answers. No enum CHECKs: these tables persist across versions, so a CHECK
+    -- would force a rebuild the day a new value lands.
+    CREATE TABLE IF NOT EXISTS exam_sessions (
+      id TEXT PRIMARY KEY,
+      deck_key TEXT NOT NULL,
+      deck_kind TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      config_json TEXT NOT NULL,
+      question_count INTEGER NOT NULL,
+      correct_count INTEGER NOT NULL,
+      score_pct REAL NOT NULL,
+      passed INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      created TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS exam_answers (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      flashcard_id TEXT NOT NULL,
+      ordinal INTEGER NOT NULL,
+      question_type TEXT NOT NULL,
+      grading_method TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      correct_answer TEXT NOT NULL,
+      given_answer TEXT NOT NULL,
+      is_correct INTEGER NOT NULL,
+      time_ms INTEGER,
+      created TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_exam_sessions_deck ON exam_sessions(deck_key);
+    CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_answers(session_id);
+
     -- Set schema version
     PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
 
@@ -1072,8 +1176,9 @@ export const SQL_QUERIES = {
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, extra_header_levels
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -1082,7 +1187,8 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, extra_header_levels
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -1092,7 +1198,8 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, extra_header_levels
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -1102,7 +1209,8 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, extra_header_levels
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -1114,7 +1222,8 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified, extra_header_levels
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -1128,6 +1237,7 @@ export const SQL_QUERIES = {
       fsrs_request_retention = ?, fsrs_profile = ?,
       cloze_enabled = ?, cloze_show_context = ?,
       extra_header_levels = ?,
+      exam_enabled = ?, exam_settings = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,
@@ -1481,6 +1591,35 @@ export const SQL_QUERIES = {
 
   DELETE_REVIEW_SESSIONS_FOR_DECK: `
     DELETE FROM review_sessions WHERE deck_id = ?
+  `,
+
+  // Exam attempt operations (append-only; INSERT OR IGNORE keeps re-runs and
+  // sync-op replays idempotent)
+  INSERT_EXAM_SESSION: `
+    INSERT OR IGNORE INTO exam_sessions (
+      id, deck_key, deck_kind, started_at, ended_at, config_json,
+      question_count, correct_count, score_pct, passed, duration_ms, created
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  INSERT_EXAM_ANSWER: `
+    INSERT OR IGNORE INTO exam_answers (
+      id, session_id, flashcard_id, ordinal, question_type, grading_method,
+      prompt, correct_answer, given_answer, is_correct, time_ms, created
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_EXAM_SESSIONS_FOR_DECK_KEY: `
+    SELECT * FROM exam_sessions
+    WHERE deck_key = ?
+    ORDER BY ended_at DESC
+    LIMIT ?
+  `,
+
+  GET_EXAM_ANSWERS_FOR_SESSION: `
+    SELECT * FROM exam_answers
+    WHERE session_id = ?
+    ORDER BY ordinal ASC
   `,
 
   // Cram (drill) operations

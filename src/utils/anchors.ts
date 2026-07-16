@@ -4,7 +4,7 @@
  * content and mapped to binding keys used by the sync layer.
  */
 
-export type AnchorRole = "h" | "c" | "t" | "o";
+export type AnchorRole = "h" | "c" | "t" | "o" | "q";
 
 export interface AnchorToken {
     role: AnchorRole;
@@ -15,13 +15,13 @@ export interface LineAnchor extends AnchorToken {
     lineIndex: number;
 }
 
-const TOKEN_PATTERN = "%%dk:([hcto]):([a-z0-9]+)%%";
+const TOKEN_PATTERN = "%%dk:([hctoq]):([a-z0-9]+)%%";
 const STRIP_PATTERN = `[ \\t]*${TOKEN_PATTERN}`;
 
 /** Matches one anchor token; comment body must be exactly `dk:<role>:<id>`. */
 export const DK_TOKEN_REGEX = new RegExp(TOKEN_PATTERN, "g");
 
-const ANCHOR_COMMENT_BODY_REGEX = /^dk:[hcto]:[a-z0-9]+$/;
+const ANCHOR_COMMENT_BODY_REGEX = /^dk:[hctoq]:[a-z0-9]+$/;
 
 /** True when the inner text of a `%%…%%` comment is an anchor token body. */
 export function isAnchorCommentBody(inner: string): boolean {
@@ -106,6 +106,11 @@ export function tableBindingKey(id: string, clozeOrder?: number): string {
 /** Binding key for an occlusion-v1 numbered list item (one card per item). */
 export function occlusionBindingKey(id: string): string {
     return `o:${id}`;
+}
+
+/** Binding key for a multiple-choice question card token. */
+export function questionBindingKey(id: string): string {
+    return `q:${id}`;
 }
 
 /** Binding key for a canvas edge card (native edge id; no token needed). */

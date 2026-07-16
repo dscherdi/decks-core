@@ -7,7 +7,7 @@ import { stripAnchorTokens } from "../../../utils/anchors";
 const clean = (s: string): string =>
   s
     .split("\n")
-    .filter((line) => !/^%%dk:[hcto]:[a-z0-9]+%%$/.test(line.trim()))
+    .filter((line) => !/^%%dk:[hctoq]:[a-z0-9]+%%$/.test(line.trim()))
     .map((line) => stripAnchorTokens(line))
     .join("\n");
 

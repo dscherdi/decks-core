@@ -8,6 +8,7 @@ import {
     headerBindingKey,
     isAnchorCommentBody,
     nodeBindingKey,
+    questionBindingKey,
     reverseBindingKey,
     stripAnchorTokens,
     titleBindingKey,
@@ -21,6 +22,7 @@ describe("anchor token grammar", () => {
         expect("%%dk:c:0abc9%%".match(new RegExp(DK_TOKEN_REGEX.source))).toBeTruthy();
         expect("%%dk:t:a1%%".match(new RegExp(DK_TOKEN_REGEX.source))).toBeTruthy();
         expect("%%dk:o:zz%%".match(new RegExp(DK_TOKEN_REGEX.source))).toBeTruthy();
+        expect("%%dk:q:x7f2%%".match(new RegExp(DK_TOKEN_REGEX.source))).toBeTruthy();
     });
 
     it("rejects unknown roles, uppercase ids, spaces and empty ids", () => {
@@ -40,6 +42,7 @@ describe("anchor token grammar", () => {
     it("identifies anchor comment bodies for notes exclusion", () => {
         expect(isAnchorCommentBody("dk:h:x7f2")).toBe(true);
         expect(isAnchorCommentBody(" dk:c:abc ")).toBe(true);
+        expect(isAnchorCommentBody("dk:q:x7f2")).toBe(true);
         expect(isAnchorCommentBody("a real note")).toBe(false);
         expect(isAnchorCommentBody("dk:h:x7f2 extra")).toBe(false);
     });
@@ -96,6 +99,13 @@ describe("formatAnchorToken + binding keys", () => {
         expect(extractAnchorTokens(token).tokens).toEqual([{ role: "h", id: "x7f2" }]);
     });
 
+    it("round-trips and strips q tokens", () => {
+        const token = formatAnchorToken("q", "ab12");
+        expect(token).toBe("%%dk:q:ab12%%");
+        expect(extractAnchorTokens(token).tokens).toEqual([{ role: "q", id: "ab12" }]);
+        expect(stripAnchorTokens(`- [ ] Nitrogen ${token}`)).toBe("- [ ] Nitrogen");
+    });
+
     it("builds the documented key shapes", () => {
         expect(headerBindingKey("x")).toBe("h:x");
         expect(clozeBindingKey("x", 1)).toBe("c:x#1");
@@ -105,6 +115,7 @@ describe("formatAnchorToken + binding keys", () => {
         expect(edgeBindingKey("edge1")).toBe("e:edge1");
         expect(edgeBindingKey("edge1", 0)).toBe("e:edge1#0");
         expect(nodeBindingKey("node1")).toBe("n:node1");
+        expect(questionBindingKey("x")).toBe("q:x");
     });
 });
 

@@ -71,6 +71,7 @@ const HANDLERS: Partial<Record<SyncLogEntry["o"], OpHandler>> = {
   card_unbury: handleCardUnbury,
   card_reset: handleCardReset,
   weight_set_upsert: handleWeightSetUpsert,
+  exam_session_complete: handleExamSessionComplete,
 };
 
 /**
@@ -387,8 +388,9 @@ async function handleProfileUpsert(
        learning_steps, relearning_steps,
        fsrs_request_retention, fsrs_profile,
        cloze_enabled, cloze_show_context,
+       exam_enabled, exam_settings,
        is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -404,6 +406,8 @@ async function handleProfileUpsert(
        fsrs_profile = excluded.fsrs_profile,
        cloze_enabled = excluded.cloze_enabled,
        cloze_show_context = excluded.cloze_show_context,
+       exam_enabled = excluded.exam_enabled,
+       exam_settings = excluded.exam_settings,
        is_default = excluded.is_default,
        modified = excluded.modified,
        deleted_at = NULL
@@ -424,6 +428,8 @@ async function handleProfileUpsert(
       normalizeProfile(p.fsrsProfile),
       p.clozeEnabled ? 1 : 0,
       p.clozeShowContext,
+      p.examEnabled ? 1 : 0,
+      JSON.stringify(p.examSettings ?? {}),
       p.isDefault ? 1 : 0,
       p.created,
       p.modified,
@@ -685,6 +691,64 @@ async function handleCustomDeckCardRemove(
  * Start a session. INSERT OR IGNORE — replay is a no-op since session ids
  * are UUIDs that don't collide across devices.
  */
+/**
+ * Apply a completed exam attempt: answers first, session row last (the
+ * session row is the commit marker), all INSERT OR IGNORE — replays and
+ * merges union by id. Answer ids/created are derived from the session so
+ * every device materializes byte-identical rows.
+ */
+async function handleExamSessionComplete(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  _logger: Logger
+): Promise<void> {
+  if (entry.o !== "exam_session_complete") return;
+  const { session, answers } = entry.p;
+  for (const answer of answers) {
+    await db.executeSql(
+      `INSERT OR IGNORE INTO exam_answers
+         (id, session_id, flashcard_id, ordinal, question_type, grading_method,
+          prompt, correct_answer, given_answer, is_correct, time_ms, created)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        `${session.id}:${answer.ordinal}`,
+        session.id,
+        answer.flashcardId,
+        answer.ordinal,
+        answer.questionType,
+        answer.gradingMethod,
+        answer.prompt,
+        answer.correctAnswer,
+        answer.givenAnswer,
+        answer.isCorrect ? 1 : 0,
+        answer.timeMs ?? null,
+        session.created,
+      ]
+    );
+  }
+  await db.executeSql(
+    `INSERT OR IGNORE INTO exam_sessions
+       (id, deck_key, deck_kind, started_at, ended_at, config_json,
+        question_count, correct_count, score_pct, passed, duration_ms, created)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      session.id,
+      session.deckKey,
+      session.deckKind,
+      session.startedAt,
+      session.endedAt,
+      session.configJson,
+      session.questionCount,
+      session.correctCount,
+      session.scorePct,
+      session.passed ? 1 : 0,
+      session.durationMs,
+      session.created,
+    ]
+  );
+}
+
 async function handleSessionStart(
   db: IDatabaseService,
   _sourceDeviceId: string,

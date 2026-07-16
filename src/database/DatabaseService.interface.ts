@@ -8,6 +8,9 @@ import type {
   ReviewSession,
   CramSession,
   CramCard,
+  ExamSession,
+  ExamAnswer,
+  TypedGradingMode,
   CustomDeck,
   CustomDeckType,
   FsrsWeightSet,
@@ -224,6 +227,22 @@ export interface IDatabaseService {
     }
   ): Promise<void>;
   graduateCramCard(id: string, graduatedAt: string, reps: number): Promise<void>;
+
+  // Exam attempts — append-only results store, isolated from review history.
+  // completeExamSession writes answers first and the session row last: the
+  // session row is the commit marker, so partial writes stay invisible and
+  // re-runs are idempotent (INSERT OR IGNORE + deterministic answer ids).
+  getExamEnabledDeckIds(): Promise<string[]>;
+  getDeckExamContexts(): Promise<
+    Array<{ deckId: string; examEnabled: boolean; typedGrading: TypedGradingMode }>
+  >;
+  countReviewedCardsBecomingQuestions(profileId: string): Promise<number>;
+  completeExamSession(
+    session: Omit<ExamSession, "created">,
+    answers: Array<Omit<ExamAnswer, "id" | "sessionId" | "created">>
+  ): Promise<void>;
+  getExamSessionsForDeckKey(deckKey: string, limit?: number): Promise<ExamSession[]>;
+  getExamAnswersForSession(sessionId: string): Promise<ExamAnswer[]>;
 
   createCustomDeck(
     name: string,
