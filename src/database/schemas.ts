@@ -50,7 +50,7 @@ export const SEED_PRESET_PROFILES_SQL = [
     presetProfileRow(headingProfileId(level), headingProfileName(level), level, 1)
   ),
   presetProfileRow(REVIEW_PROFILE_ID, REVIEW_PROFILE_NAME, 0, 0),
-  presetProfileRow(EXAMS_PROFILE_ID, EXAMS_PROFILE_NAME, 2, 0, {
+  presetProfileRow(EXAMS_PROFILE_ID, EXAMS_PROFILE_NAME, 2, 1, {
     examEnabled: 1,
     hasNewCardsLimitEnabled: 1,
     newCardsPerDay: 0,
