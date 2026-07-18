@@ -815,7 +815,7 @@ export const tr: Translations = {
     limitNewCardsLabel: "Günlük yeni kartları sınırla",
     limitNewCardsDesc: "Yeni kartlar için günlük sınırı etkinleştir",
     newCardsPerDayLabel: "Günlük yeni kart",
-    newCardsPerDayDesc: "Günde eklenecek maksimum yeni kart (1-9999)",
+    newCardsPerDayDesc: "Günde eklenecek maksimum yeni kart (0-9999)",
     limitReviewCardsLabel: "Günlük tekrar kartlarını sınırla",
     limitReviewCardsDesc: "Tekrar kartları için günlük sınırı etkinleştir",
     reviewCardsPerDayLabel: "Günlük tekrar kartları",
@@ -860,7 +860,7 @@ export const tr: Translations = {
     close: "Kapat",
     noticeProfileCreated: "Yeni profil oluşturuldu",
     noticeProfileNameEmpty: "Profil adı boş olamaz",
-    noticeNewCardsRange: "Günlük yeni kartlar 1 ile 9999 arasında olmalıdır",
+    noticeNewCardsRange: "Günlük yeni kartlar 0 ile 9999 arasında olmalıdır",
     noticeReviewCardsRange:
       "Günlük tekrar kartları 1 ile 9999 arasında olmalıdır",
     noticeRequestRetentionRange:

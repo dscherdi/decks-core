@@ -835,7 +835,7 @@ export const de: Translations = {
     limitNewCardsLabel: "Neue Karten pro Tag begrenzen",
     limitNewCardsDesc: "Tageslimit für neue Karten aktivieren",
     newCardsPerDayLabel: "Neue Karten pro Tag",
-    newCardsPerDayDesc: "Maximale neue Karten pro Tag (1-9999)",
+    newCardsPerDayDesc: "Maximale neue Karten pro Tag (0-9999)",
     limitReviewCardsLabel: "Wiederholungskarten pro Tag begrenzen",
     limitReviewCardsDesc: "Tageslimit für Wiederholungskarten aktivieren",
     reviewCardsPerDayLabel: "Wiederholungskarten pro Tag",
@@ -880,7 +880,7 @@ export const de: Translations = {
     noticeProfileCreated: "Neues Profil erstellt",
     noticeProfileNameEmpty: "Profilname darf nicht leer sein",
     noticeNewCardsRange:
-      "Neue Karten pro Tag müssen zwischen 1 und 9999 liegen",
+      "Neue Karten pro Tag müssen zwischen 0 und 9999 liegen",
     noticeReviewCardsRange:
       "Wiederholungskarten pro Tag müssen zwischen 1 und 9999 liegen",
     noticeRequestRetentionRange:

@@ -830,7 +830,7 @@ export const fr: Translations = {
       "Activer la limite quotidienne pour les nouvelles cartes",
     newCardsPerDayLabel: "Nouvelles cartes par jour",
     newCardsPerDayDesc:
-      "Nombre max de nouvelles cartes à introduire par jour (1-9999)",
+      "Nombre max de nouvelles cartes à introduire par jour (0-9999)",
     limitReviewCardsLabel: "Limiter les cartes de révision par jour",
     limitReviewCardsDesc:
       "Activer la limite quotidienne pour les cartes de révision",
@@ -877,7 +877,7 @@ export const fr: Translations = {
     noticeProfileCreated: "Nouveau profil créé",
     noticeProfileNameEmpty: "Le nom du profil ne peut pas être vide",
     noticeNewCardsRange:
-      "Les nouvelles cartes par jour doivent être entre 1 et 9999",
+      "Les nouvelles cartes par jour doivent être entre 0 et 9999",
     noticeReviewCardsRange:
       "Les cartes de révision par jour doivent être entre 1 et 9999",
     noticeRequestRetentionRange:

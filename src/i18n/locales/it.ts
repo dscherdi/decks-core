@@ -818,7 +818,7 @@ export const it: Translations = {
     limitNewCardsDesc: "Attiva limite giornaliero per schede nuove",
     newCardsPerDayLabel: "Schede nuove al giorno",
     newCardsPerDayDesc:
-      "Numero massimo di schede nuove da introdurre al giorno (1-9999)",
+      "Numero massimo di schede nuove da introdurre al giorno (0-9999)",
     limitReviewCardsLabel: "Limita schede di ripasso al giorno",
     limitReviewCardsDesc: "Attiva limite giornaliero per schede di ripasso",
     reviewCardsPerDayLabel: "Schede di ripasso al giorno",
@@ -862,7 +862,7 @@ export const it: Translations = {
     close: "Chiudi",
     noticeProfileCreated: "Nuovo profilo creato",
     noticeProfileNameEmpty: "Il nome del profilo non può essere vuoto",
-    noticeNewCardsRange: "Le schede nuove al giorno devono essere tra 1 e 9999",
+    noticeNewCardsRange: "Le schede nuove al giorno devono essere tra 0 e 9999",
     noticeReviewCardsRange:
       "Le schede di ripasso al giorno devono essere tra 1 e 9999",
     noticeRequestRetentionRange:

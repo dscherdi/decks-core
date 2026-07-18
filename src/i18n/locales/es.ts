@@ -826,7 +826,7 @@ export const es: Translations = {
     limitNewCardsDesc: "Activar límite diario de tarjetas nuevas",
     newCardsPerDayLabel: "Tarjetas nuevas por día",
     newCardsPerDayDesc:
-      "Máximo de tarjetas nuevas a introducir por día (1-9999)",
+      "Máximo de tarjetas nuevas a introducir por día (0-9999)",
     limitReviewCardsLabel: "Limitar tarjetas de repaso por día",
     limitReviewCardsDesc: "Activar límite diario de tarjetas de repaso",
     reviewCardsPerDayLabel: "Tarjetas de repaso por día",
@@ -870,7 +870,7 @@ export const es: Translations = {
     noticeProfileCreated: "Nuevo perfil creado",
     noticeProfileNameEmpty: "El nombre del perfil no puede estar vacío",
     noticeNewCardsRange:
-      "Las tarjetas nuevas por día deben estar entre 1 y 9999",
+      "Las tarjetas nuevas por día deben estar entre 0 y 9999",
     noticeReviewCardsRange:
       "Las tarjetas de repaso por día deben estar entre 1 y 9999",
     noticeRequestRetentionRange:

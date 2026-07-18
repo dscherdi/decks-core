@@ -822,7 +822,7 @@ export const hi: Translations = {
     limitNewCardsLabel: "प्रति दिन नए कार्ड सीमित करें",
     limitNewCardsDesc: "नए कार्ड के लिए दैनिक सीमा सक्षम करें",
     newCardsPerDayLabel: "प्रति दिन नए कार्ड",
-    newCardsPerDayDesc: "प्रति दिन पेश किए जाने वाले अधिकतम नए कार्ड (1-9999)",
+    newCardsPerDayDesc: "प्रति दिन पेश किए जाने वाले अधिकतम नए कार्ड (0-9999)",
     limitReviewCardsLabel: "प्रति दिन समीक्षा कार्ड सीमित करें",
     limitReviewCardsDesc: "समीक्षा कार्ड के लिए दैनिक सीमा सक्षम करें",
     reviewCardsPerDayLabel: "प्रति दिन समीक्षा कार्ड",
@@ -865,7 +865,7 @@ export const hi: Translations = {
     close: "बंद करें",
     noticeProfileCreated: "नई प्रोफ़ाइल बनाई गई",
     noticeProfileNameEmpty: "प्रोफ़ाइल का नाम खाली नहीं हो सकता",
-    noticeNewCardsRange: "प्रति दिन नए कार्ड 1 और 9999 के बीच होने चाहिए",
+    noticeNewCardsRange: "प्रति दिन नए कार्ड 0 और 9999 के बीच होने चाहिए",
     noticeReviewCardsRange:
       "प्रति दिन समीक्षा कार्ड 1 और 9999 के बीच होने चाहिए",
     noticeRequestRetentionRange:

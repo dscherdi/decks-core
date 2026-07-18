@@ -815,7 +815,7 @@ export const ru: Translations = {
     limitNewCardsLabel: "Ограничить число новых карточек в день",
     limitNewCardsDesc: "Включить дневной лимит для новых карточек",
     newCardsPerDayLabel: "Новых карточек в день",
-    newCardsPerDayDesc: "Максимум новых карточек в день (1-9999)",
+    newCardsPerDayDesc: "Максимум новых карточек в день (0-9999)",
     limitReviewCardsLabel: "Ограничить число карточек повторения в день",
     limitReviewCardsDesc: "Включить дневной лимит для карточек повторения",
     reviewCardsPerDayLabel: "Карточек повторения в день",
@@ -860,7 +860,7 @@ export const ru: Translations = {
     close: "Закрыть",
     noticeProfileCreated: "Новый профиль создан",
     noticeProfileNameEmpty: "Имя профиля не может быть пустым",
-    noticeNewCardsRange: "Число новых карточек в день должно быть от 1 до 9999",
+    noticeNewCardsRange: "Число новых карточек в день должно быть от 0 до 9999",
     noticeReviewCardsRange:
       "Число карточек повторения в день должно быть от 1 до 9999",
     noticeRequestRetentionRange:

@@ -827,7 +827,7 @@ export const sq: Translations = {
     limitNewCardsLabel: "Kufizo kartat e reja në ditë",
     limitNewCardsDesc: "Aktivizo kufirin ditor për kartat e reja",
     newCardsPerDayLabel: "Karta të reja në ditë",
-    newCardsPerDayDesc: "Numri maksimal i kartave të reja në ditë (1-9999)",
+    newCardsPerDayDesc: "Numri maksimal i kartave të reja në ditë (0-9999)",
     limitReviewCardsLabel: "Kufizo kartat për rishikim në ditë",
     limitReviewCardsDesc: "Aktivizo kufirin ditor për kartat për rishikim",
     reviewCardsPerDayLabel: "Karta për rishikim në ditë",
@@ -871,7 +871,7 @@ export const sq: Translations = {
     close: "Mbyll",
     noticeProfileCreated: "U krijua profil i ri",
     noticeProfileNameEmpty: "Emri i profilit nuk mund të jetë bosh",
-    noticeNewCardsRange: "Kartat e reja në ditë duhet të jenë mes 1 dhe 9999",
+    noticeNewCardsRange: "Kartat e reja në ditë duhet të jenë mes 0 dhe 9999",
     noticeReviewCardsRange:
       "Kartat për rishikim në ditë duhet të jenë mes 1 dhe 9999",
     noticeRequestRetentionRange:

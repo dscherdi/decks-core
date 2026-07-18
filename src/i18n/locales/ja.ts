@@ -807,7 +807,7 @@ export const ja: Translations = {
     limitNewCardsLabel: "1日あたりの新規カードを制限",
     limitNewCardsDesc: "新規カードの1日あたりの上限を有効化",
     newCardsPerDayLabel: "1日あたりの新規カード",
-    newCardsPerDayDesc: "1日に追加する新規カードの最大数（1-9999）",
+    newCardsPerDayDesc: "1日に追加する新規カードの最大数（0-9999）",
     limitReviewCardsLabel: "1日あたりの復習カードを制限",
     limitReviewCardsDesc: "復習カードの1日あたりの上限を有効化",
     reviewCardsPerDayLabel: "1日あたりの復習カード",
@@ -850,7 +850,7 @@ export const ja: Translations = {
     noticeProfileCreated: "新規プロファイルを作成しました",
     noticeProfileNameEmpty: "プロファイル名は空にできません",
     noticeNewCardsRange:
-      "1日あたりの新規カードは 1 〜 9999 の範囲で指定してください",
+      "1日あたりの新規カードは 0 〜 9999 の範囲で指定してください",
     noticeReviewCardsRange:
       "1日あたりの復習カードは 1 〜 9999 の範囲で指定してください",
     noticeRequestRetentionRange:
