@@ -506,6 +506,11 @@ export const ru: Translations = {
     optionsDeck: "Параметры колоды",
     optionsForItem: "Параметры для {name}",
     clickToReview: "Нажмите для повторения {name}",
+    reviewAllUnder: "Повторить все карточки в {name}",
+    studyAll: "Учить все",
+    collapseAll: "Свернуть все",
+    collapse: "Свернуть",
+    expand: "Развернуть",
     resetProgress: "Сбросить прогресс",
     deleteCustomDeckTitle: "Удалить пользовательскую колоду",
     deleteCustomDeckMessage:

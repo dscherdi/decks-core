@@ -512,6 +512,11 @@ export const hi: Translations = {
     optionsDeck: "डेक विकल्प",
     optionsForItem: "{name} के लिए विकल्प",
     clickToReview: "{name} की समीक्षा करने के लिए क्लिक करें",
+    reviewAllUnder: "{name} के अंतर्गत सभी कार्ड की समीक्षा करें",
+    studyAll: "सभी का अध्ययन करें",
+    collapseAll: "सभी संक्षिप्त करें",
+    collapse: "संक्षिप्त करें",
+    expand: "विस्तृत करें",
     resetProgress: "प्रगति रीसेट करें",
     deleteCustomDeckTitle: "कस्टम डेक हटाएं",
     deleteCustomDeckMessage:

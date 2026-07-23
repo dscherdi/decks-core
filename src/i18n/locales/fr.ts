@@ -514,6 +514,11 @@ export const fr: Translations = {
     optionsDeck: "Options du paquet",
     optionsForItem: "Options pour {name}",
     clickToReview: "Cliquer pour réviser {name}",
+    reviewAllUnder: "Réviser toutes les cartes sous {name}",
+    studyAll: "Tout étudier",
+    collapseAll: "Tout réduire",
+    collapse: "Réduire",
+    expand: "Développer",
     resetProgress: "Réinitialiser la progression",
     deleteCustomDeckTitle: "Supprimer le paquet personnalisé",
     deleteCustomDeckMessage:

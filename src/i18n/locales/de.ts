@@ -523,6 +523,11 @@ export const de: Translations = {
     optionsDeck: "Stapel-Optionen",
     optionsForItem: "Optionen für {name}",
     clickToReview: "Klicken, um {name} zu wiederholen",
+    reviewAllUnder: "Alle Karten unter {name} wiederholen",
+    studyAll: "Alle lernen",
+    collapseAll: "Alle einklappen",
+    collapse: "Einklappen",
+    expand: "Ausklappen",
     resetProgress: "Fortschritt zurücksetzen",
     deleteCustomDeckTitle: "Benutzerdefinierten Stapel löschen",
     deleteCustomDeckMessage:

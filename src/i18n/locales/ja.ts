@@ -505,6 +505,11 @@ export const ja: Translations = {
     optionsDeck: "デッキのオプション",
     optionsForItem: "{name} のオプション",
     clickToReview: "{name} を復習",
+    reviewAllUnder: "{name} 内のすべてのカードを復習",
+    studyAll: "すべて学習",
+    collapseAll: "すべて折りたたむ",
+    collapse: "折りたたむ",
+    expand: "展開",
     resetProgress: "進捗をリセット",
     deleteCustomDeckTitle: "カスタムデッキを削除",
     deleteCustomDeckMessage:

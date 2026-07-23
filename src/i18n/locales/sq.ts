@@ -516,6 +516,11 @@ export const sq: Translations = {
     optionsDeck: "Opsionet e pakos",
     optionsForItem: "Opsionet për {name}",
     clickToReview: "Kliko për të rishikuar {name}",
+    reviewAllUnder: "Rishiko të gjitha kartat nën {name}",
+    studyAll: "Studio të gjitha",
+    collapseAll: "Palos të gjitha",
+    collapse: "Palos",
+    expand: "Zgjero",
     resetProgress: "Rikthe progresin",
     deleteCustomDeckTitle: "Fshi pakon e personalizuar",
     deleteCustomDeckMessage:

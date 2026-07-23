@@ -491,6 +491,11 @@ export const zhTW: Translations = {
     optionsDeck: "牌組選項",
     optionsForItem: "{name} 的選項",
     clickToReview: "點擊以複習 {name}",
+    reviewAllUnder: "複習 {name} 下的所有卡片",
+    studyAll: "全部學習",
+    collapseAll: "全部摺疊",
+    collapse: "摺疊",
+    expand: "展開",
     resetProgress: "重設進度",
     deleteCustomDeckTitle: "刪除自訂牌組",
     deleteCustomDeckMessage:

@@ -508,6 +508,11 @@ export const it: Translations = {
     optionsDeck: "Opzioni mazzo",
     optionsForItem: "Opzioni per {name}",
     clickToReview: "Clicca per ripassare {name}",
+    reviewAllUnder: "Ripassa tutte le carte sotto {name}",
+    studyAll: "Studia tutto",
+    collapseAll: "Comprimi tutto",
+    collapse: "Comprimi",
+    expand: "Espandi",
     resetProgress: "Reimposta progresso",
     deleteCustomDeckTitle: "Elimina mazzo personalizzato",
     deleteCustomDeckMessage:

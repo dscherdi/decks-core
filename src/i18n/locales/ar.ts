@@ -500,6 +500,11 @@ export const ar: Translations = {
     optionsDeck: "خيارات الرزمة",
     optionsForItem: "خيارات لـ {name}",
     clickToReview: "انقر لمراجعة {name}",
+    reviewAllUnder: "مراجعة كل البطاقات ضمن {name}",
+    studyAll: "دراسة الكل",
+    collapseAll: "طيّ الكل",
+    collapse: "طيّ",
+    expand: "توسيع",
     resetProgress: "إعادة تعيين التقدم",
     deleteCustomDeckTitle: "حذف الرزمة المخصصة",
     deleteCustomDeckMessage:

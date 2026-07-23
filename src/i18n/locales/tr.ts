@@ -509,6 +509,11 @@ export const tr: Translations = {
     optionsDeck: "Deste seçenekleri",
     optionsForItem: "{name} için seçenekler",
     clickToReview: "{name} destesini tekrar etmek için tıklayın",
+    reviewAllUnder: "{name} altındaki tüm kartları tekrar et",
+    studyAll: "Tümünü çalış",
+    collapseAll: "Tümünü daralt",
+    collapse: "Daralt",
+    expand: "Genişlet",
     resetProgress: "İlerlemeyi sıfırla",
     deleteCustomDeckTitle: "Özel desteyi sil",
     deleteCustomDeckMessage:

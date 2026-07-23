@@ -301,6 +301,21 @@ export {
   naturalCompare,
 } from "./utils/string";
 export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
+export {
+  buildDeckTree,
+  filterDeckTree,
+  sortDeckTree,
+  flattenDeckTree,
+  allBranchIds,
+} from "./utils/deck-tree";
+export type {
+  TreeKind,
+  TreeSection,
+  TreeNode,
+  DeckTree,
+  FlatRow,
+  BuildDeckTreeInput,
+} from "./utils/deck-tree";
 export { MinHeap } from "./utils/min-heap";
 export { formatTime, formatPace } from "./utils/formatting";
 export {
