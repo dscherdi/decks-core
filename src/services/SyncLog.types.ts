@@ -211,6 +211,11 @@ export interface ProfileUpsertOp {
     // falls back to the column defaults.
     examEnabled?: boolean;
     examSettings?: ExamSettings;
+    // Optional (added at v40): read-aloud voice config. Absent on older ops —
+    // apply falls back to NULL (OS default voice).
+    ttsVoice?: string;
+    ttsRate?: number;
+    ttsLang?: string;
     isDefault: boolean;
     created: string;
     modified: string;

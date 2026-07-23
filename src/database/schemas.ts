@@ -10,7 +10,7 @@ import {
 } from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 39;
+export const CURRENT_SCHEMA_VERSION = 40;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -81,6 +81,9 @@ export const CREATE_TABLES_SQL = `
     cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
     exam_enabled INTEGER NOT NULL DEFAULT 0,
     exam_settings TEXT NOT NULL DEFAULT '{}',
+    tts_voice TEXT,
+    tts_rate REAL,
+    tts_lang TEXT,
     is_default INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL,
     modified TEXT NOT NULL,
@@ -477,6 +480,7 @@ export function buildMigrationSQL(db: Database): string {
   const needsDeckprofilesDeletedAt = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("deleted_at");
   const needsExtraHeaderLevels = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("extra_header_levels");
   const needsExamColumns = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("exam_enabled");
+  const needsTts = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("tts_voice");
   const customDecksColumns = getColumnNames(db, "custom_decks");
   const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
@@ -613,6 +617,9 @@ export function buildMigrationSQL(db: Database): string {
       cloze_show_context TEXT NOT NULL DEFAULT 'open' CHECK (cloze_show_context IN ('open', 'hidden')),
       exam_enabled INTEGER NOT NULL DEFAULT 0,
       exam_settings TEXT NOT NULL DEFAULT '{}',
+      tts_voice TEXT,
+      tts_rate REAL,
+      tts_lang TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -645,6 +652,12 @@ export function buildMigrationSQL(db: Database): string {
     ${needsExamColumns ? `
     ALTER TABLE deckprofiles ADD COLUMN exam_enabled INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE deckprofiles ADD COLUMN exam_settings TEXT NOT NULL DEFAULT '{}';
+    ` : ""}
+
+    ${needsTts ? `
+    ALTER TABLE deckprofiles ADD COLUMN tts_voice TEXT;
+    ALTER TABLE deckprofiles ADD COLUMN tts_rate REAL;
+    ALTER TABLE deckprofiles ADD COLUMN tts_lang TEXT;
     ` : ""}
 
     INSERT OR IGNORE INTO deckprofiles (
@@ -690,6 +703,9 @@ export function buildMigrationSQL(db: Database): string {
       cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
       exam_enabled INTEGER NOT NULL DEFAULT 0,
       exam_settings TEXT NOT NULL DEFAULT '{}',
+      tts_voice TEXT,
+      tts_rate REAL,
+      tts_lang TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -705,6 +721,7 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang,
       is_default, created, modified, deleted_at
     )
     SELECT
@@ -721,6 +738,7 @@ export function buildMigrationSQL(db: Database): string {
       END,
       cloze_enabled, cloze_show_context,
       exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang,
       is_default, created, modified, deleted_at
     FROM deckprofiles;
 
@@ -1177,8 +1195,9 @@ export const SQL_QUERIES = {
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
-      exam_enabled, exam_settings
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -1188,7 +1207,8 @@ export const SQL_QUERIES = {
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
-      exam_enabled, exam_settings
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -1199,7 +1219,8 @@ export const SQL_QUERIES = {
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
-      exam_enabled, exam_settings
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -1210,7 +1231,8 @@ export const SQL_QUERIES = {
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
-      exam_enabled, exam_settings
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -1223,7 +1245,8 @@ export const SQL_QUERIES = {
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
-      exam_enabled, exam_settings
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -1238,6 +1261,7 @@ export const SQL_QUERIES = {
       cloze_enabled = ?, cloze_show_context = ?,
       extra_header_levels = ?,
       exam_enabled = ?, exam_settings = ?,
+      tts_voice = ?, tts_rate = ?, tts_lang = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,

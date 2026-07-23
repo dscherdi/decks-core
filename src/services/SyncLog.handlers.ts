@@ -389,8 +389,9 @@ async function handleProfileUpsert(
        fsrs_request_retention, fsrs_profile,
        cloze_enabled, cloze_show_context,
        exam_enabled, exam_settings,
+       tts_voice, tts_rate, tts_lang,
        is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -408,6 +409,9 @@ async function handleProfileUpsert(
        cloze_show_context = excluded.cloze_show_context,
        exam_enabled = excluded.exam_enabled,
        exam_settings = excluded.exam_settings,
+       tts_voice = excluded.tts_voice,
+       tts_rate = excluded.tts_rate,
+       tts_lang = excluded.tts_lang,
        is_default = excluded.is_default,
        modified = excluded.modified,
        deleted_at = NULL
@@ -430,6 +434,9 @@ async function handleProfileUpsert(
       p.clozeShowContext,
       p.examEnabled ? 1 : 0,
       JSON.stringify(p.examSettings ?? {}),
+      p.ttsVoice ?? null,
+      p.ttsRate ?? null,
+      p.ttsLang ?? null,
       p.isDefault ? 1 : 0,
       p.created,
       p.modified,

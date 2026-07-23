@@ -104,6 +104,14 @@ export interface DeckProfile {
   examEnabled?: boolean;
   examSettings?: ExamSettings;
 
+  // Read-aloud voice for the review play button. ttsVoice is a platform voice
+  // identifier (voiceURI); ttsLang is a BCP-47 fallback used to pick a voice
+  // when the exact ttsVoice is unavailable on the current device. Optional so
+  // existing profile literals/fixtures don't need updating.
+  ttsVoice?: string;
+  ttsRate?: number;
+  ttsLang?: string;
+
   isDefault: boolean;
   created: string;
   modified: string;

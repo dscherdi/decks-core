@@ -585,6 +585,8 @@ export const hi: Translations = {
     nextCloze: "अगला रिक्त स्थान",
     openSource: "स्रोत नोट खोलें",
     openSourceFile: "स्रोत फ़ाइल खोलें",
+    playAudio: "ज़ोर से पढ़ें",
+    stopAudio: "पढ़ना रोकें",
     cardLeechAndDense:
       "कार्ड बार-बार भुलाया जा रहा है और जटिल है — इसे संशोधित करने पर विचार करें",
     cardLeech:
@@ -819,6 +821,13 @@ export const hi: Translations = {
     sectionReviewSettings: "समीक्षा सेटिंग्स",
     sectionFsrsAlgorithm: "FSRS एल्गोरिदम",
     sectionProfileInfo: "प्रोफ़ाइल जानकारी",
+    sectionReadAloud: "ज़ोर से पढ़ें",
+    ttsVoiceLabel: "आवाज़",
+    ttsVoiceDesc: "समीक्षा के दौरान ज़ोर से पढ़ने वाले बटन द्वारा उपयोग की जाने वाली आवाज़",
+    ttsVoiceDefault: "सिस्टम डिफ़ॉल्ट",
+    ttsRateLabel: "गति",
+    ttsRateDesc: "ज़ोर से पढ़ने की गति",
+    ttsUnavailable: "इस डिवाइस पर ज़ोर से पढ़ना उपलब्ध नहीं है",
     limitNewCardsLabel: "प्रति दिन नए कार्ड सीमित करें",
     limitNewCardsDesc: "नए कार्ड के लिए दैनिक सीमा सक्षम करें",
     newCardsPerDayLabel: "प्रति दिन नए कार्ड",

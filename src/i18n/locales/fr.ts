@@ -591,6 +591,8 @@ export const fr: Translations = {
     nextCloze: "Lacune suivante",
     openSource: "Ouvrir la note source",
     openSourceFile: "Ouvrir le fichier source",
+    playAudio: "Lire à voix haute",
+    stopAudio: "Arrêter la lecture",
     cardLeechAndDense:
       "Carte oubliée à répétition et complexe — envisage de la revoir",
     cardLeech: "Carte oubliée à répétition — envisage de la réécrire",
@@ -825,6 +827,13 @@ export const fr: Translations = {
     sectionReviewSettings: "Paramètres de révision",
     sectionFsrsAlgorithm: "Algorithme FSRS",
     sectionProfileInfo: "Info du profil",
+    sectionReadAloud: "Lecture à voix haute",
+    ttsVoiceLabel: "Voix",
+    ttsVoiceDesc: "Voix utilisée par le bouton de lecture à voix haute pendant la révision",
+    ttsVoiceDefault: "Valeur par défaut du système",
+    ttsRateLabel: "Vitesse",
+    ttsRateDesc: "Vitesse de lecture à voix haute",
+    ttsUnavailable: "La lecture à voix haute n'est pas disponible sur cet appareil",
     limitNewCardsLabel: "Limiter les nouvelles cartes par jour",
     limitNewCardsDesc:
       "Activer la limite quotidienne pour les nouvelles cartes",

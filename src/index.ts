@@ -312,6 +312,8 @@ export { cardFieldDefs, fieldSetValue } from "./utils/card-fields";
 export type { CardFieldDef } from "./utils/card-fields";
 export { prepareClozeMath } from "./utils/clozeMath";
 export type { PreparedClozeMath } from "./utils/clozeMath";
+export { toSpeechText } from "./utils/toSpeechText";
+export type { ToSpeechOptions } from "./utils/toSpeechText";
 export {
   SPLITTABLE,
   isSplittable,
