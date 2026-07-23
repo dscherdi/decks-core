@@ -178,6 +178,10 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   for (const child of pinnedSection.children) child.depth = 1;
   aggregate(pinnedSection);
 
+  // Drop folders left empty by pinned extraction (a folder whose only descendant
+  // was pinned would otherwise show a rolled-up count but expand to nothing).
+  for (const section of sections) pruneEmptyFolders(section);
+
   return { pinned: pinnedSection, sections };
 }
 
@@ -344,20 +348,19 @@ function makeComparator(sortMode: DeckListSortMode): (a: TreeNode, b: TreeNode) 
 
 /**
  * Depth-first flatten into renderable rows: the Pinned block first (only when
- * non-empty), then the three sections. A collapsed branch's children are
- * skipped unless `filtering` is true, which forces every branch open so matches
- * are visible.
+ * non-empty), then the three sections. A branch whose id is in `collapsed` has
+ * its children skipped. Callers drive search auto-expand by passing an empty
+ * (transient) set while filtering.
  */
 export function flattenDeckTree(
   tree: DeckTree,
-  collapsed: ReadonlySet<string>,
-  filtering: boolean
+  collapsed: ReadonlySet<string>
 ): FlatRow[] {
   const out: FlatRow[] = [];
   const walk = (nodes: TreeNode[]): void => {
     for (const node of nodes) {
       const branch = node.kind !== "leaf";
-      const expanded = branch && (filtering || !collapsed.has(node.id));
+      const expanded = branch && !collapsed.has(node.id);
       out.push({ node, expanded });
       if (branch && expanded) walk(node.children);
     }

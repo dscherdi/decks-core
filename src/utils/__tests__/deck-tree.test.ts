@@ -251,9 +251,18 @@ describe("buildDeckTree — Custom, pinned, min-count", () => {
     expect(findNode(tree, "fa")).toBeUndefined();
     expect(findNode(tree, "fb")).toBeDefined();
     expect(tree.pinned.children.map((c) => c.id)).toEqual(["fc"]);
-    // Solo folder had only the pinned leaf; the folder stays but is empty after extraction
+    // Solo folder had only the pinned leaf → pruned once that leaf is lifted to the top block
+    expect(findNode(tree, "dir:Solo")).toBeUndefined();
     // German folder retains fb
     expect(findNode(tree, "dir:German")!.children.map((c) => c.id)).toEqual(["fb"]);
+  });
+
+  it("prunes a folder whose only descendant is pinned, keeping the deck in the pinned block", () => {
+    const fileDecks = [fileDeck("fa", "Only", "Solo/Only.md")];
+    const stats = statsGetter({ fa: { newCount: 4, dueCount: 1, totalCount: 4 } });
+    const tree = build({ fileDecks, getStats: stats, pinnedIds: new Set(["fa"]) });
+    expect(findNode(tree, "dir:Solo")).toBeUndefined();
+    expect(tree.pinned.children.map((c) => c.id)).toEqual(["fa"]);
   });
 });
 
@@ -313,25 +322,25 @@ describe("flattenDeckTree & allBranchIds", () => {
 
   it("skips a collapsed branch's children but keeps the branch row", () => {
     const tree = build({ fileDecks, getStats: stats });
-    const collapsed = flattenDeckTree(tree, new Set(["sec:files"]), false);
+    const collapsed = flattenDeckTree(tree, new Set(["sec:files"]));
     const ids = collapsed.map((r) => r.node.id);
     expect(ids).toContain("sec:files");
     expect(ids).not.toContain("dir:German");
     expect(collapsed.find((r) => r.node.id === "sec:files")!.expanded).toBe(false);
   });
 
-  it("force-expands every branch while filtering", () => {
+  it("expands every branch with an empty collapsed set", () => {
     const tree = build({ fileDecks, getStats: stats });
-    const ids = flattenDeckTree(tree, new Set(["sec:files", "dir:German"]), true).map((r) => r.node.id);
+    const ids = flattenDeckTree(tree, new Set()).map((r) => r.node.id);
     expect(ids).toContain("dir:German");
     expect(ids).toContain("fa");
   });
 
   it("emits the pinned block first only when it has children", () => {
     const noPins = build({ fileDecks, getStats: stats });
-    expect(flattenDeckTree(noPins, new Set(), false)[0].node.id).toBe("sec:files");
+    expect(flattenDeckTree(noPins, new Set())[0].node.id).toBe("sec:files");
     const withPins = build({ fileDecks, getStats: stats, pinnedIds: new Set(["fa"]) });
-    expect(flattenDeckTree(withPins, new Set(), false)[0].node.id).toBe("sec:pinned");
+    expect(flattenDeckTree(withPins, new Set())[0].node.id).toBe("sec:pinned");
   });
 
   it("lists every branch id for collapse-all", () => {
