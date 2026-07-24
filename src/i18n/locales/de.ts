@@ -500,6 +500,7 @@ export const de: Translations = {
     review: "Wiederholen",
     browse: "Durchsuchen",
     browseAllCards: "Alle Karten durchsuchen",
+    openSourceFile: "Quelldatei öffnen",
     cram: "Pauken",
     resumeCram: "Pauken fortsetzen",
     configureProfile: "Profil konfigurieren",

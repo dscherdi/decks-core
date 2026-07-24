@@ -465,6 +465,7 @@ export const zh: Translations = {
     review: "复习",
     browse: "浏览",
     browseAllCards: "浏览所有卡片",
+    openSourceFile: "打开源文件",
     cram: "突击复习",
     resumeCram: "继续突击复习",
     configureProfile: "设置配置文件",

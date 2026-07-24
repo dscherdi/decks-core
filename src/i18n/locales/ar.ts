@@ -477,6 +477,7 @@ export const ar: Translations = {
     review: "مراجعة",
     browse: "تصفح",
     browseAllCards: "تصفح كل البطاقات",
+    openSourceFile: "فتح ملف المصدر",
     cram: "مراجعة مكثفة",
     resumeCram: "استئناف المراجعة المكثفة",
     configureProfile: "تهيئة الملف الشخصي",

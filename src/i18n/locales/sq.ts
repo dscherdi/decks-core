@@ -493,6 +493,7 @@ export const sq: Translations = {
     review: "Rishiko",
     browse: "Shfleto",
     browseAllCards: "Shfleto të gjitha kartat",
+    openSourceFile: "Hap skedarin burimor",
     cram: "Përsëritje intensive",
     resumeCram: "Vazhdo përsëritjen intensive",
     configureProfile: "Konfiguro profilin",

@@ -460,6 +460,7 @@ export const en = {
     review: "Review",
     browse: "Browse",
     browseAllCards: "Browse all cards",
+    openSourceFile: "Open source file",
     cram: "Cram",
     resumeCram: "Resume cram",
     configureProfile: "Configure profile",

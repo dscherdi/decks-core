@@ -482,6 +482,7 @@ export const ja: Translations = {
     review: "復習",
     browse: "閲覧",
     browseAllCards: "全カードを閲覧",
+    openSourceFile: "ソースファイルを開く",
     cram: "集中復習",
     resumeCram: "集中復習を再開",
     configureProfile: "プロファイルを設定",

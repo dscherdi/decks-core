@@ -486,6 +486,7 @@ export const tr: Translations = {
     review: "Tekrar",
     browse: "Göz At",
     browseAllCards: "Tüm kartlara göz at",
+    openSourceFile: "Kaynak dosyayı aç",
     cram: "Yoğun tekrar",
     resumeCram: "Yoğun tekrara devam et",
     configureProfile: "Profili yapılandır",

@@ -483,6 +483,7 @@ export const ru: Translations = {
     review: "Повторение",
     browse: "Просмотр",
     browseAllCards: "Просмотреть все карточки",
+    openSourceFile: "Открыть исходный файл",
     cram: "Зубрёжка",
     resumeCram: "Продолжить зубрёжку",
     configureProfile: "Настроить профиль",

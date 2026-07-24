@@ -485,6 +485,7 @@ export const it: Translations = {
     review: "Ripassa",
     browse: "Sfoglia",
     browseAllCards: "Sfoglia tutte le schede",
+    openSourceFile: "Apri file sorgente",
     cram: "Ripasso intensivo",
     resumeCram: "Riprendi ripasso intensivo",
     configureProfile: "Configura profilo",

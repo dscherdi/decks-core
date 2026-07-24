@@ -468,6 +468,7 @@ export const zhTW: Translations = {
     review: "複習",
     browse: "瀏覽",
     browseAllCards: "瀏覽所有卡片",
+    openSourceFile: "開啟來源檔案",
     cram: "衝刺複習",
     resumeCram: "繼續衝刺複習",
     configureProfile: "設定設定檔",

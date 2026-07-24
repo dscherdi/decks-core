@@ -489,6 +489,7 @@ export const hi: Translations = {
     review: "समीक्षा",
     browse: "ब्राउज़",
     browseAllCards: "सभी कार्ड ब्राउज़ करें",
+    openSourceFile: "स्रोत फ़ाइल खोलें",
     cram: "गहन अभ्यास",
     resumeCram: "गहन अभ्यास जारी रखें",
     configureProfile: "प्रोफ़ाइल कॉन्फ़िगर करें",

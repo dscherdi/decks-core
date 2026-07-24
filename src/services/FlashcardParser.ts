@@ -366,7 +366,11 @@ export class FlashcardParser {
     let currentContent: string[] = [];
     let inFrontmatter = false;
     let skipNextParagraph = false;
-    let hasNonTableContent = false;
+    let inCodeBlock = false;
+    // Precomputed per-section: true when the current header's section contains a
+    // table and no other prose (in any order). Tables only become row-cards when
+    // this holds; a mixed section becomes one header-paragraph card instead.
+    let sectionIsTableOnly = false;
 
     // Header stack for breadcrumb tracking (text is already tag-stripped)
     const headerStack: Array<{ text: string; level: number; tags: string[] }> = [];
@@ -387,13 +391,30 @@ export class FlashcardParser {
         continue;
       }
 
+      // Fenced code blocks are literal: a `## x` or `| a | b |` inside a fence is
+      // content, not a header/table. Toggle on the fence line and keep every line
+      // (including the fences) as part of the current section's body.
+      if (FlashcardParser.CODE_FENCE_REGEX.test(trimmedLine)) {
+        inCodeBlock = !inCodeBlock;
+        if (currentHeader) currentContent.push(line);
+        continue;
+      }
+      if (inCodeBlock) {
+        if (currentHeader) {
+          if (trimmedLine === "" && currentContent.length === 0) continue;
+          currentContent.push(line);
+        }
+        continue;
+      }
+
       // Check for table rows
       if (FlashcardParser.TABLE_ROW_REGEX.test(trimmedLine)) {
-        // Only parse table if we have a current header with the correct level AND no non-table content
+        // Only parse the table into row-cards when it is the sole content of a
+        // correctly-levelled section (no other prose, in any order).
         if (
           currentHeader &&
           levelSet.has(currentHeader.level) &&
-          !hasNonTableContent
+          sectionIsTableOnly
         ) {
           if (!inTable) {
             inTable = true;
@@ -533,6 +554,7 @@ export class FlashcardParser {
             );
             currentHeader = null;
             currentContent = [];
+            sectionIsTableOnly = false;
             // Update header stack for H1 flashcard title
             while (
               headerStack.length > 0 &&
@@ -580,7 +602,7 @@ export class FlashcardParser {
             tags: headerTags,
           };
           currentContent = [];
-          hasNonTableContent = false;
+          sectionIsTableOnly = FlashcardParser.isSectionTableOnly(lines, i + 1);
           skipNextParagraph = false;
         } else if (skipNextParagraph) {
           if (trimmedLine === "") {
@@ -591,8 +613,6 @@ export class FlashcardParser {
           if (trimmedLine === "" && currentContent.length === 0) {
             continue;
           }
-          // Mark that we have non-table content under this header
-          hasNonTableContent = true;
           currentContent.push(line);
         }
       }
@@ -707,6 +727,43 @@ export class FlashcardParser {
   /**
    * Helper to finalize current header flashcard
    */
+  /**
+   * Scan a header section (from `startIndex` up to the next real header or EOF,
+   * respecting code fences) and decide whether it is a pure table section: it
+   * contains at least one table row and no other prose. Blank lines and lone
+   * thematic-break lines (`---`/`***`/`___`) are ignored; a fenced code block
+   * counts as prose (so a fenced table never becomes row-cards).
+   */
+  private static isSectionTableOnly(
+    lines: string[],
+    startIndex: number
+  ): boolean {
+    let sawTable = false;
+    let sawProse = false;
+    let inCodeBlock = false;
+    for (let i = startIndex; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (FlashcardParser.CODE_FENCE_REGEX.test(trimmed)) {
+        inCodeBlock = !inCodeBlock;
+        sawProse = true;
+        continue;
+      }
+      if (inCodeBlock) {
+        if (trimmed !== "") sawProse = true;
+        continue;
+      }
+      if (FlashcardParser.HEADER_REGEX.test(lines[i])) break;
+      if (trimmed === "") continue;
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) continue;
+      if (FlashcardParser.TABLE_ROW_REGEX.test(trimmed)) {
+        sawTable = true;
+      } else {
+        sawProse = true;
+      }
+    }
+    return sawTable && !sawProse;
+  }
+
   private static finalizeCurrentHeader(
     currentHeader: { text: string; level: number; tags: string[] } | null,
     currentContent: string[],

@@ -491,6 +491,7 @@ export const fr: Translations = {
     review: "Réviser",
     browse: "Parcourir",
     browseAllCards: "Parcourir toutes les cartes",
+    openSourceFile: "Ouvrir le fichier source",
     cram: "Bachotage",
     resumeCram: "Reprendre le bachotage",
     configureProfile: "Configurer le profil",

@@ -493,6 +493,7 @@ export const es: Translations = {
     review: "Repasar",
     browse: "Explorar",
     browseAllCards: "Explorar todas las tarjetas",
+    openSourceFile: "Abrir archivo de origen",
     cram: "Repaso intensivo",
     resumeCram: "Reanudar repaso intensivo",
     configureProfile: "Configurar perfil",
