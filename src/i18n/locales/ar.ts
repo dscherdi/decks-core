@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Arabic speaker before release.
 export const ar: Translations = {
+  help: {
+    docs: "فتح المستندات",
+  },
+
   views: {
     decks: "الرزم",
     review: "مراجعة",

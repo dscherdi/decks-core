@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Japanese speaker before release.
 export const ja: Translations = {
+  help: {
+    docs: "ドキュメントを開く",
+  },
+
   views: {
     decks: "デッキ",
     review: "復習",

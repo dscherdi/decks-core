@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Turkish speaker before release.
 export const tr: Translations = {
+  help: {
+    docs: "Belgeleri aç",
+  },
+
   views: {
     decks: "Desteler",
     review: "Tekrar",

@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Traditional Chinese speaker before release.
 export const zhTW: Translations = {
+  help: {
+    docs: "開啟文件",
+  },
+
   views: {
     decks: "牌組",
     review: "複習",

@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Russian speaker before release.
 export const ru: Translations = {
+  help: {
+    docs: "Открыть документацию",
+  },
+
   views: {
     decks: "Колоды",
     review: "Повторение",

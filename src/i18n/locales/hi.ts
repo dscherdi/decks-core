@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Hindi speaker before release.
 export const hi: Translations = {
+  help: {
+    docs: "दस्तावेज़ खोलें",
+  },
+
   views: {
     decks: "डेक्स",
     review: "समीक्षा",

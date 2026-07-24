@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native German speaker before release.
 export const de: Translations = {
+  help: {
+    docs: "Dokumentation öffnen",
+  },
+
   views: {
     decks: "Stapel",
     review: "Wiederholen",

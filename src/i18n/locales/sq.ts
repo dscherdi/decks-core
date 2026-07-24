@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Albanian speaker before release.
 export const sq: Translations = {
+  help: {
+    docs: "Hap dokumentacionin",
+  },
+
   views: {
     decks: "Pakot",
     review: "Rishiko",

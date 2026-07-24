@@ -2,6 +2,10 @@ import type { Translations } from "./en";
 
 // DRAFT — review with a native Mandarin Chinese (Simplified) speaker before release.
 export const zh: Translations = {
+  help: {
+    docs: "打开文档",
+  },
+
   views: {
     decks: "牌组",
     review: "复习",

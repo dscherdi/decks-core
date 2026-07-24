@@ -1,4 +1,8 @@
 export const en = {
+  help: {
+    docs: "Open documentation",
+  },
+
   views: {
     decks: "Decks",
     review: "Review",
