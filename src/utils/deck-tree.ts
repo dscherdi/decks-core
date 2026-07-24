@@ -73,6 +73,9 @@ export interface BuildDeckTreeInput {
   getStats: (id: string) => NodeStats | undefined;
   pinnedIds: ReadonlySet<string>;
   minDeckCardCount: number;
+  /** Flat view: list every deck/group directly under its section, no folder or
+   *  sub-tag nesting. Sections and the Pinned block are kept. */
+  flat?: boolean;
 }
 
 function makeNode(partial: Partial<TreeNode> & Pick<TreeNode, "id" | "kind" | "name" | "depth">): TreeNode {
@@ -101,14 +104,14 @@ function dirSegments(filepath: string): string[] {
  * it through `filterDeckTree` / `sortDeckTree` / `flattenDeckTree`.
  */
 export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
-  const { fileDecks, deckGroups, customDeckGroups, getStats, pinnedIds, minDeckCardCount } = input;
+  const { fileDecks, deckGroups, customDeckGroups, getStats, pinnedIds, minDeckCardCount, flat } = input;
   const minCount = Number.isFinite(minDeckCardCount) && minDeckCardCount > 0 ? minDeckCardCount : 0;
 
   const filesSection = makeNode({ id: "sec:files", kind: "section", section: "files", name: "Files", depth: 0 });
   const tagsSection = makeNode({ id: "sec:tags", kind: "section", section: "tags", name: "Tags", depth: 0 });
   const customSection = makeNode({ id: "sec:custom", kind: "section", section: "custom", name: "Custom", depth: 0 });
 
-  // --- Files: nest by vault folder path -------------------------------------
+  // --- Files: nest by vault folder path (tree) or flat leaves ---------------
   const folderByPath = new Map<string, TreeNode>();
   const ensureFolder = (segs: string[]): TreeNode => {
     let parent = filesSection;
@@ -129,34 +132,43 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   for (const deck of fileDecks) {
     const pinned = pinnedIds.has(deck.id);
     if (minCount > 0 && !pinned && (getStats(deck.id)?.totalCount ?? 0) < minCount) continue;
-    const parent = ensureFolder(dirSegments(deck.filepath));
+    const parent = flat ? filesSection : ensureFolder(dirSegments(deck.filepath));
     parent.children.push(
       makeNode({ id: deck.id, kind: "leaf", name: deck.name, depth: parent.depth + 1, fileDeck: deck, pinned })
     );
   }
   pruneEmptyFolders(filesSection);
 
-  // --- Tags: nest by nested-tag path ----------------------------------------
-  const tagByPath = new Map<string, TreeNode>();
-  for (const group of deckGroups) {
-    const path = group.tag.replace(/^#/, "");
-    const segs = path.split("/");
-    let parent = tagsSection;
-    let cumulative = "";
-    for (let i = 0; i < segs.length; i++) {
-      cumulative = cumulative ? `${cumulative}/${segs[i]}` : segs[i];
-      let node = tagByPath.get(cumulative);
-      if (!node) {
-        node = makeNode({ id: `tag:${cumulative}`, kind: "folder", name: segs[i], depth: parent.depth + 1 });
-        tagByPath.set(cumulative, node);
-        parent.children.push(node);
-      }
-      if (i === segs.length - 1) node.group = group;
-      parent = node;
+  // --- Tags: nest by nested-tag path (tree) or flat group leaves ------------
+  if (flat) {
+    for (const group of deckGroups) {
+      const name = group.tag.replace(/^#/, "");
+      tagsSection.children.push(
+        makeNode({ id: `tag:${name}`, kind: "leaf", name, depth: 1, group })
+      );
     }
+  } else {
+    const tagByPath = new Map<string, TreeNode>();
+    for (const group of deckGroups) {
+      const path = group.tag.replace(/^#/, "");
+      const segs = path.split("/");
+      let parent = tagsSection;
+      let cumulative = "";
+      for (let i = 0; i < segs.length; i++) {
+        cumulative = cumulative ? `${cumulative}/${segs[i]}` : segs[i];
+        let node = tagByPath.get(cumulative);
+        if (!node) {
+          node = makeNode({ id: `tag:${cumulative}`, kind: "folder", name: segs[i], depth: parent.depth + 1 });
+          tagByPath.set(cumulative, node);
+          parent.children.push(node);
+        }
+        if (i === segs.length - 1) node.group = group;
+        parent = node;
+      }
+    }
+    // A tag node with no children is a leaf; otherwise a folder.
+    finalizeTagKinds(tagsSection);
   }
-  // A tag node with no children is a leaf; otherwise a folder.
-  finalizeTagKinds(tagsSection);
 
   // --- Custom: flat list ----------------------------------------------------
   for (const custom of customDeckGroups) {
@@ -171,6 +183,15 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
 
   // Roll up counts / ids / limit flags over the FULL tree (pinned included).
   for (const section of sections) rollup(section, getStats, pinnedIds);
+
+  // A section total is the sum over its UNIQUE member decks — not a sum of its
+  // (possibly overlapping) child rows. This matters for the flat Tags view,
+  // where nested tag groups overlap (#decks already includes #decks/german);
+  // in tree mode the roots are disjoint so this equals the child sum.
+  for (const section of sections) {
+    section.newCount = section.deckIds.reduce((n, id) => n + (getStats(id)?.newCount ?? 0), 0);
+    section.dueCount = section.deckIds.reduce((n, id) => n + (getStats(id)?.dueCount ?? 0), 0);
+  }
 
   // Lift pinned leaves into a dedicated top block (folders stay in place).
   const pinnedSection = makeNode({ id: "sec:pinned", kind: "section", section: "pinned", name: "Pinned", depth: 0 });

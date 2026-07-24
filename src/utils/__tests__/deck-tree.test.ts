@@ -198,6 +198,53 @@ describe("buildDeckTree — Tags", () => {
   });
 });
 
+// --- Flat view --------------------------------------------------------------
+
+describe("buildDeckTree — flat view", () => {
+  it("lists file decks directly under the Files section, no folders", () => {
+    const fileDecks = [
+      fileDeck("fa", "A", "German/Books/A.md"),
+      fileDeck("fb", "B", "German/B.md"),
+    ];
+    const stats = statsGetter({
+      fa: { newCount: 3, dueCount: 0, totalCount: 3 },
+      fb: { newCount: 4, dueCount: 1, totalCount: 4 },
+    });
+    const tree = build({ fileDecks, getStats: stats, flat: true });
+    expect(findNode(tree, "dir:German")).toBeUndefined();
+    expect(tree.sections[0].children.map((c) => c.id).sort()).toEqual(["fa", "fb"]);
+    expect(tree.sections[0].children.every((c) => c.kind === "leaf")).toBe(true);
+  });
+
+  it("lists every tag group flat and totals the section by unique decks (no double count)", () => {
+    const groups = [
+      group("#a", ["x", "y", "z"]),
+      group("#a/b/c", ["x"]),
+      group("#a/b/d", ["y"]),
+    ];
+    const stats = statsGetter({
+      // per-file-deck stats (used for the section total)
+      x: { newCount: 3, dueCount: 0, totalCount: 3 },
+      y: { newCount: 4, dueCount: 1, totalCount: 4 },
+      z: { newCount: 5, dueCount: 0, totalCount: 5 },
+      // per-group stats (used for each flat row)
+      [generateDeckGroupId("#a")]: { newCount: 10, dueCount: 2, totalCount: 30 },
+      [generateDeckGroupId("#a/b/c")]: { newCount: 3, dueCount: 0, totalCount: 3 },
+      [generateDeckGroupId("#a/b/d")]: { newCount: 4, dueCount: 1, totalCount: 4 },
+    });
+    const tree = build({ deckGroups: groups, getStats: stats, flat: true });
+    const tags = tree.sections[1];
+    expect(tags.children.map((c) => c.id)).toEqual(["tag:a", "tag:a/b/c", "tag:a/b/d"]);
+    expect(tags.children.every((c) => c.kind === "leaf")).toBe(true);
+    // no virtual folder nodes in flat view
+    expect(findNode(tree, "tag:a/b")).toBeUndefined();
+    // section total = unique decks {x,y,z} = 3+4+5, not the inflated group sum (10+3+4)
+    expect(tags).toMatchObject({ newCount: 12, dueCount: 1 });
+    // each flat row still shows its own group stat
+    expect(findNode(tree, "tag:a")).toMatchObject({ newCount: 10, dueCount: 2 });
+  });
+});
+
 // --- Custom + pinned + min-count -------------------------------------------
 
 describe("buildDeckTree — Custom, pinned, min-count", () => {
