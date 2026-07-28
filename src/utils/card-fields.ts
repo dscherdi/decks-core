@@ -1,5 +1,6 @@
 import { I18n } from "../i18n/I18n";
-import type { RefactorCardType, RefactorFieldSet } from "../services/ai/types";
+import type { RefactorFieldSet } from "../services/ai/types";
+import type { FlashcardType } from "../database/types";
 
 /** A displayable field of a card, keyed by its RefactorFieldSet key. */
 export interface CardFieldDef {
@@ -9,10 +10,13 @@ export interface CardFieldDef {
 }
 
 /** The display fields (label + key + front flag) for a card type. */
-export function cardFieldDefs(type: RefactorCardType): CardFieldDef[] {
+export function cardFieldDefs(type: FlashcardType): CardFieldDef[] {
   const ef = I18n.t.modals.editFlashcard;
   switch (type) {
     case "header-paragraph":
+    case "multiple-choice":
+      // Question cards keep their raw task-list body and edit like any
+      // header card — no question-specific fields.
       return [
         { label: ef.fieldHeader, refKey: "front", isFront: true },
         { label: ef.fieldBody, refKey: "back" },
@@ -36,6 +40,9 @@ export function cardFieldDefs(type: RefactorCardType): CardFieldDef[] {
       ];
     case "image-occlusion":
       return [{ label: ef.fieldBody, refKey: "listItem" }];
+    case "image-occlusion-v2":
+      // Edited visually in the studio — no inline text fields.
+      return [];
   }
 }
 

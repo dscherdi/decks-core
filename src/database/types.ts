@@ -5,6 +5,70 @@ export type { FSRSProfile };
 export type ReviewOrder = "due-date" | "random";
 export type ClozeShowContext = "open" | "hidden";
 
+export type TypedGradingMode = "exact" | "tolerant" | "self";
+export type ExamFeedbackTiming = "end" | "immediate";
+export type ExamSelectionMode = "random" | "sequential";
+export type ExamOptionLabels = "letters" | "numbers";
+
+// Per-profile exam session defaults, stored as JSON in deckprofiles.exam_settings
+// and snapshotted into exam_sessions.config_json at attempt time.
+export interface ExamSettings {
+  questionCount: number; // 0 = all eligible
+  timeLimitMinutes: number; // 0 = no limit
+  passScorePct: number;
+  shuffleQuestions: boolean;
+  shuffleOptions: boolean;
+  feedbackTiming: ExamFeedbackTiming;
+  selectionMode: ExamSelectionMode;
+  typedGrading: TypedGradingMode;
+  optionLabels: ExamOptionLabels;
+}
+
+export const DEFAULT_EXAM_SETTINGS: ExamSettings = {
+  questionCount: 0,
+  timeLimitMinutes: 0,
+  passScorePct: 60,
+  shuffleQuestions: true,
+  shuffleOptions: true,
+  feedbackTiming: "end",
+  selectionMode: "random",
+  typedGrading: "tolerant",
+  optionLabels: "letters",
+};
+
+const examNumber = (v: number | undefined, fallback: number): number =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : fallback;
+const examBoolean = (v: boolean | undefined, fallback: boolean): boolean =>
+  typeof v === "boolean" ? v : fallback;
+const examChoice = <T extends string>(
+  v: T | undefined,
+  values: readonly T[],
+  fallback: T
+): T => (typeof v === "string" && values.includes(v) ? v : fallback);
+
+/** Parse a stored exam settings JSON string, merging valid fields onto defaults. */
+export function parseExamSettings(json: string | null | undefined): ExamSettings {
+  const d = DEFAULT_EXAM_SETTINGS;
+  if (typeof json !== "string" || json.trim() === "") return { ...d };
+  try {
+    const raw = JSON.parse(json) as Partial<ExamSettings> | null;
+    if (raw === null || typeof raw !== "object") return { ...d };
+    return {
+      questionCount: examNumber(raw.questionCount, d.questionCount),
+      timeLimitMinutes: examNumber(raw.timeLimitMinutes, d.timeLimitMinutes),
+      passScorePct: examNumber(raw.passScorePct, d.passScorePct),
+      shuffleQuestions: examBoolean(raw.shuffleQuestions, d.shuffleQuestions),
+      shuffleOptions: examBoolean(raw.shuffleOptions, d.shuffleOptions),
+      feedbackTiming: examChoice(raw.feedbackTiming, ["end", "immediate"], d.feedbackTiming),
+      selectionMode: examChoice(raw.selectionMode, ["random", "sequential"], d.selectionMode),
+      typedGrading: examChoice(raw.typedGrading, ["exact", "tolerant", "self"], d.typedGrading),
+      optionLabels: examChoice(raw.optionLabels, ["letters", "numbers"], d.optionLabels),
+    };
+  } catch {
+    return { ...d };
+  }
+}
+
 export interface DeckProfile {
   id: string;
   name: string;
@@ -15,6 +79,11 @@ export interface DeckProfile {
   reviewCardsPerDay: number;
 
   headerLevel: number;
+  // Additional header levels (1-6) parsed as card fronts alongside the primary
+  // headerLevel. Empty by default; ignored in title mode (headerLevel === 0).
+  // Optional so existing profile literals/fixtures don't need updating — the DB
+  // layer always populates it (defaulting to []).
+  extraHeaderLevels?: number[];
 
   reviewOrder: ReviewOrder;
 
@@ -29,6 +98,20 @@ export interface DeckProfile {
   clozeEnabled: boolean;
   clozeShowContext: ClozeShowContext;
 
+  // Exam decks: examEnabled gates the task-list question rule (and exam entry
+  // points); examSettings holds session defaults. Optional so existing profile
+  // literals/fixtures don't need updating — the DB layer always populates them.
+  examEnabled?: boolean;
+  examSettings?: ExamSettings;
+
+  // Read-aloud voice for the review play button. ttsVoice is a platform voice
+  // identifier (voiceURI); ttsLang is a BCP-47 fallback used to pick a voice
+  // when the exact ttsVoice is unavailable on the current device. Optional so
+  // existing profile literals/fixtures don't need updating.
+  ttsVoice?: string;
+  ttsRate?: number;
+  ttsLang?: string;
+
   isDefault: boolean;
   created: string;
   modified: string;
@@ -37,6 +120,33 @@ export interface DeckProfile {
 export const DEFAULT_PROFILE_ID = 'profile_default';
 export const HEADER_LEVEL_TITLE = 0;
 
+// Preinstalled profiles shipped with the database (seeded in schemas.ts):
+// one per header level plus a title-mode profile for whole-note reviews.
+export const REVIEW_PROFILE_ID = 'profile_sr_review';
+export const REVIEW_PROFILE_NAME = 'Review notes';
+export const EXAMS_PROFILE_ID = 'profile_exams';
+export const EXAMS_PROFILE_NAME = 'Exams';
+export const PRESET_HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+export function headingProfileId(level: number): string {
+  return `profile_heading_${level}`;
+}
+export function headingProfileName(level: number): string {
+  return `Heading ${level}`;
+}
+
+/**
+ * Resolve the set of header levels parsed as card fronts for a profile/config.
+ * Title mode (primary level 0) parses the whole note and ignores extras.
+ * Otherwise the primary level plus any valid (1-6) extras, deduped.
+ */
+export function parseHeaderLevels(
+  cfg: { headerLevel: number; extraHeaderLevels?: number[] }
+): number[] {
+  if (cfg.headerLevel === 0) return [0];
+  const extras = (cfg.extraHeaderLevels ?? []).filter((l) => l >= 1 && l <= 6);
+  return Array.from(new Set([cfg.headerLevel, ...extras]));
+}
+
 export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modified'> = {
   name: 'DEFAULT',
   hasNewCardsLimitEnabled: false,
@@ -44,6 +154,7 @@ export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modifie
   hasReviewCardsLimitEnabled: false,
   reviewCardsPerDay: 100,
   headerLevel: 2,
+  extraHeaderLevels: [],
   reviewOrder: "due-date",
   learningSteps: "1m",
   relearningSteps: "10m",
@@ -53,6 +164,8 @@ export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modifie
   },
   clozeEnabled: true,
   clozeShowContext: "hidden",
+  examEnabled: false,
+  examSettings: DEFAULT_EXAM_SETTINGS,
   isDefault: true,
 };
 
@@ -72,6 +185,40 @@ export interface Deck {
   profileId: string;
   created: string;
   modified: string;
+  // Frontmatter tags of the deck file, used for file-level (Tier 2) template
+  // binding. Undefined for decks synced before this column existed.
+  fileTags?: string[];
+}
+
+/** Render engine for one template face. */
+export type TemplateFaceType = "md" | "html";
+
+/**
+ * A cached card template, synced from a markdown file in the template folder.
+ * Bound to flashcards by tag at render time (deck_templates table).
+ */
+export interface DeckTemplate {
+  id: string;
+  sourceFile: string;
+  tags: string[];
+  frontTemplate: string;
+  frontType: TemplateFaceType;
+  backTemplate: string;
+  backType: TemplateFaceType;
+  notesTemplate: string | null;
+  notesType: TemplateFaceType | null;
+  created: string;
+  modified: string;
+}
+
+/**
+ * Raw table-row data captured for a flashcard so its bound template can be
+ * merged at render time. Tags used for binding come from the header(s)
+ * containing the table (the card's `tags`), not from the row itself.
+ */
+export interface TemplateRow {
+  headers: string[];
+  cells: string[];
 }
 
 export interface DeckWithProfile extends Deck {
@@ -177,7 +324,14 @@ export function isCustomDeck(item: DeckOrGroup): item is CustomDeckGroup {
 
 export type FlashcardState = "new" | "review";
 
-export type FlashcardType = "header-paragraph" | "table" | "cloze" | "image-occlusion" | "spatial";
+export type FlashcardType =
+  | "header-paragraph"
+  | "table"
+  | "cloze"
+  | "image-occlusion"
+  | "image-occlusion-v2"
+  | "spatial"
+  | "multiple-choice";
 
 export interface Flashcard {
   id: string;
@@ -199,6 +353,14 @@ export interface Flashcard {
   // Canvas spatial cards only: id of the canvas edge this card was generated from.
   edgeId?: string | null;
 
+  // Table rows capture their headers/cells/row-tags so a tag-bound template can
+  // be merged at render time. Null for non-table cards.
+  templateRow?: TemplateRow | null;
+
+  // Anchor binding key currently present in the source file; null until the
+  // card is stamped (the durable record lives in anchor_bindings).
+  anchor?: string | null;
+
   state: FlashcardState;
   dueDate: string;
   interval: number; // in minutes
@@ -218,6 +380,14 @@ export interface Flashcard {
   modified: string;
 }
 
+// Durable per-card suspend/bury record backing the flashcards cache columns.
+export interface CardStateOverlay {
+  flashcardId: string;
+  suspendedAt: string | null;
+  buriedUntil: string | null;
+  modified: string;
+}
+
 export interface ReviewSession {
   id: string;
   deckId: string;
@@ -225,6 +395,91 @@ export interface ReviewSession {
   endedAt: string | null; // ISO datetime when user closes session, can be null
   goalTotal: number; // COUNT(dueAt <= now) at session start; if limits defined take Top LimitAmount
   doneUnique: number; // unique number of cards seen
+}
+
+export type CramRating = "again" | "good";
+
+export type CramDeckKind = "file" | "group" | "custom";
+export type ExamDeckKind = CramDeckKind;
+export type ExamQuestionType = "multiple-choice" | "type-in";
+export type ExamGradingMethod = "options" | "exact" | "tolerant" | "self";
+
+/**
+ * A completed exam attempt. Append-only and immutable: only ended attempts
+ * are ever persisted (the session row is the commit marker for its answers),
+ * so merging is a union by id.
+ */
+export interface ExamSession {
+  id: string;
+  deckKey: string; // FileDeck.id | DeckGroup.tag | CustomDeckGroup.id
+  deckKind: ExamDeckKind;
+  startedAt: string;
+  endedAt: string;
+  configJson: string; // ExamSettings snapshot at attempt time
+  questionCount: number;
+  correctCount: number;
+  scorePct: number;
+  passed: boolean;
+  durationMs: number;
+  created: string;
+}
+
+/**
+ * One answered (or unanswered — givenAnswer "") question of an attempt.
+ * Answer fields are display snapshots; grading happens by option index in
+ * memory before persistence. flashcardId keys on the immutable card id and
+ * deliberately has no FK — exam history outlives card deletion.
+ */
+export interface ExamAnswer {
+  id: string; // `${sessionId}:${ordinal}`
+  sessionId: string;
+  flashcardId: string;
+  ordinal: number;
+  questionType: ExamQuestionType;
+  gradingMethod: ExamGradingMethod;
+  prompt: string; // truncated snapshot
+  correctAnswer: string;
+  givenAnswer: string;
+  isCorrect: boolean;
+  timeMs: number | null;
+  created: string;
+}
+
+/**
+ * A cram (drill) run over a deck. Cram scheduling is isolated from real FSRS
+ * state — it writes no review_logs and never mutates flashcards. Per-card
+ * temporary state lives in CramCard rows tied to this session.
+ */
+export interface CramSession {
+  id: string;
+  deckKey: string; // FileDeck.id | DeckGroup.tag | CustomDeckGroup.id
+  deckKind: CramDeckKind;
+  startedAt: string;
+  endedAt: string | null;
+  goalTotal: number; // number of cards enrolled
+  graduatedCount: number; // cards that reached a >= 1 day interval
+  created: string;
+  modified: string;
+}
+
+/**
+ * Ephemeral per-card scheduling state within a cram session. Seeded fresh
+ * ("drill from scratch") and advanced only by cram ratings; a card graduates
+ * (leaves the queue) once temp_interval reaches >= 1 day.
+ */
+export interface CramCard {
+  id: string; // `${sessionId}:${flashcardId}`
+  sessionId: string;
+  flashcardId: string;
+  tempState: FlashcardState;
+  tempStability: number;
+  tempDifficulty: number;
+  tempInterval: number; // in minutes
+  tempDueAt: string; // next in-session show time
+  reps: number;
+  graduatedAt: string | null; // set once tempInterval >= 1440
+  created: string;
+  modified: string;
 }
 
 export interface ReviewLog {

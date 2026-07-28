@@ -1,7 +1,61 @@
 import type { Database } from "sql.js";
+import {
+  EXAMS_PROFILE_ID,
+  EXAMS_PROFILE_NAME,
+  PRESET_HEADING_LEVELS,
+  REVIEW_PROFILE_ID,
+  REVIEW_PROFILE_NAME,
+  headingProfileId,
+  headingProfileName,
+} from "./types";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 26;
+export const CURRENT_SCHEMA_VERSION = 40;
+
+// Preinstalled, selectable profiles: one per header level (H1–H6) plus a
+// title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
+// Idempotent (INSERT OR IGNORE) so it is safe in both fresh-DB creation and
+// migrations. No tag mappings are seeded — those depend on the user's
+// configured base tag and are applied at migration time.
+const presetProfileRow = (
+  id: string,
+  name: string,
+  headerLevel: number,
+  clozeEnabled: number,
+  opts?: { examEnabled?: number; hasNewCardsLimitEnabled?: number; newCardsPerDay?: number }
+): string => `
+  INSERT OR IGNORE INTO deckprofiles (
+    id, name,
+    has_new_cards_limit_enabled, new_cards_per_day,
+    has_review_cards_limit_enabled, review_cards_per_day,
+    header_level, review_order,
+    learning_steps, relearning_steps,
+    fsrs_request_retention, fsrs_profile,
+    cloze_enabled, cloze_show_context,
+    exam_enabled,
+    is_default, created, modified
+  ) VALUES (
+    '${id}', '${name}',
+    ${opts?.hasNewCardsLimitEnabled ?? 0}, ${opts?.newCardsPerDay ?? 20}, 0, 100,
+    ${headerLevel}, 'due-date',
+    '1m', '10m',
+    0.9, 'STANDARD',
+    ${clozeEnabled}, 'hidden',
+    ${opts?.examEnabled ?? 0},
+    0, datetime('now'), datetime('now')
+  );`;
+
+export const SEED_PRESET_PROFILES_SQL = [
+  ...PRESET_HEADING_LEVELS.map((level) =>
+    presetProfileRow(headingProfileId(level), headingProfileName(level), level, 1)
+  ),
+  presetProfileRow(REVIEW_PROFILE_ID, REVIEW_PROFILE_NAME, 0, 0),
+  presetProfileRow(EXAMS_PROFILE_ID, EXAMS_PROFILE_NAME, 2, 1, {
+    examEnabled: 1,
+    hasNewCardsLimitEnabled: 1,
+    newCardsPerDay: 0,
+  }),
+].join("\n");
 
 // SQL Table Creation Schema - Used when database file doesn't exist
 export const CREATE_TABLES_SQL = `
@@ -17,6 +71,7 @@ export const CREATE_TABLES_SQL = `
     has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
     review_cards_per_day INTEGER NOT NULL DEFAULT 100,
     header_level INTEGER NOT NULL DEFAULT 2,
+    extra_header_levels TEXT NOT NULL DEFAULT '[]',
     review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
     learning_steps TEXT NOT NULL DEFAULT '1m',
     relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -24,6 +79,11 @@ export const CREATE_TABLES_SQL = `
     fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
     cloze_enabled INTEGER NOT NULL DEFAULT 1,
     cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
+    exam_enabled INTEGER NOT NULL DEFAULT 0,
+    exam_settings TEXT NOT NULL DEFAULT '{}',
+    tts_voice TEXT,
+    tts_rate REAL,
+    tts_lang TEXT,
     is_default INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL,
     modified TEXT NOT NULL,
@@ -53,7 +113,27 @@ export const CREATE_TABLES_SQL = `
     -- LOCAL-ONLY: mtime of the source markdown file when this deck was last
     -- parsed. Per-device (each device sees its own wall-clock mtime when
     -- iCloud delivers a file). Excluded from mergeRemoteIntoMain.
-    last_synced_mtime INTEGER NOT NULL DEFAULT 0
+    last_synced_mtime INTEGER NOT NULL DEFAULT 0,
+    -- JSON array of the deck file's frontmatter tags, used for file-level
+    -- (Tier 2) template binding. Nullable; absent means no tags.
+    file_tags TEXT
+  );
+
+  -- Card template cache. Templates are authored as markdown files in the
+  -- configured template folder and synced here for tag-driven render-time
+  -- binding. Rebuilt from the folder, so it is dropped & recreated on migrate.
+  CREATE TABLE IF NOT EXISTS deck_templates (
+    id TEXT PRIMARY KEY,
+    source_file TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    front_template TEXT NOT NULL DEFAULT '',
+    front_type TEXT NOT NULL DEFAULT 'md',
+    back_template TEXT NOT NULL DEFAULT '',
+    back_type TEXT NOT NULL DEFAULT 'md',
+    notes_template TEXT,
+    notes_type TEXT,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
   );
 
   -- Flashcards table
@@ -62,7 +142,7 @@ export const CREATE_TABLES_SQL = `
     deck_id TEXT NOT NULL,
     front TEXT NOT NULL,
     back TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+    type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial', 'multiple-choice')),
     source_file TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     breadcrumb TEXT NOT NULL DEFAULT '',
@@ -86,6 +166,12 @@ export const CREATE_TABLES_SQL = `
     tags TEXT NOT NULL DEFAULT '',
     suspended_at TEXT,
     buried_until TEXT,
+    -- JSON { headers, cells, rowTags } captured for table rows, enabling
+    -- render-time template merge ({{ColumnName}}/{{1..N}}) + tag binding.
+    template_row TEXT,
+    -- Anchor binding key currently present in the source file (locator; the
+    -- durable record lives in anchor_bindings).
+    anchor TEXT,
     FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
   );
 
@@ -196,6 +282,97 @@ export const CREATE_TABLES_SQL = `
     byte_offset INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Durable anchor-key -> card-id bindings. Preserved across migrations and
+  -- merged append-only, so a rebuilt or fresh database can re-attach cards
+  -- parsed from anchored files to their original ids and review history.
+  CREATE TABLE IF NOT EXISTS anchor_bindings (
+    anchor TEXT PRIMARY KEY,
+    flashcard_id TEXT NOT NULL,
+    created TEXT NOT NULL
+  );
+
+  -- Durable per-card suspend/bury state. Preserved across migrations and
+  -- merged last-writer-wins on its own modified timestamp; the matching
+  -- flashcards columns are a query-time cache mirrored from these rows.
+  CREATE TABLE IF NOT EXISTS card_state_overlays (
+    flashcard_id TEXT PRIMARY KEY,
+    suspended_at TEXT,
+    buried_until TEXT,
+    modified TEXT NOT NULL
+  );
+
+  -- Cram (drill) sessions: isolated from real scheduling — no review_logs,
+  -- no flashcard mutations. deck_key is FileDeck.id / DeckGroup.tag / CustomDeck.id.
+  CREATE TABLE IF NOT EXISTS cram_sessions (
+    id TEXT PRIMARY KEY,
+    deck_key TEXT NOT NULL,
+    deck_kind TEXT NOT NULL CHECK (deck_kind IN ('file', 'group', 'custom')),
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    goal_total INTEGER NOT NULL DEFAULT 0,
+    graduated_count INTEGER NOT NULL DEFAULT 0,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
+  );
+
+  -- Per-card ephemeral cram state (temporary FSRS-like state, disposable).
+  CREATE TABLE IF NOT EXISTS cram_cards (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    flashcard_id TEXT NOT NULL,
+    temp_state TEXT NOT NULL DEFAULT 'new' CHECK (temp_state IN ('new', 'review')),
+    temp_stability REAL NOT NULL DEFAULT 0,
+    temp_difficulty REAL NOT NULL DEFAULT 5.0,
+    temp_interval REAL NOT NULL DEFAULT 0,
+    temp_due_at TEXT NOT NULL,
+    reps INTEGER NOT NULL DEFAULT 0,
+    graduated_at TEXT,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES cram_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (flashcard_id) REFERENCES flashcards(id) ON DELETE CASCADE
+  );
+
+  -- Exam attempts: append-only, immutable once ended; only ended attempts are
+  -- persisted (the session row is the commit marker for its answers). Merged
+  -- as a union by id. deck_key is FileDeck.id / DeckGroup.tag / CustomDeck.id.
+  -- No enum CHECKs: these tables persist across versions, so a CHECK would
+  -- force a rebuild the day a new value lands; the writer enforces values.
+  CREATE TABLE IF NOT EXISTS exam_sessions (
+    id TEXT PRIMARY KEY,
+    deck_key TEXT NOT NULL,
+    deck_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    question_count INTEGER NOT NULL,
+    correct_count INTEGER NOT NULL,
+    score_pct REAL NOT NULL,
+    passed INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    created TEXT NOT NULL
+  );
+
+  -- Per-question answer snapshots (display texts; grading is by option index
+  -- in memory). id is deterministic: sessionId || ':' || ordinal. No FKs at
+  -- all: flashcard_id outlives card deletion (review_logs semantics), and
+  -- session_id can't reference exam_sessions because answers are written
+  -- BEFORE their session row — the session row is the commit marker.
+  CREATE TABLE IF NOT EXISTS exam_answers (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    flashcard_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    question_type TEXT NOT NULL,
+    grading_method TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    correct_answer TEXT NOT NULL,
+    given_answer TEXT NOT NULL,
+    is_correct INTEGER NOT NULL,
+    time_ms INTEGER,
+    created TEXT NOT NULL
+  );
+
   -- Insert DEFAULT profile
   INSERT OR IGNORE INTO deckprofiles (
     id, name,
@@ -218,6 +395,9 @@ export const CREATE_TABLES_SQL = `
     datetime('now')
   );
 
+  -- Insert preinstalled per-header-level + review profiles
+  ${SEED_PRESET_PROFILES_SQL}
+
   -- Create indexes
   CREATE INDEX IF NOT EXISTS idx_deckprofiles_name ON deckprofiles(name);
   CREATE INDEX IF NOT EXISTS idx_deckprofiles_is_default ON deckprofiles(is_default);
@@ -225,6 +405,7 @@ export const CREATE_TABLES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_tag ON profile_tag_mappings(tag);
   CREATE INDEX IF NOT EXISTS idx_decks_profile_id ON decks(profile_id);
   CREATE INDEX IF NOT EXISTS idx_decks_tag ON decks(tag);
+  CREATE INDEX IF NOT EXISTS idx_deck_templates_source ON deck_templates(source_file);
   CREATE INDEX IF NOT EXISTS idx_flashcards_deck_id ON flashcards(deck_id);
   CREATE INDEX IF NOT EXISTS idx_flashcards_due_date ON flashcards(due_date);
   CREATE INDEX IF NOT EXISTS idx_flashcards_suspended ON flashcards(suspended_at);
@@ -237,10 +418,25 @@ export const CREATE_TABLES_SQL = `
   -- Forecast-optimized indexes
   CREATE INDEX IF NOT EXISTS idx_flashcards_deck_due ON flashcards(deck_id, due_date);
   CREATE INDEX IF NOT EXISTS idx_review_logs_join ON review_logs(flashcard_id, reviewed_at);
+  -- Cloze sibling/group lookups filter by (deck_id, front).
+  CREATE INDEX IF NOT EXISTS idx_flashcards_deck_front ON flashcards(deck_id, front);
+
+  -- Anchor indexes
+  CREATE INDEX IF NOT EXISTS idx_flashcards_anchor ON flashcards(anchor);
+  CREATE INDEX IF NOT EXISTS idx_anchor_bindings_flashcard ON anchor_bindings(flashcard_id);
 
   -- Custom deck indexes
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
   CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
+
+  -- Cram indexes (queue lookup = earliest non-graduated by due time)
+  CREATE INDEX IF NOT EXISTS idx_cram_cards_queue ON cram_cards(session_id, graduated_at, temp_due_at);
+  CREATE INDEX IF NOT EXISTS idx_cram_cards_flashcard ON cram_cards(flashcard_id);
+  CREATE INDEX IF NOT EXISTS idx_cram_sessions_deck ON cram_sessions(deck_key);
+
+  -- Exam indexes (attempt history by selection; answers by session)
+  CREATE INDEX IF NOT EXISTS idx_exam_sessions_deck ON exam_sessions(deck_key);
+  CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_answers(session_id);
 
   -- Tombstone indexes (so live-row scans stay cheap)
   CREATE INDEX IF NOT EXISTS idx_deckprofiles_live ON deckprofiles(deleted_at);
@@ -282,9 +478,18 @@ export function buildMigrationSQL(db: Database): string {
   const needsCloze = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("cloze_enabled");
   const needsUseTrained = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("fsrs_use_trained");
   const needsDeckprofilesDeletedAt = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("deleted_at");
+  const needsExtraHeaderLevels = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("extra_header_levels");
+  const needsExamColumns = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("exam_enabled");
+  const needsTts = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("tts_voice");
   const customDecksColumns = getColumnNames(db, "custom_decks");
   const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
+  const tagMappingColumns = getColumnNames(db, "profile_tag_mappings");
+  const tagMappingHasDeletedAt = tagMappingColumns.includes("deleted_at");
+  const flashcardsColumns = getColumnNames(db, "flashcards");
+  const canSeedOverlays =
+    flashcardsColumns.includes("suspended_at") &&
+    flashcardsColumns.includes("buried_until");
 
   // Helper: pick current column, fall back to old renamed column, then default
   const col = (
@@ -401,6 +606,7 @@ export function buildMigrationSQL(db: Database): string {
       has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
       review_cards_per_day INTEGER NOT NULL DEFAULT 100,
       header_level INTEGER NOT NULL DEFAULT 2,
+      extra_header_levels TEXT NOT NULL DEFAULT '[]',
       review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
       learning_steps TEXT NOT NULL DEFAULT '1m',
       relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -409,6 +615,11 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_use_trained INTEGER NOT NULL DEFAULT 0,
       cloze_enabled INTEGER NOT NULL DEFAULT 0,
       cloze_show_context TEXT NOT NULL DEFAULT 'open' CHECK (cloze_show_context IN ('open', 'hidden')),
+      exam_enabled INTEGER NOT NULL DEFAULT 0,
+      exam_settings TEXT NOT NULL DEFAULT '{}',
+      tts_voice TEXT,
+      tts_rate REAL,
+      tts_lang TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -432,6 +643,21 @@ export function buildMigrationSQL(db: Database): string {
 
     ${needsDeckprofilesDeletedAt ? `
     ALTER TABLE deckprofiles ADD COLUMN deleted_at TEXT;
+    ` : ""}
+
+    ${needsExtraHeaderLevels ? `
+    ALTER TABLE deckprofiles ADD COLUMN extra_header_levels TEXT NOT NULL DEFAULT '[]';
+    ` : ""}
+
+    ${needsExamColumns ? `
+    ALTER TABLE deckprofiles ADD COLUMN exam_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE deckprofiles ADD COLUMN exam_settings TEXT NOT NULL DEFAULT '{}';
+    ` : ""}
+
+    ${needsTts ? `
+    ALTER TABLE deckprofiles ADD COLUMN tts_voice TEXT;
+    ALTER TABLE deckprofiles ADD COLUMN tts_rate REAL;
+    ALTER TABLE deckprofiles ADD COLUMN tts_lang TEXT;
     ` : ""}
 
     INSERT OR IGNORE INTO deckprofiles (
@@ -467,6 +693,7 @@ export function buildMigrationSQL(db: Database): string {
       has_review_cards_limit_enabled INTEGER NOT NULL DEFAULT 0,
       review_cards_per_day INTEGER NOT NULL DEFAULT 100,
       header_level INTEGER NOT NULL DEFAULT 2,
+      extra_header_levels TEXT NOT NULL DEFAULT '[]',
       review_order TEXT NOT NULL DEFAULT 'due-date' CHECK (review_order IN ('due-date', 'random')),
       learning_steps TEXT NOT NULL DEFAULT '1m',
       relearning_steps TEXT NOT NULL DEFAULT '10m',
@@ -474,6 +701,11 @@ export function buildMigrationSQL(db: Database): string {
       fsrs_profile TEXT NOT NULL DEFAULT 'STANDARD' CHECK (fsrs_profile IN ('INTENSIVE', 'STANDARD', 'TRAINED')),
       cloze_enabled INTEGER NOT NULL DEFAULT 1,
       cloze_show_context TEXT NOT NULL DEFAULT 'hidden' CHECK (cloze_show_context IN ('open', 'hidden')),
+      exam_enabled INTEGER NOT NULL DEFAULT 0,
+      exam_settings TEXT NOT NULL DEFAULT '{}',
+      tts_voice TEXT,
+      tts_rate REAL,
+      tts_lang TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
@@ -484,17 +716,19 @@ export function buildMigrationSQL(db: Database): string {
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, extra_header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang,
       is_default, created, modified, deleted_at
     )
     SELECT
       id, name,
       has_new_cards_limit_enabled, new_cards_per_day,
       has_review_cards_limit_enabled, review_cards_per_day,
-      header_level, review_order,
+      header_level, extra_header_levels, review_order,
       learning_steps, relearning_steps,
       fsrs_request_retention,
       CASE
@@ -503,11 +737,17 @@ export function buildMigrationSQL(db: Database): string {
         ELSE fsrs_profile
       END,
       cloze_enabled, cloze_show_context,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang,
       is_default, created, modified, deleted_at
     FROM deckprofiles;
 
     DROP TABLE deckprofiles;
     ALTER TABLE deckprofiles_new RENAME TO deckprofiles;
+
+    -- Seed preinstalled per-header-level + review profiles (after the rebuild so
+    -- they land in the final table; idempotent for already-migrated databases).
+    ${SEED_PRESET_PROFILES_SQL}
 
     -- Preserve profile_tag_mappings (recreate with UNIQUE(tag) constraint)
     CREATE TABLE IF NOT EXISTS profile_tag_mappings (
@@ -526,8 +766,8 @@ export function buildMigrationSQL(db: Database): string {
       UNIQUE(tag)
     );
 
-    INSERT OR IGNORE INTO profile_tag_mappings_new (id, profile_id, tag, created)
-    SELECT id, profile_id, tag, created
+    INSERT OR IGNORE INTO profile_tag_mappings_new (id, profile_id, tag, created, deleted_at)
+    SELECT id, profile_id, tag, created, ${tagMappingHasDeletedAt ? "deleted_at" : "NULL"}
     FROM profile_tag_mappings
     ORDER BY created DESC;
 
@@ -611,9 +851,30 @@ export function buildMigrationSQL(db: Database): string {
       deleted_at TEXT
     );
 
-    -- Drop and recreate decks/flashcards fresh (sync repopulates from vault)
+    -- Durable suspend/bury state (preserved; seeded once from the legacy
+    -- flashcards columns before that table is dropped below). INSERT OR
+    -- IGNORE keeps existing overlay rows authoritative on re-migrations.
+    CREATE TABLE IF NOT EXISTS card_state_overlays (
+      flashcard_id TEXT PRIMARY KEY,
+      suspended_at TEXT,
+      buried_until TEXT,
+      modified TEXT NOT NULL
+    );
+
+    ${
+      canSeedOverlays
+        ? `INSERT OR IGNORE INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+    SELECT id, suspended_at, buried_until, COALESCE(modified, datetime('now'))
+    FROM flashcards
+    WHERE suspended_at IS NOT NULL OR buried_until IS NOT NULL;`
+        : ""
+    }
+
+    -- Drop and recreate decks/flashcards/deck_templates fresh (all rebuilt
+    -- from the vault / template folder by sync).
     DROP TABLE IF EXISTS flashcards;
     DROP TABLE IF EXISTS decks;
+    DROP TABLE IF EXISTS deck_templates;
 
     CREATE TABLE decks (
       id TEXT PRIMARY KEY,
@@ -624,7 +885,22 @@ export function buildMigrationSQL(db: Database): string {
       profile_id TEXT NOT NULL,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
-      last_synced_mtime INTEGER NOT NULL DEFAULT 0
+      last_synced_mtime INTEGER NOT NULL DEFAULT 0,
+      file_tags TEXT
+    );
+
+    CREATE TABLE deck_templates (
+      id TEXT PRIMARY KEY,
+      source_file TEXT NOT NULL,
+      tags TEXT NOT NULL DEFAULT '[]',
+      front_template TEXT NOT NULL DEFAULT '',
+      front_type TEXT NOT NULL DEFAULT 'md',
+      back_template TEXT NOT NULL DEFAULT '',
+      back_type TEXT NOT NULL DEFAULT 'md',
+      notes_template TEXT,
+      notes_type TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
     );
 
     CREATE TABLE flashcards (
@@ -632,7 +908,7 @@ export function buildMigrationSQL(db: Database): string {
       deck_id TEXT NOT NULL,
       front TEXT NOT NULL,
       back TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'spatial')),
+      type TEXT NOT NULL CHECK (type IN ('header-paragraph', 'table', 'cloze', 'image-occlusion', 'image-occlusion-v2', 'spatial', 'multiple-choice')),
       source_file TEXT NOT NULL,
       content_hash TEXT NOT NULL,
       breadcrumb TEXT NOT NULL DEFAULT '',
@@ -655,6 +931,8 @@ export function buildMigrationSQL(db: Database): string {
       tags TEXT NOT NULL DEFAULT '',
       suspended_at TEXT,
       buried_until TEXT,
+      template_row TEXT,
+      anchor TEXT,
       FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
     );
 
@@ -707,6 +985,14 @@ export function buildMigrationSQL(db: Database): string {
       byte_offset INTEGER NOT NULL DEFAULT 0
     );
 
+    -- Durable anchor-key -> card-id bindings (preserved; never dropped here so
+    -- rebuilt flashcards re-attach to their original ids and review history).
+    CREATE TABLE IF NOT EXISTS anchor_bindings (
+      anchor TEXT PRIMARY KEY,
+      flashcard_id TEXT NOT NULL,
+      created TEXT NOT NULL
+    );
+
     -- Create indexes
     CREATE INDEX IF NOT EXISTS idx_deckprofiles_name ON deckprofiles(name);
     CREATE INDEX IF NOT EXISTS idx_deckprofiles_is_default ON deckprofiles(is_default);
@@ -714,6 +1000,7 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_profile_tag_mappings_tag ON profile_tag_mappings(tag);
     CREATE INDEX IF NOT EXISTS idx_decks_profile_id ON decks(profile_id);
     CREATE INDEX IF NOT EXISTS idx_decks_tag ON decks(tag);
+    CREATE INDEX IF NOT EXISTS idx_deck_templates_source ON deck_templates(source_file);
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck_id ON flashcards(deck_id);
     CREATE INDEX IF NOT EXISTS idx_flashcards_due_date ON flashcards(due_date);
     CREATE INDEX IF NOT EXISTS idx_flashcards_suspended ON flashcards(suspended_at);
@@ -724,6 +1011,9 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_review_logs_reviewed_at ON review_logs(reviewed_at);
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck_due ON flashcards(deck_id, due_date);
     CREATE INDEX IF NOT EXISTS idx_review_logs_join ON review_logs(flashcard_id, reviewed_at);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_deck_front ON flashcards(deck_id, front);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_anchor ON flashcards(anchor);
+    CREATE INDEX IF NOT EXISTS idx_anchor_bindings_flashcard ON anchor_bindings(flashcard_id);
     CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_deck ON custom_deck_cards(custom_deck_id);
     CREATE INDEX IF NOT EXISTS idx_custom_deck_cards_card ON custom_deck_cards(flashcard_id);
 
@@ -733,6 +1023,77 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_custom_decks_live ON custom_decks(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_live ON fsrs_weight_sets(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_trained_at ON fsrs_weight_sets(trained_at);
+
+    -- Cram (drill) tables. Created here (not just in CREATE_TABLES_SQL) because the
+    -- production worker migration path runs ONLY buildMigrationSQL — it never runs
+    -- CREATE_TABLES_SQL afterward, so new tables must be materialized here to reach
+    -- existing databases.
+    CREATE TABLE IF NOT EXISTS cram_sessions (
+      id TEXT PRIMARY KEY,
+      deck_key TEXT NOT NULL,
+      deck_kind TEXT NOT NULL CHECK (deck_kind IN ('file', 'group', 'custom')),
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      goal_total INTEGER NOT NULL DEFAULT 0,
+      graduated_count INTEGER NOT NULL DEFAULT 0,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS cram_cards (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      flashcard_id TEXT NOT NULL,
+      temp_state TEXT NOT NULL DEFAULT 'new' CHECK (temp_state IN ('new', 'review')),
+      temp_stability REAL NOT NULL DEFAULT 0,
+      temp_difficulty REAL NOT NULL DEFAULT 5.0,
+      temp_interval REAL NOT NULL DEFAULT 0,
+      temp_due_at TEXT NOT NULL,
+      reps INTEGER NOT NULL DEFAULT 0,
+      graduated_at TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES cram_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (flashcard_id) REFERENCES flashcards(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_cram_cards_queue ON cram_cards(session_id, graduated_at, temp_due_at);
+    CREATE INDEX IF NOT EXISTS idx_cram_cards_flashcard ON cram_cards(flashcard_id);
+    CREATE INDEX IF NOT EXISTS idx_cram_sessions_deck ON cram_sessions(deck_key);
+
+    -- Exam tables. Created here (not just in CREATE_TABLES_SQL) because the
+    -- production worker migration path runs ONLY buildMigrationSQL. Append-only,
+    -- immutable once written; the session row is the commit marker for its
+    -- answers. No enum CHECKs: these tables persist across versions, so a CHECK
+    -- would force a rebuild the day a new value lands.
+    CREATE TABLE IF NOT EXISTS exam_sessions (
+      id TEXT PRIMARY KEY,
+      deck_key TEXT NOT NULL,
+      deck_kind TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      config_json TEXT NOT NULL,
+      question_count INTEGER NOT NULL,
+      correct_count INTEGER NOT NULL,
+      score_pct REAL NOT NULL,
+      passed INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      created TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS exam_answers (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      flashcard_id TEXT NOT NULL,
+      ordinal INTEGER NOT NULL,
+      question_type TEXT NOT NULL,
+      grading_method TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      correct_answer TEXT NOT NULL,
+      given_answer TEXT NOT NULL,
+      is_correct INTEGER NOT NULL,
+      time_ms INTEGER,
+      created TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_exam_sessions_deck ON exam_sessions(deck_key);
+    CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_answers(session_id);
 
     -- Set schema version
     PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
@@ -773,6 +1134,28 @@ export const SQL_QUERIES = {
     WHERE id = ?
   `,
 
+  UPDATE_DECK_FILE_TAGS: `
+    UPDATE decks
+    SET file_tags = ?
+    WHERE id = ?
+  `,
+
+  // Deck template cache (synced from the template folder)
+  UPSERT_DECK_TEMPLATE: `
+    INSERT OR REPLACE INTO deck_templates (
+      id, source_file, tags, front_template, front_type,
+      back_template, back_type, notes_template, notes_type, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_ALL_DECK_TEMPLATES: `SELECT * FROM deck_templates`,
+
+  DELETE_DECK_TEMPLATE_BY_FILE: `DELETE FROM deck_templates WHERE source_file = ?`,
+
+  UPDATE_DECK_TEMPLATE_SOURCE_FILE: `
+    UPDATE deck_templates SET id = ?, source_file = ?, modified = ? WHERE source_file = ?
+  `,
+
   // Local-per-device: tracks file.stat.mtime of the source markdown the
   // last time we parsed it. Used by the mtime gate in syncFlashcardsForDeck.
   GET_DECK_LAST_SYNCED_MTIME: `
@@ -811,8 +1194,10 @@ export const SQL_QUERIES = {
       learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -821,7 +1206,9 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -831,7 +1218,9 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -841,7 +1230,9 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -853,7 +1244,9 @@ export const SQL_QUERIES = {
       header_level, review_order, learning_steps, relearning_steps,
       fsrs_request_retention, fsrs_profile,
       cloze_enabled, cloze_show_context,
-      is_default, created, modified
+      is_default, created, modified, extra_header_levels,
+      exam_enabled, exam_settings,
+      tts_voice, tts_rate, tts_lang
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -866,6 +1259,9 @@ export const SQL_QUERIES = {
       learning_steps = ?, relearning_steps = ?,
       fsrs_request_retention = ?, fsrs_profile = ?,
       cloze_enabled = ?, cloze_show_context = ?,
+      extra_header_levels = ?,
+      exam_enabled = ?, exam_settings = ?,
+      tts_voice = ?, tts_rate = ?, tts_lang = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,
@@ -959,8 +1355,8 @@ export const SQL_QUERIES = {
       cloze_text, cloze_order, source_node_id, edge_id, hint,
       state, due_date, interval, repetitions,
       difficulty, stability, lapses, last_reviewed, created, modified, tags,
-      suspended_at, buried_until
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      suspended_at, buried_until, template_row
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   DELETE_FLASHCARD: `DELETE FROM flashcards WHERE id = ?`,
@@ -1219,6 +1615,97 @@ export const SQL_QUERIES = {
 
   DELETE_REVIEW_SESSIONS_FOR_DECK: `
     DELETE FROM review_sessions WHERE deck_id = ?
+  `,
+
+  // Exam attempt operations (append-only; INSERT OR IGNORE keeps re-runs and
+  // sync-op replays idempotent)
+  INSERT_EXAM_SESSION: `
+    INSERT OR IGNORE INTO exam_sessions (
+      id, deck_key, deck_kind, started_at, ended_at, config_json,
+      question_count, correct_count, score_pct, passed, duration_ms, created
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  INSERT_EXAM_ANSWER: `
+    INSERT OR IGNORE INTO exam_answers (
+      id, session_id, flashcard_id, ordinal, question_type, grading_method,
+      prompt, correct_answer, given_answer, is_correct, time_ms, created
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_EXAM_SESSIONS_FOR_DECK_KEY: `
+    SELECT * FROM exam_sessions
+    WHERE deck_key = ?
+    ORDER BY ended_at DESC
+    LIMIT ?
+  `,
+
+  GET_EXAM_ANSWERS_FOR_SESSION: `
+    SELECT * FROM exam_answers
+    WHERE session_id = ?
+    ORDER BY ordinal ASC
+  `,
+
+  // Cram (drill) operations
+  INSERT_CRAM_SESSION: `
+    INSERT INTO cram_sessions (
+      id, deck_key, deck_kind, started_at, ended_at, goal_total, graduated_count, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_CRAM_SESSION_BY_ID: `SELECT * FROM cram_sessions WHERE id = ?`,
+
+  GET_ACTIVE_CRAM_SESSION_FOR_DECK: `
+    SELECT * FROM cram_sessions
+    WHERE deck_key = ? AND ended_at IS NULL
+    ORDER BY started_at DESC
+    LIMIT 1
+  `,
+
+  UPDATE_CRAM_SESSION_PROGRESS: `
+    UPDATE cram_sessions
+    SET graduated_count = ?, modified = ?
+    WHERE id = ?
+  `,
+
+  UPDATE_CRAM_SESSION_END: `
+    UPDATE cram_sessions
+    SET ended_at = ?, modified = ?
+    WHERE id = ?
+  `,
+
+  INSERT_CRAM_CARD: `
+    INSERT OR IGNORE INTO cram_cards (
+      id, session_id, flashcard_id, temp_state, temp_stability, temp_difficulty,
+      temp_interval, temp_due_at, reps, graduated_at, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+
+  GET_CRAM_CARD_BY_ID: `SELECT * FROM cram_cards WHERE id = ?`,
+
+  GET_NEXT_CRAM_CARD: `
+    SELECT * FROM cram_cards
+    WHERE session_id = ? AND graduated_at IS NULL
+    ORDER BY temp_due_at ASC
+    LIMIT 1
+  `,
+
+  COUNT_REMAINING_CRAM_CARDS: `
+    SELECT COUNT(*) as count FROM cram_cards
+    WHERE session_id = ? AND graduated_at IS NULL
+  `,
+
+  UPDATE_CRAM_CARD: `
+    UPDATE cram_cards
+    SET temp_state = ?, temp_stability = ?, temp_difficulty = ?,
+        temp_interval = ?, temp_due_at = ?, reps = ?, modified = ?
+    WHERE id = ?
+  `,
+
+  GRADUATE_CRAM_CARD: `
+    UPDATE cram_cards
+    SET graduated_at = ?, reps = ?, modified = ?
+    WHERE id = ?
   `,
 
   // Custom deck operations

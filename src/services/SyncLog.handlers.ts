@@ -71,6 +71,7 @@ const HANDLERS: Partial<Record<SyncLogEntry["o"], OpHandler>> = {
   card_unbury: handleCardUnbury,
   card_reset: handleCardReset,
   weight_set_upsert: handleWeightSetUpsert,
+  exam_session_complete: handleExamSessionComplete,
 };
 
 /**
@@ -383,12 +384,14 @@ async function handleProfileUpsert(
        id, name,
        has_new_cards_limit_enabled, new_cards_per_day,
        has_review_cards_limit_enabled, review_cards_per_day,
-       header_level, review_order,
+       header_level, extra_header_levels, review_order,
        learning_steps, relearning_steps,
        fsrs_request_retention, fsrs_profile,
        cloze_enabled, cloze_show_context,
+       exam_enabled, exam_settings,
+       tts_voice, tts_rate, tts_lang,
        is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -396,6 +399,7 @@ async function handleProfileUpsert(
        has_review_cards_limit_enabled = excluded.has_review_cards_limit_enabled,
        review_cards_per_day = excluded.review_cards_per_day,
        header_level = excluded.header_level,
+       extra_header_levels = excluded.extra_header_levels,
        review_order = excluded.review_order,
        learning_steps = excluded.learning_steps,
        relearning_steps = excluded.relearning_steps,
@@ -403,6 +407,11 @@ async function handleProfileUpsert(
        fsrs_profile = excluded.fsrs_profile,
        cloze_enabled = excluded.cloze_enabled,
        cloze_show_context = excluded.cloze_show_context,
+       exam_enabled = excluded.exam_enabled,
+       exam_settings = excluded.exam_settings,
+       tts_voice = excluded.tts_voice,
+       tts_rate = excluded.tts_rate,
+       tts_lang = excluded.tts_lang,
        is_default = excluded.is_default,
        modified = excluded.modified,
        deleted_at = NULL
@@ -415,6 +424,7 @@ async function handleProfileUpsert(
       p.hasReviewCardsLimitEnabled ? 1 : 0,
       p.reviewCardsPerDay,
       p.headerLevel,
+      JSON.stringify(p.extraHeaderLevels ?? []),
       p.reviewOrder,
       p.learningSteps,
       p.relearningSteps,
@@ -422,6 +432,11 @@ async function handleProfileUpsert(
       normalizeProfile(p.fsrsProfile),
       p.clozeEnabled ? 1 : 0,
       p.clozeShowContext,
+      p.examEnabled ? 1 : 0,
+      JSON.stringify(p.examSettings ?? {}),
+      p.ttsVoice ?? null,
+      p.ttsRate ?? null,
+      p.ttsLang ?? null,
       p.isDefault ? 1 : 0,
       p.created,
       p.modified,
@@ -683,6 +698,64 @@ async function handleCustomDeckCardRemove(
  * Start a session. INSERT OR IGNORE — replay is a no-op since session ids
  * are UUIDs that don't collide across devices.
  */
+/**
+ * Apply a completed exam attempt: answers first, session row last (the
+ * session row is the commit marker), all INSERT OR IGNORE — replays and
+ * merges union by id. Answer ids/created are derived from the session so
+ * every device materializes byte-identical rows.
+ */
+async function handleExamSessionComplete(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  _logger: Logger
+): Promise<void> {
+  if (entry.o !== "exam_session_complete") return;
+  const { session, answers } = entry.p;
+  for (const answer of answers) {
+    await db.executeSql(
+      `INSERT OR IGNORE INTO exam_answers
+         (id, session_id, flashcard_id, ordinal, question_type, grading_method,
+          prompt, correct_answer, given_answer, is_correct, time_ms, created)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        `${session.id}:${answer.ordinal}`,
+        session.id,
+        answer.flashcardId,
+        answer.ordinal,
+        answer.questionType,
+        answer.gradingMethod,
+        answer.prompt,
+        answer.correctAnswer,
+        answer.givenAnswer,
+        answer.isCorrect ? 1 : 0,
+        answer.timeMs ?? null,
+        session.created,
+      ]
+    );
+  }
+  await db.executeSql(
+    `INSERT OR IGNORE INTO exam_sessions
+       (id, deck_key, deck_kind, started_at, ended_at, config_json,
+        question_count, correct_count, score_pct, passed, duration_ms, created)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      session.id,
+      session.deckKey,
+      session.deckKind,
+      session.startedAt,
+      session.endedAt,
+      session.configJson,
+      session.questionCount,
+      session.correctCount,
+      session.scorePct,
+      session.passed ? 1 : 0,
+      session.durationMs,
+      session.created,
+    ]
+  );
+}
+
 async function handleSessionStart(
   db: IDatabaseService,
   _sourceDeviceId: string,
@@ -736,13 +809,25 @@ async function handleSessionEnd(
 
 // ---------- Card state overlays (suspend / bury / reset) ------------------
 //
-// These ops carry an `at` wall-clock that we compare against the row's
-// `modified`. Only-if-newer guards prevent a stale remote op from
-// overwriting a fresher local mutation, while still allowing convergence
-// when this device has not touched the row since the remote op fired.
-// The `mergeFlashcards` bulk merge in worker-entry.ts excludes
-// `suspended_at` and `buried_until` from its INSERT-OR-REPLACE so these
-// op replays are the only path that converges those two columns.
+// Durable state lives in card_state_overlays, keyed by its own `modified`
+// that only state changes touch. Each op upserts the overlay only if newer
+// (stale remote ops lose to fresher local state), then unconditionally
+// mirrors the overlay onto the flashcards cache columns — the mirror is
+// idempotent, never bumps flashcards.modified, and re-asserts state even
+// when a bulk row merge has clobbered the cache.
+
+async function mirrorOverlayToFlashcard(
+  db: IDatabaseService,
+  cardId: string
+): Promise<void> {
+  await db.executeSql(
+    `UPDATE flashcards
+     SET suspended_at = (SELECT suspended_at FROM card_state_overlays WHERE flashcard_id = flashcards.id),
+         buried_until = (SELECT buried_until FROM card_state_overlays WHERE flashcard_id = flashcards.id)
+     WHERE id = ? AND id IN (SELECT flashcard_id FROM card_state_overlays)`,
+    [cardId]
+  );
+}
 
 async function handleCardSuspend(
   db: IDatabaseService,
@@ -752,11 +837,15 @@ async function handleCardSuspend(
 ): Promise<void> {
   if (entry.o !== "card_suspend") return;
   await db.executeSql(
-    `UPDATE flashcards
-     SET suspended_at = ?, modified = ?
-     WHERE id = ? AND modified < ?`,
-    [entry.p.at, entry.p.at, entry.p.c, entry.p.at]
+    `INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+     VALUES (?, ?, NULL, ?)
+     ON CONFLICT(flashcard_id) DO UPDATE SET
+       suspended_at = excluded.suspended_at,
+       modified = excluded.modified
+     WHERE excluded.modified > card_state_overlays.modified`,
+    [entry.p.c, entry.p.at, entry.p.at]
   );
+  await mirrorOverlayToFlashcard(db, entry.p.c);
 }
 
 async function handleCardUnsuspend(
@@ -767,11 +856,15 @@ async function handleCardUnsuspend(
 ): Promise<void> {
   if (entry.o !== "card_unsuspend") return;
   await db.executeSql(
-    `UPDATE flashcards
-     SET suspended_at = NULL, modified = ?
-     WHERE id = ? AND modified < ?`,
-    [entry.p.at, entry.p.c, entry.p.at]
+    `INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+     VALUES (?, NULL, NULL, ?)
+     ON CONFLICT(flashcard_id) DO UPDATE SET
+       suspended_at = NULL,
+       modified = excluded.modified
+     WHERE excluded.modified > card_state_overlays.modified`,
+    [entry.p.c, entry.p.at]
   );
+  await mirrorOverlayToFlashcard(db, entry.p.c);
 }
 
 async function handleCardBury(
@@ -782,11 +875,15 @@ async function handleCardBury(
 ): Promise<void> {
   if (entry.o !== "card_bury") return;
   await db.executeSql(
-    `UPDATE flashcards
-     SET buried_until = ?, modified = ?
-     WHERE id = ? AND modified < ?`,
-    [entry.p.until, entry.p.at, entry.p.c, entry.p.at]
+    `INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+     VALUES (?, NULL, ?, ?)
+     ON CONFLICT(flashcard_id) DO UPDATE SET
+       buried_until = excluded.buried_until,
+       modified = excluded.modified
+     WHERE excluded.modified > card_state_overlays.modified`,
+    [entry.p.c, entry.p.until, entry.p.at]
   );
+  await mirrorOverlayToFlashcard(db, entry.p.c);
 }
 
 async function handleCardUnbury(
@@ -797,11 +894,15 @@ async function handleCardUnbury(
 ): Promise<void> {
   if (entry.o !== "card_unbury") return;
   await db.executeSql(
-    `UPDATE flashcards
-     SET buried_until = NULL, modified = ?
-     WHERE id = ? AND modified < ?`,
-    [entry.p.at, entry.p.c, entry.p.at]
+    `INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+     VALUES (?, NULL, NULL, ?)
+     ON CONFLICT(flashcard_id) DO UPDATE SET
+       buried_until = NULL,
+       modified = excluded.modified
+     WHERE excluded.modified > card_state_overlays.modified`,
+    [entry.p.c, entry.p.at]
   );
+  await mirrorOverlayToFlashcard(db, entry.p.c);
 }
 
 /**
@@ -810,8 +911,8 @@ async function handleCardUnbury(
  *   - Delete review_logs for the card whose timestamp predates the reset.
  *   - Reset the card's FSRS state IFF the local `modified` is older than
  *     the reset's `at`. Newer concurrent rates from other devices win.
- *   - Clear suspended_at and buried_until on reset (the user is starting
- *     the card over from scratch).
+ *   - Clear the suspend/bury overlay on reset (the user is starting the
+ *     card over from scratch).
  */
 async function handleCardReset(
   db: IDatabaseService,
@@ -838,10 +939,20 @@ async function handleCardReset(
          stability = 0,
          lapses = 0,
          last_reviewed = NULL,
-         suspended_at = NULL,
-         buried_until = NULL,
          modified = ?
      WHERE id = ? AND modified <= ?`,
     [at, at, c, at]
   );
+
+  await db.executeSql(
+    `INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
+     VALUES (?, NULL, NULL, ?)
+     ON CONFLICT(flashcard_id) DO UPDATE SET
+       suspended_at = NULL,
+       buried_until = NULL,
+       modified = excluded.modified
+     WHERE excluded.modified > card_state_overlays.modified`,
+    [c, at]
+  );
+  await mirrorOverlayToFlashcard(db, c);
 }

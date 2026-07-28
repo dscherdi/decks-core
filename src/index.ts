@@ -13,6 +13,7 @@ export {
   BACKUP_TABLES_SQL,
   buildMigrationSQL,
 } from "./database/schemas";
+export { remapCardIdsToDeckIndependent } from "./database/remapCardIds";
 export * from "./database/sql-types";
 export type {
   IDatabaseService,
@@ -26,6 +27,21 @@ export type {
 // Services
 export { FlashcardParser } from "./services/FlashcardParser";
 export type { ParsedFlashcard } from "./services/FlashcardParser";
+export {
+  isOcclusionV2,
+  serializeOcclusionBack,
+  parseOcclusionBack,
+  occlusionV2HashInput,
+  activeMaskIdForCard,
+  occlusionImageLinkpath,
+} from "./services/occlusion/OcclusionV2";
+export { OcclusionV2Parser } from "./services/occlusion/OcclusionV2Parser";
+export {
+  OCCLUSION_V2_VERSION,
+  type OcclusionMask,
+  type OcclusionDoc,
+  type OcclusionParseResult,
+} from "./services/occlusion/OcclusionV2.types";
 export { CanvasParser } from "./services/CanvasParser";
 export type { CanvasContent, CanvasTextNode } from "./services/CanvasParser";
 export { CanvasFlashcardExtractor } from "./services/CanvasFlashcardExtractor";
@@ -33,12 +49,47 @@ export { compileFilter } from "./services/FilterEngine";
 export type { FilterCompileOptions, CompiledFilter } from "./services/FilterEngine";
 export { evaluateFilter } from "./services/FilterEvaluator";
 export { Scheduler } from "./services/Scheduler";
-export type { SchedulerOptions, SessionProgress, NewSession } from "./services/Scheduler";
+export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession } from "./services/Scheduler";
 export { StatisticsService } from "./services/StatisticsService";
 export { CustomDeckService } from "./services/CustomDeckService";
 export { TagGroupService } from "./services/TagGroupService";
 export { computeCardHealth, isCardLeech, isCardDense } from "./services/CardHealth";
-export type { CardHealthThresholds, CardHealth } from "./services/CardHealth";
+export type {
+  CardHealthThresholds,
+  CardHealth,
+  ExamHealthContext,
+  ExamHealthIssue,
+} from "./services/CardHealth";
+export { classifyExamBody } from "./services/ExamClassifier";
+export type {
+  ExamOption,
+  ExamInvalidReason,
+  ExamBodyClassification,
+} from "./services/ExamClassifier";
+export {
+  stripInlineMarkdown,
+  normalizeExamAnswer,
+  isTypedAnswerCorrect,
+  indexSetsEqual,
+  getTypeInAnswerLine,
+  checkTypeInGradability,
+} from "./services/ExamGrading";
+export type { TypeInGradability } from "./services/ExamGrading";
+export { shuffleInPlace, sampleWithoutReplacement } from "./utils/sampling";
+export {
+  ExamAttempt,
+  buildExamPool,
+  drawExamQuestions,
+  EXAM_TARGET_BLANK,
+  EXAM_INERT_BLANK,
+} from "./services/ExamAttempt";
+export type {
+  ExamQuestion,
+  ExamGivenAnswer,
+  ExamQuestionOutcome,
+  ExamSkipReason,
+  ExamPool,
+} from "./services/ExamAttempt";
 export { FsrsOptimizationService } from "./services/FsrsOptimizationService";
 export { FlashcardSynchronizer } from "./services/FlashcardSynchronizer";
 export type {
@@ -47,6 +98,83 @@ export type {
   RawDatabase,
   RawStatement,
 } from "./services/FlashcardSynchronizer";
+
+// Table template engine
+export {
+  extractTemplateBlocks,
+  stripTemplateBlocks,
+  mergeTemplate,
+  referencedVariables,
+  templateIsSatisfied,
+  parseTemplateFile,
+  resolveCardTemplate,
+} from "./services/templates";
+export type {
+  TemplateEngine,
+  TemplateSide,
+  TemplateField,
+  ResolvedTemplateSet,
+  ResolvedRender,
+} from "./services/templates";
+export { LegacySrMigrator } from "./services/migration/LegacySrMigrator";
+export type {
+  FsrsState,
+  ClozeEntry,
+  MigratedCard,
+  MigrationFormat,
+  ProcessOptions,
+  ProcessResult,
+  RenderOptions,
+  RenderedFile,
+  WholeNoteOptions,
+} from "./services/migration/LegacySrMigrator";
+export { SrHistoryImporter } from "./services/migration/SrHistoryImporter";
+export type {
+  MigrationProfileFsrs,
+  MigrationDeckItem,
+  HistoryDb,
+} from "./services/migration/SrHistoryImporter";
+export { AnkiCollectionParser } from "./services/migration/anki/AnkiCollectionParser";
+export type { AnkiParseOptions } from "./services/migration/anki/AnkiCollectionParser";
+export { AnkiSanitizer } from "./services/migration/anki/AnkiSanitizer";
+export type {
+  SanitizeResult,
+  SanitizeOptions,
+  HtmlToMarkdown,
+} from "./services/migration/anki/AnkiSanitizer";
+export { AnkiTemplateEngine } from "./services/migration/anki/AnkiTemplateEngine";
+export type {
+  AnkiTemplateData,
+  AnkiTemplateResult,
+  AnkiExtraField,
+} from "./services/migration/anki/AnkiTemplateEngine";
+export { AnkiTemplateExporter } from "./services/migration/anki/AnkiTemplateExporter";
+export type { AnkiTemplateFile } from "./services/migration/anki/AnkiTemplateExporter";
+export { AnkiOcclusionExtractor } from "./services/migration/anki/AnkiOcclusionExtractor";
+export type { AnkiOcclusionResult } from "./services/migration/anki/AnkiOcclusionExtractor";
+export {
+  AnkiDeckRenderer,
+  DEFAULT_ANKI_CARDS_PER_FILE,
+} from "./services/migration/anki/AnkiDeckRenderer";
+export type { AnkiRenderedDeck } from "./services/migration/anki/AnkiDeckRenderer";
+export { AnkiHistoryImporter } from "./services/migration/anki/AnkiHistoryImporter";
+export { parseMediaManifest, isZstd } from "./services/migration/anki/AnkiMediaManifest";
+export type {
+  AnkiRevlogRow,
+  AnkiDeckItem,
+  AnkiImportHistoryOptions,
+} from "./services/migration/anki/AnkiHistoryImporter";
+export type {
+  AnkiModel,
+  AnkiModelField,
+  AnkiTemplate,
+  AnkiDeckMeta,
+  AnkiScheduling,
+  AnkiParsedCard,
+  AnkiParseResult,
+  AnkiCardKind,
+  AnkiTemplateRow,
+} from "./services/migration/anki/AnkiTypes";
 export * from "./services/HLC";
 export type {
   SyncOpV1,
@@ -122,6 +250,7 @@ export type {
 export {
   generateFlashcardId,
   generateOldFlashcardId,
+  generateLegacyDeckScopedFlashcardId,
   generateDeckId,
   generateContentHash,
   generateDeckGroupId,
@@ -131,7 +260,28 @@ export {
   generateCustomDeckCardId,
   generateSpatialFlashcardId,
   generateSpatialClozeFlashcardId,
+  generateOcclusionV2FlashcardId,
+  generateAnchorId,
 } from "./utils/hash";
+export {
+  DK_TOKEN_REGEX,
+  isAnchorCommentBody,
+  stripAnchorTokens,
+  extractAnchorTokens,
+  extractLineAnchors,
+  formatAnchorToken,
+  headerBindingKey,
+  clozeBindingKey,
+  reverseBindingKey,
+  titleBindingKey,
+  titleClozeBindingKey,
+  tableBindingKey,
+  occlusionBindingKey,
+  questionBindingKey,
+  edgeBindingKey,
+  nodeBindingKey,
+} from "./utils/anchors";
+export type { AnchorRole, AnchorToken, LineAnchor } from "./utils/anchors";
 export {
   toLocalDateString,
   toLocalDateTimeString,
@@ -169,8 +319,29 @@ export type {
   OcrProgress,
   OcrDebugEntry,
 } from "./services/pdf/PdfOcrCache";
-export { levenshteinSimilarity } from "./utils/string";
+export { mapWithConcurrency } from "./utils/concurrency";
+export {
+  levenshteinSimilarity,
+  levenshteinSimilarityAbove,
+  levenshteinDistance,
+  naturalCompare,
+} from "./utils/string";
 export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
+export {
+  buildDeckTree,
+  filterDeckTree,
+  sortDeckTree,
+  flattenDeckTree,
+  allBranchIds,
+} from "./utils/deck-tree";
+export type {
+  TreeKind,
+  TreeSection,
+  TreeNode,
+  DeckTree,
+  FlatRow,
+  BuildDeckTreeInput,
+} from "./utils/deck-tree";
 export { MinHeap } from "./utils/min-heap";
 export { formatTime, formatPace } from "./utils/formatting";
 export {
@@ -180,6 +351,10 @@ export {
 } from "./utils/markdown-table";
 export { cardFieldDefs, fieldSetValue } from "./utils/card-fields";
 export type { CardFieldDef } from "./utils/card-fields";
+export { prepareClozeMath } from "./utils/clozeMath";
+export type { PreparedClozeMath } from "./utils/clozeMath";
+export { toSpeechText } from "./utils/toSpeechText";
+export type { ToSpeechOptions } from "./utils/toSpeechText";
 export {
   SPLITTABLE,
   isSplittable,

@@ -6,18 +6,27 @@ import type {
   ReviewLog,
   DeckGroup,
   CustomDeckGroup,
+  DeckOrGroup,
+  CramRating,
 } from "../database/types";
-import type { IDatabaseService, ILogger, IBackupService, ISyncLog } from "../database/DatabaseService.interface";
+import { isDeckGroup, isCustomDeck } from "../database/types";
+import type {
+  IDatabaseService,
+  ILogger,
+  IBackupService,
+  ISyncLog,
+} from "../database/DatabaseService.interface";
 import { FSRS, type RatingLabel, type SchedulingCard } from "../algorithm/fsrs";
 import {
   getMinMinutesForProfile,
   getMaxIntervalDaysForProfile,
   type FSRSProfile,
 } from "../algorithm/fsrs-weights";
-import { yieldToUI } from "../utils/ui";
-import type { DecksSettings } from "../settings";
 import { parseSteps } from "../utils/step-parser";
+import { yieldToUI } from "../utils/ui";
+import { formatTime } from "../utils/formatting";
 import type { RateOp } from "./SyncLog.types";
+import type { DecksSettings } from "../settings";
 
 export interface SchedulerOptions {
   allowNew?: boolean;
@@ -35,6 +44,20 @@ export interface SessionProgress {
   goalTotal: number;
   progress: number; // 0-100
 }
+
+export interface CramProgress {
+  graduated: number;
+  goalTotal: number;
+  progress: number; // 0-100
+}
+
+export interface CramRateResult {
+  graduated: boolean;
+  interval: number; // minutes
+}
+
+// A card leaves the cram queue once a rating would schedule it >= 1 day out.
+const CRAM_GRADUATION_MINUTES = 1440;
 
 export interface NewSession {
   sessionId: string;
@@ -54,6 +77,8 @@ export class Scheduler {
   private backupService: IBackupService;
   private settings: DecksSettings;
   private syncLog: ISyncLog | null = null;
+  // Per-session deck+profile cache (constant during a session); cleared at session boundaries.
+  private deckCache = new Map<string, DeckWithProfile>();
 
   constructor(
     db: IDatabaseService,
@@ -79,6 +104,10 @@ export class Scheduler {
 
   private debugLog(message: string, data?: unknown): void {
     this.logger?.debug(message, data);
+  }
+
+  private perfLog(label: string, start: number): void {
+    this.logger?.performance?.(`${label} in ${formatTime(performance.now() - start)}`);
   }
 
   /**
@@ -107,32 +136,26 @@ export class Scheduler {
       sessionDurationMinutes
     );
     const newCardCount = await this.getNewCardCount(deckId);
+    const globalDailyRemaining = await this.globalDailyRemaining();
 
-    let goalTotal = 0;
+    // Due review cards (applying the per-deck limit if configured).
+    const reviewGoal = deck.profile.hasReviewCardsLimitEnabled
+      ? Math.min(
+          dueCardCount,
+          Math.max(0, deck.profile.reviewCardsPerDay - dailyCounts.reviewCount)
+        )
+      : dueCardCount;
 
-    // Add due review cards (applying daily limits if configured)
-    if (deck.profile.hasReviewCardsLimitEnabled) {
-      const remainingReviewQuota = Math.max(
-        0,
-        deck.profile.reviewCardsPerDay - dailyCounts.reviewCount
-      );
-      goalTotal += Math.min(dueCardCount, remainingReviewQuota);
-    } else {
-      // unlimited
-      goalTotal += dueCardCount;
-    }
+    // New cards (applying the per-deck limit if configured).
+    const newGoal = deck.profile.hasNewCardsLimitEnabled
+      ? Math.min(
+          newCardCount,
+          Math.max(0, deck.profile.newCardsPerDay - dailyCounts.newCount)
+        )
+      : newCardCount;
 
-    // Add new cards (applying daily limits if configured)
-    if (deck.profile.hasNewCardsLimitEnabled) {
-      const remainingNewQuota = Math.max(
-        0,
-        deck.profile.newCardsPerDay - dailyCounts.newCount
-      );
-      goalTotal += Math.min(newCardCount, remainingNewQuota);
-    } else {
-      // unlimited
-      goalTotal += newCardCount;
-    }
+    // Clamp the combined total by the global daily cap (new + review).
+    const goalTotal = Math.min(reviewGoal + newGoal, globalDailyRemaining);
 
     // Ensure at least 1 for progress calculation
     const finalGoalTotal = Math.max(1, goalTotal);
@@ -177,6 +200,7 @@ export class Scheduler {
    * End a review session
    */
   async endReviewSession(sessionId: string): Promise<void> {
+    this.deckCache.clear();
     await this.db.endReviewSession(sessionId);
 
     // Save db
@@ -211,7 +235,7 @@ export class Scheduler {
       now,
       sessionDurationMinutes
     );
-    this.currentSessionId = newSession.sessionId;
+    this.setCurrentSession(newSession.sessionId);
 
     return newSession;
   }
@@ -220,6 +244,7 @@ export class Scheduler {
    * Set the current active session for tracking
    */
   setCurrentSession(sessionId: string | null): void {
+    this.deckCache.clear(); // session boundary — re-read config next session
     this.currentSessionId = sessionId;
   }
 
@@ -238,18 +263,36 @@ export class Scheduler {
     deckId: string,
     options: { allowNew?: boolean } = {}
   ): Promise<Flashcard | null> {
+    const getNextPerfStart = performance.now();
     this.debugLog(
       `Getting next card for deck: ${deckId}, allowNew: ${options.allowNew}`
     );
 
     const { allowNew = true } = options;
 
-    // First check for due cards with quota
-    if (await this.hasReviewCardQuota(deckId)) {
+    // Load deck + daily counts once, then reuse for quota checks and selection.
+    const deck = await this.getCachedDeck(deckId);
+    if (!deck) return null;
+    const needsCounts =
+      deck.profile.hasReviewCardsLimitEnabled ||
+      deck.profile.hasNewCardsLimitEnabled;
+    const dailyCounts = needsCounts
+      ? await this.db.getDailyReviewCounts(
+          deckId,
+          this.settings.review.nextDayStartsAt
+        )
+      : null;
+
+    // Global daily cap (new + review combined) — computed once, gates both.
+    const globalRemaining = await this.globalDailyRemaining();
+
+    // First check for due cards with quota (per-deck AND the global daily cap)
+    if (this.hasReviewCardQuota(deck, dailyCounts) && globalRemaining > 0) {
       this.debugLog(`Checking for due cards for deck: ${deckId}`);
-      const dueCard = await this.getNextDueCard(now, deckId);
+      const dueCard = await this.getNextDueCard(now, deckId, deck);
       if (dueCard) {
         this.debugLog(`Found due card: ${dueCard.id}`);
+        this.perfLog("Scheduler.getNext", getNextPerfStart);
         return dueCard;
       }
       this.debugLog(`No due cards found for deck: ${deckId}`);
@@ -257,9 +300,8 @@ export class Scheduler {
       this.debugLog(`Review card quota exhausted for deck: ${deckId}`);
     }
 
-    // If no due cards and new cards allowed, get next new card
-    // Then check for new cards with quota
-    if (allowNew && (await this.hasNewCardQuota(deckId))) {
+    // If no due cards and new cards allowed, get next new card (also under cap)
+    if (allowNew && this.hasNewCardQuota(deck, dailyCounts) && globalRemaining > 0) {
       this.debugLog(`Checking for new cards for deck: ${deckId}`);
       const newCard = await this.getNextNewCard(deckId);
       if (newCard) {
@@ -267,6 +309,7 @@ export class Scheduler {
       } else {
         this.debugLog(`No new cards found for deck: ${deckId}`);
       }
+      this.perfLog("Scheduler.getNext", getNextPerfStart);
       return newCard;
     } else if (!allowNew) {
       this.debugLog(`New cards not allowed for this request`);
@@ -275,17 +318,21 @@ export class Scheduler {
     }
 
     this.debugLog(`No cards available for deck: ${deckId}`);
+    this.perfLog("Scheduler.getNext", getNextPerfStart);
     return null;
   }
 
   /**
    * Preview scheduling outcomes for all four ratings without mutations
    */
-  async preview(cardId: string): Promise<SchedulingPreview | null> {
-    const card = await this.db.getFlashcardById(cardId);
+  async preview(cardOrId: string | Flashcard): Promise<SchedulingPreview | null> {
+    const card =
+      typeof cardOrId === "string"
+        ? await this.db.getFlashcardById(cardOrId)
+        : cardOrId;
     if (!card) return null;
 
-    const deck = await this.db.getDeckWithProfile(card.deckId);
+    const deck = await this.getCachedDeck(card.deckId);
     if (!deck) return null;
 
     await this.updateFSRSForDeck(deck);
@@ -314,20 +361,25 @@ export class Scheduler {
    * Rate a card and update its state atomically with session tracking
    */
   async rate(
-    cardId: string,
+    cardOrId: string | Flashcard,
     rating: RatingLabel,
     timeElapsed?: number,
     shownAt?: Date
   ): Promise<Flashcard> {
+    const ratePerfStart = performance.now();
     const now = new Date();
+    const cardId = typeof cardOrId === "string" ? cardOrId : cardOrId.id;
     this.debugLog(`Rating card ${cardId} with rating: ${rating}`);
-    const card = await this.db.getFlashcardById(cardId);
+    const card =
+      typeof cardOrId === "string"
+        ? await this.db.getFlashcardById(cardOrId)
+        : cardOrId;
     if (!card) {
       this.debugLog(`Error: Card not found: ${cardId}`);
       throw new Error(`Card not found: ${cardId}`);
     }
 
-    const deck = await this.db.getDeckWithProfile(card.deckId);
+    const deck = await this.getCachedDeck(card.deckId);
     if (!deck) {
       this.debugLog(`Error: Deck not found: ${card.deckId}`);
       throw new Error(`Deck not found: ${card.deckId}`);
@@ -508,6 +560,7 @@ export class Scheduler {
       this.syncLog.append(op);
     }
 
+    this.perfLog("Scheduler.rate", ratePerfStart);
     return updatedCard;
   }
 
@@ -651,11 +704,23 @@ export class Scheduler {
 
   // Private helper methods
 
+  // Deck+profile, reusing the per-session cache (only while a session is active).
+  private async getCachedDeck(deckId: string): Promise<DeckWithProfile | null> {
+    if (this.currentSessionId) {
+      const cached = this.deckCache.get(deckId);
+      if (cached) return cached;
+    }
+    const deck = await this.db.getDeckWithProfile(deckId);
+    if (deck && this.currentSessionId) this.deckCache.set(deckId, deck);
+    return deck;
+  }
+
   private async getNextDueCard(
     now: Date,
-    deckId: string
+    deckId: string,
+    preloadedDeck?: DeckWithProfile
   ): Promise<Flashcard | null> {
-    const deck = await this.db.getDeckWithProfile(deckId);
+    const deck = preloadedDeck ?? (await this.getCachedDeck(deckId));
     if (!deck) return null;
 
     let query = `
@@ -695,24 +760,32 @@ export class Scheduler {
     return flashcards.length > 0 ? flashcards[0] : null;
   }
 
-  private async hasNewCardQuota(deckId: string): Promise<boolean> {
-    const deck = await this.db.getDeckWithProfile(deckId);
-    if (!deck) return false;
-
+  // Pure given the deck + day's counts; dailyCounts is null when no limit is set.
+  private hasNewCardQuota(
+    deck: DeckWithProfile,
+    dailyCounts: { newCount: number; reviewCount: number } | null
+  ): boolean {
     if (!deck.profile.hasNewCardsLimitEnabled) return true; // unlimited
-
-    const dailyCounts = await this.db.getDailyReviewCounts(deckId, this.settings.review.nextDayStartsAt);
-    return dailyCounts.newCount < deck.profile.newCardsPerDay;
+    return (dailyCounts?.newCount ?? 0) < deck.profile.newCardsPerDay;
   }
 
-  private async hasReviewCardQuota(deckId: string): Promise<boolean> {
-    const deck = await this.db.getDeckWithProfile(deckId);
-    if (!deck) return false;
-
+  private hasReviewCardQuota(
+    deck: DeckWithProfile,
+    dailyCounts: { newCount: number; reviewCount: number } | null
+  ): boolean {
     if (!deck.profile.hasReviewCardsLimitEnabled) return true; // unlimited
+    return (dailyCounts?.reviewCount ?? 0) < deck.profile.reviewCardsPerDay;
+  }
 
-    const dailyCounts = await this.db.getDailyReviewCounts(deckId, this.settings.review.nextDayStartsAt);
-    return dailyCounts.reviewCount < deck.profile.reviewCardsPerDay;
+  /**
+   * Cards (new + review) still allowed today under the global daily cap across
+   * ALL decks combined. `Infinity` when the cap is disabled or set to 0.
+   */
+  private async globalDailyRemaining(): Promise<number> {
+    const r = this.settings.review;
+    if (!r.hasGlobalReviewCap || !(r.globalReviewCapAmount > 0)) return Infinity;
+    const done = await this.db.countCardsStudiedTodayAllDecks(r.nextDayStartsAt);
+    return Math.max(0, r.globalReviewCapAmount - done);
   }
 
   /**
@@ -844,13 +917,18 @@ export class Scheduler {
       tags,
       suspendedAt: (row[25] as string) ?? null,
       buriedUntil: (row[26] as string) ?? null,
+      templateRow: row[27] ? JSON.parse(row[27] as string) : null,
+      anchor: (row[28] as string) ?? null,
     };
   }
 
   async getClozeSiblings(card: Flashcard, now: Date): Promise<Flashcard[]> {
+    // Siblings share the same note: same front AND back (all of a note's clozes
+    // carry identical front/back, only cloze_order/text differ). Matching on
+    // front alone would merge unrelated notes that happen to share a header.
     const query = `
       SELECT * FROM flashcards
-      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion')
+      WHERE deck_id = ? AND front = ? AND back = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
         AND id != ?
         AND ((state IN ('review', 'relearning') AND due_date <= ?) OR state = 'new')
         AND suspended_at IS NULL
@@ -860,6 +938,7 @@ export class Scheduler {
     const rows = await this.db.querySql<unknown[]>(query, [
       card.deckId,
       card.front,
+      card.back,
       card.id,
       now.toISOString(),
       now.toISOString(),
@@ -870,11 +949,12 @@ export class Scheduler {
   async getClozeGroupSize(card: Flashcard): Promise<number> {
     const query = `
       SELECT COUNT(*) FROM flashcards
-      WHERE deck_id = ? AND front = ? AND type IN ('cloze', 'image-occlusion')
+      WHERE deck_id = ? AND front = ? AND back = ? AND type IN ('cloze', 'image-occlusion', 'image-occlusion-v2')
     `;
     const rows = await this.db.querySql<unknown[]>(query, [
       card.deckId,
       card.front,
+      card.back,
     ]);
     if (rows.length === 0) return 1;
     const count = Number((rows[0] as unknown[])[0]);
@@ -967,7 +1047,8 @@ export class Scheduler {
   ): Promise<NewSession> {
     this.debugLog(`Starting review session for deck group: ${deckGroup.name}`);
 
-    let goalTotal = 0;
+    let reviewGoal = 0;
+    let newGoal = 0;
 
     for (const deckId of deckGroup.deckIds) {
       const deckWithProfile = await this.db.getDeckWithProfile(deckId);
@@ -983,9 +1064,9 @@ export class Scheduler {
           0,
           profile.reviewCardsPerDay - dailyCounts.reviewCount
         );
-        goalTotal += Math.min(dueCardCount, remainingReviewQuota);
+        reviewGoal += Math.min(dueCardCount, remainingReviewQuota);
       } else {
-        goalTotal += dueCardCount;
+        reviewGoal += dueCardCount;
       }
 
       if (profile.hasNewCardsLimitEnabled) {
@@ -993,13 +1074,17 @@ export class Scheduler {
           0,
           profile.newCardsPerDay - dailyCounts.newCount
         );
-        goalTotal += Math.min(newCardCount, remainingNewQuota);
+        newGoal += Math.min(newCardCount, remainingNewQuota);
       } else {
-        goalTotal += newCardCount;
+        newGoal += newCardCount;
       }
     }
 
-    const finalGoalTotal = Math.max(1, goalTotal);
+    // Clamp the combined total (new + review) by the global daily cap.
+    const finalGoalTotal = Math.max(
+      1,
+      Math.min(reviewGoal + newGoal, await this.globalDailyRemaining())
+    );
 
     const sessionId = await this.db.createReviewSession({
       deckId: deckGroup.deckIds[0],
@@ -1025,12 +1110,22 @@ export class Scheduler {
   ): Promise<Flashcard | null> {
     const { allowNew = true } = options;
 
-    if (await this.hasReviewCardQuotaForDeckGroup(deckGroup)) {
+    // Global daily cap (new + review combined) — gates both branches.
+    const globalRemaining = await this.globalDailyRemaining();
+
+    if (
+      (await this.hasReviewCardQuotaForDeckGroup(deckGroup)) &&
+      globalRemaining > 0
+    ) {
       const dueCard = await this.getNextDueCardForDeckGroup(now, deckGroup);
       if (dueCard) return dueCard;
     }
 
-    if (allowNew && (await this.hasNewCardQuotaForDeckGroup(deckGroup))) {
+    if (
+      allowNew &&
+      globalRemaining > 0 &&
+      (await this.hasNewCardQuotaForDeckGroup(deckGroup))
+    ) {
       return await this.getNextNewCardForDeckGroup(deckGroup);
     }
 
@@ -1210,6 +1305,244 @@ export class Scheduler {
     return this.getStudyDayStartAfterDays(now, intervalDays, nextDayStartsAt);
   }
 
+  // CRAM (DRILL) METHODS
+  // Cram drills every card "from scratch" until it graduates to a >= 1 day
+  // interval. It reuses the pure FSRS path but persists a private per-card
+  // state in cram_cards — it never writes review_logs, never mutates flashcards,
+  // and never emits sync ops (cross-device convergence is merge-before-save).
+
+  private cramDeckKeyAndKind(deckOrGroup: DeckOrGroup): {
+    deckKey: string;
+    deckKind: "file" | "group" | "custom";
+  } {
+    if (isDeckGroup(deckOrGroup)) {
+      return { deckKey: deckOrGroup.tag, deckKind: "group" };
+    }
+    if (isCustomDeck(deckOrGroup)) {
+      return { deckKey: deckOrGroup.id, deckKind: "custom" };
+    }
+    return { deckKey: deckOrGroup.id, deckKind: "file" };
+  }
+
+  private cramCardId(sessionId: string, flashcardId: string): string {
+    return `${sessionId}:${flashcardId}`;
+  }
+
+  private isSameStudyDay(startedAtIso: string, now: Date): boolean {
+    const nextDayStartsAt = this.settings.review.nextDayStartsAt;
+    return (
+      this.getStudyDayStart(new Date(startedAtIso), nextDayStartsAt) ===
+      this.getStudyDayStart(now, nextDayStartsAt)
+    );
+  }
+
+  /**
+   * Whether a cram session for this deck can be resumed right now: an unfinished
+   * session from the same study day that still has cards to graduate. Drives the
+   * "Resume cram" vs "Cram" menu label; matches startCramSession's resume gate.
+   */
+  async hasResumableCram(
+    deckOrGroup: DeckOrGroup,
+    now: Date = new Date()
+  ): Promise<boolean> {
+    const { deckKey } = this.cramDeckKeyAndKind(deckOrGroup);
+    const existing = await this.db.getActiveCramSessionForDeck(deckKey);
+    if (!existing) return false;
+    if (!this.isSameStudyDay(existing.startedAt, now)) return false;
+    return (await this.db.countRemainingCramCards(existing.id)) > 0;
+  }
+
+  /**
+   * Start (or resume) a cram session over the given cards. If an unfinished
+   * session with cards still to graduate already exists for this deck, it is
+   * resumed; otherwise a fresh session is seeded with every card reset to a
+   * "new" learning state.
+   */
+  async startCramSession(
+    deckOrGroup: DeckOrGroup,
+    cards: Flashcard[],
+    now: Date = new Date()
+  ): Promise<NewSession> {
+    const { deckKey, deckKind } = this.cramDeckKeyAndKind(deckOrGroup);
+
+    const existing = await this.db.getActiveCramSessionForDeck(deckKey);
+    if (existing) {
+      const remaining = await this.db.countRemainingCramCards(existing.id);
+      if (remaining > 0 && this.isSameStudyDay(existing.startedAt, now)) {
+        this.debugLog(`Resuming cram session ${existing.id} (${remaining} left)`);
+        return { sessionId: existing.id, deckFilePath: "" };
+      }
+      // Stale (previous study day) or fully graduated — retire before starting fresh.
+      await this.db.endCramSession(existing.id);
+    }
+
+    const sessionId = await this.db.createCramSession({
+      deckKey,
+      deckKind,
+      startedAt: now.toISOString(),
+      endedAt: null,
+      goalTotal: cards.length,
+      graduatedCount: 0,
+    });
+
+    const nowIso = now.toISOString();
+    await this.db.batchCreateCramCards(
+      cards.map((card) => ({
+        id: this.cramCardId(sessionId, card.id),
+        sessionId,
+        flashcardId: card.id,
+        tempState: "new",
+        tempStability: 0,
+        tempDifficulty: 5.0,
+        tempInterval: 0,
+        tempDueAt: nowIso,
+        reps: 0,
+        graduatedAt: null,
+      }))
+    );
+
+    this.debugLog(`Cram session created: ${sessionId}, goal: ${cards.length}`);
+    return { sessionId, deckFilePath: "" };
+  }
+
+  /**
+   * Get the next card to drill in a cram session (earliest non-graduated by
+   * in-session due time), or null when every card has graduated. Cram entries
+   * whose real flashcard was deleted are graduated out and skipped.
+   */
+  async getNextCramCard(sessionId: string): Promise<Flashcard | null> {
+    for (;;) {
+      const cramCard = await this.db.getNextDueCramCard(sessionId);
+      if (!cramCard) return null;
+
+      const flashcard = await this.db.getFlashcardById(cramCard.flashcardId);
+      if (flashcard) return flashcard;
+
+      // Underlying card is gone — retire this entry and try the next.
+      const session = await this.db.getCramSessionById(sessionId);
+      await this.db.graduateCramCard(
+        cramCard.id,
+        new Date().toISOString(),
+        cramCard.reps
+      );
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          session.graduatedCount + 1
+        );
+      }
+    }
+  }
+
+  /**
+   * Apply a cram rating ('again' | 'good') to a card. Advances the card's
+   * private cram state via pure FSRS; graduates it (out of the queue) once the
+   * computed interval reaches >= 1 day. Never touches the real card or logs.
+   */
+  async rateCram(
+    sessionId: string,
+    flashcardId: string,
+    rating: CramRating,
+    now: Date = new Date()
+  ): Promise<CramRateResult> {
+    const id = this.cramCardId(sessionId, flashcardId);
+    const cramCard = await this.db.getCramCardById(id);
+    if (!cramCard) {
+      throw new Error(`Cram card not found: ${id}`);
+    }
+
+    const realCard = await this.db.getFlashcardById(flashcardId);
+    const session = await this.db.getCramSessionById(sessionId);
+    const newReps = cramCard.reps + 1;
+
+    // Card deleted mid-session: graduate it out and report done.
+    if (!realCard) {
+      await this.db.graduateCramCard(id, now.toISOString(), newReps);
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          session.graduatedCount + 1
+        );
+      }
+      return { graduated: true, interval: CRAM_GRADUATION_MINUTES };
+    }
+
+    const deck = await this.getCachedDeck(realCard.deckId);
+    if (!deck) {
+      throw new Error(`Deck not found for cram card: ${realCard.deckId}`);
+    }
+    await this.updateFSRSForDeck(deck);
+
+    // Drill from a synthetic card carrying only the cram-local scheduling state.
+    // lastReviewed is pinned a day back so each cram rating is evaluated on
+    // FSRS's long-term (spaced) path rather than the same-study-day short-term
+    // path — otherwise rapid re-reviews within one session would grow stability
+    // in tiny increments and a card could take dozens of Goods to reach 1 day.
+    const spacedLastReviewed = new Date(
+      now.getTime() - 24 * 60 * 60 * 1000
+    ).toISOString();
+    const synthetic: Flashcard = {
+      ...realCard,
+      state: cramCard.tempState,
+      stability: cramCard.tempStability,
+      difficulty: cramCard.tempDifficulty,
+      interval: cramCard.tempInterval,
+      dueDate: cramCard.tempDueAt,
+      repetitions: cramCard.reps,
+      lapses: 0,
+      lastReviewed: spacedLastReviewed,
+    };
+
+    const next = this.applyStepOverride(
+      synthetic,
+      rating,
+      deck,
+      this.fsrs.updateCard(synthetic, rating, now),
+      now
+    );
+
+    if (next.interval >= CRAM_GRADUATION_MINUTES) {
+      await this.db.graduateCramCard(id, now.toISOString(), newReps);
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          session.graduatedCount + 1
+        );
+      }
+      return { graduated: true, interval: next.interval };
+    }
+
+    await this.db.updateCramCard(id, {
+      tempState: next.state,
+      tempStability: next.stability,
+      tempDifficulty: next.difficulty,
+      tempInterval: next.interval,
+      tempDueAt: this.calculateDueDateForInterval(next.interval, now),
+      reps: newReps,
+    });
+    return { graduated: false, interval: next.interval };
+  }
+
+  async getCramProgress(sessionId: string): Promise<CramProgress | null> {
+    const session = await this.db.getCramSessionById(sessionId);
+    if (!session) return null;
+
+    const progress =
+      session.goalTotal > 0
+        ? Math.min(100, (session.graduatedCount / session.goalTotal) * 100)
+        : 0;
+
+    return {
+      graduated: session.graduatedCount,
+      goalTotal: session.goalTotal,
+      progress,
+    };
+  }
+
+  async endCramSession(sessionId: string): Promise<void> {
+    await this.db.endCramSession(sessionId);
+  }
+
   // CUSTOM DECK REVIEW METHODS
 
   async startReviewSessionForCustomDeck(
@@ -1220,7 +1553,12 @@ export class Scheduler {
 
     const dueCount = await this.db.countDueCardsCustomDeck(customDeck.id);
     const newCount = await this.db.countNewCardsCustomDeck(customDeck.id);
-    const goalTotal = Math.max(1, dueCount + newCount);
+    // Custom decks have no per-deck limits; only the global daily cap applies to
+    // the combined new + review total.
+    const goalTotal = Math.max(
+      1,
+      Math.min(dueCount + newCount, await this.globalDailyRemaining())
+    );
 
     const sessionId = await this.db.createReviewSession({
       deckId: customDeck.id,
@@ -1230,7 +1568,7 @@ export class Scheduler {
       doneUnique: 0,
     });
 
-    this.currentSessionId = sessionId;
+    this.setCurrentSession(sessionId);
     this.debugLog(
       `Review session created for custom deck: ${sessionId}, goal: ${goalTotal}`
     );
@@ -1247,12 +1585,17 @@ export class Scheduler {
   ): Promise<Flashcard | null> {
     const { allowNew = true } = options;
 
-    const dueCards = await this.db.getDueCardsForCustomDeck(customDeck.id);
-    if (dueCards.length > 0) {
-      return dueCards[0];
+    // Global daily cap (new + review combined) — gates both branches.
+    const globalRemaining = await this.globalDailyRemaining();
+
+    if (globalRemaining > 0) {
+      const dueCards = await this.db.getDueCardsForCustomDeck(customDeck.id);
+      if (dueCards.length > 0) {
+        return dueCards[0];
+      }
     }
 
-    if (allowNew) {
+    if (allowNew && globalRemaining > 0) {
       const newCards = await this.db.getNewCardsForCustomDeck(customDeck.id);
       if (newCards.length > 0) {
         return newCards[0];

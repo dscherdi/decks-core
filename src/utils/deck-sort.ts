@@ -1,4 +1,5 @@
 import type { DeckListSortMode } from "../settings";
+import { naturalCompare } from "./string";
 
 interface SortableStats {
   newCount: number;
@@ -10,8 +11,9 @@ interface SortableStats {
  * Sort a list of decks / deck groups / custom decks. Pinned items always
  * come first; both partitions are sorted independently by the chosen mode.
  *
- * Numeric modes (`new-*`, `due-*`) break ties by ASCII-case-insensitive name
- * so the order is deterministic across renders. Missing stats default to 0 —
+ * Numeric modes (`new-*`, `due-*`) break ties by natural (number- and
+ * locale-aware, case-insensitive) name order so it's deterministic across
+ * renders. Missing stats default to 0 —
  * e.g. a deck group whose member stats haven't resolved yet still sorts
  * sensibly (and not via NaN comparison).
  *
@@ -47,7 +49,7 @@ export function sortDeckList<T extends { name: string }>(
 }
 
 function compareNames(a: { name: string }, b: { name: string }): number {
-  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  return naturalCompare(a.name, b.name);
 }
 
 function makeComparator<T extends { name: string }>(

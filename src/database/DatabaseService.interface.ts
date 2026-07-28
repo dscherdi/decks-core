@@ -6,9 +6,15 @@ import type {
   Flashcard,
   ReviewLog,
   ReviewSession,
+  CramSession,
+  CramCard,
+  ExamSession,
+  ExamAnswer,
+  TypedGradingMode,
   CustomDeck,
   CustomDeckType,
   FsrsWeightSet,
+  DeckTemplate,
 } from "./types";
 import type { SqlJsValue, SqlRecord, SqlRow } from "./sql-types";
 import type { SyncData, SyncResult } from "../services/FlashcardSynchronizer";
@@ -34,13 +40,18 @@ export interface ILogger {
 
 /** Minimal backup service interface — satisfied by the plugin's BackupService class. */
 export interface IBackupService {
-  createBackup(db: IDatabaseService): Promise<void>;
+  // Return value is ignored by the scheduler; widened so concrete services
+  // that return a backup path (Promise<string>) satisfy the interface.
+  createBackup(db: IDatabaseService): Promise<unknown>;
 }
 
 export interface IDatabaseService {
   migrationNotice: string | null;
 
   initialize(): Promise<void>;
+  // Resolves when the DB is ready for operations (worker/SQL.js up). Ops queue
+  // behind it, so callers only need this to sequence post-init work in onload.
+  whenReady(): Promise<void>;
   close(): Promise<void>;
   save(): Promise<void>;
 
@@ -51,6 +62,18 @@ export interface IDatabaseService {
   getDeckLastSyncedMtime(deckId: string): Promise<number>;
   setDeckLastSyncedMtime(deckId: string, mtime: number): Promise<void>;
   clearLastSyncedMtimeForProfile(profileId: string): Promise<void>;
+  getAllDeckSyncMeta(): Promise<
+    { id: string; filepath: string; lastSyncedMtime: number }[]
+  >;
+
+  // Anchor bindings (durable anchor-key -> card-id records, append-only)
+  getAnchorBinding(anchor: string): Promise<string | null>;
+  insertAnchorBindings(
+    rows: { anchor: string; flashcardId: string }[]
+  ): Promise<void>;
+  setFlashcardAnchor(flashcardId: string, anchor: string): Promise<void>;
+  countNodeCards(deckId: string, sourceNodeId: string): Promise<number>;
+  getReviewedUnanchoredCards(): Promise<Flashcard[]>;
 
   createDeck(
     deck: Omit<Deck, "created" | "modified" | "profileId"> & { id?: string; profileId?: string }
@@ -62,6 +85,18 @@ export interface IDatabaseService {
   updateDeck(id: string, updates: Partial<Deck>): Promise<void>;
   updateDeckTimestamp(deckId: string): Promise<void>;
   updateDeckLastReviewed(deckId: string, timestamp: string): Promise<void>;
+  setDeckFileTags(deckId: string, fileTags: string[]): Promise<void>;
+  // Deck template cache (synced from the template folder).
+  getAllDeckTemplates(): Promise<DeckTemplate[]>;
+  upsertDeckTemplate(
+    template: Omit<DeckTemplate, "created" | "modified">
+  ): Promise<void>;
+  deleteDeckTemplateByFile(sourceFile: string): Promise<void>;
+  renameDeckTemplate(
+    oldSourceFile: string,
+    newSourceFile: string,
+    newId: string
+  ): Promise<void>;
   renameDeck(
     oldDeckId: string,
     newDeckId: string,
@@ -129,6 +164,12 @@ export interface IDatabaseService {
     updates: Array<{ id: string; updates: Partial<Flashcard> }>
   ): Promise<void>;
   batchDeleteFlashcards(flashcardIds: string[]): Promise<void>;
+  // Delete cards whose deck_id has no matching deck row (dangling orphans). Run on
+  // a full sync after adoption; returns the number removed.
+  pruneOrphanedFlashcards(): Promise<number>;
+  // Distinct fronts of cards in live decks outside the given path prefix (used to
+  // reserve already-taken fronts during an import; orphans excluded on purpose).
+  getFrontsOutsidePath(pathPrefix: string): Promise<string[]>;
 
   createReviewLog(log: Omit<ReviewLog, "id">): Promise<void>;
   insertReviewLog(reviewLog: ReviewLog): Promise<void>;
@@ -159,6 +200,49 @@ export interface IDatabaseService {
   reviewSessionExists(sessionId: string): Promise<boolean>;
   isCardReviewedInSession(sessionId: string, flashcardId: string): Promise<boolean>;
   countCardReviewsInSession(sessionId: string, flashcardId: string): Promise<number>;
+
+  // Cram (drill) — isolated from real scheduling and review history.
+  createCramSession(
+    session: Omit<CramSession, "id" | "created" | "modified">
+  ): Promise<string>;
+  getCramSessionById(id: string): Promise<CramSession | null>;
+  getActiveCramSessionForDeck(deckKey: string): Promise<CramSession | null>;
+  updateCramSessionProgress(id: string, graduatedCount: number): Promise<void>;
+  endCramSession(id: string): Promise<void>;
+  batchCreateCramCards(
+    cards: Array<Omit<CramCard, "created" | "modified">>
+  ): Promise<void>;
+  getCramCardById(id: string): Promise<CramCard | null>;
+  getNextDueCramCard(sessionId: string): Promise<CramCard | null>;
+  countRemainingCramCards(sessionId: string): Promise<number>;
+  updateCramCard(
+    id: string,
+    updates: {
+      tempState: CramCard["tempState"];
+      tempStability: number;
+      tempDifficulty: number;
+      tempInterval: number;
+      tempDueAt: string;
+      reps: number;
+    }
+  ): Promise<void>;
+  graduateCramCard(id: string, graduatedAt: string, reps: number): Promise<void>;
+
+  // Exam attempts — append-only results store, isolated from review history.
+  // completeExamSession writes answers first and the session row last: the
+  // session row is the commit marker, so partial writes stay invisible and
+  // re-runs are idempotent (INSERT OR IGNORE + deterministic answer ids).
+  getExamEnabledDeckIds(): Promise<string[]>;
+  getDeckExamContexts(): Promise<
+    Array<{ deckId: string; examEnabled: boolean; typedGrading: TypedGradingMode }>
+  >;
+  countReviewedCardsBecomingQuestions(profileId: string): Promise<number>;
+  completeExamSession(
+    session: Omit<ExamSession, "created">,
+    answers: Array<Omit<ExamAnswer, "id" | "sessionId" | "created">>
+  ): Promise<void>;
+  getExamSessionsForDeckKey(deckKey: string, limit?: number): Promise<ExamSession[]>;
+  getExamAnswersForSession(sessionId: string): Promise<ExamAnswer[]>;
 
   createCustomDeck(
     name: string,
@@ -197,6 +281,15 @@ export interface IDatabaseService {
   countNewCards(deckId: string): Promise<number>;
   countDueCards(deckId: string): Promise<number>;
   countTotalCards(deckId: string): Promise<number>;
+  countAllCards(): Promise<number>;
+  countMatureCards(deckId: string): Promise<number>;
+  // Batched per-deck stats for ALL decks in one grouped query each (fast deck-list refresh).
+  getDeckCardStatsBatch(): Promise<
+    { deckId: string; total: number; newCount: number; dueCount: number; matureCount: number }[]
+  >;
+  getDailyReviewCountsBatch(
+    nextDayStartsAt?: number
+  ): Promise<{ deckId: string; newCount: number; reviewCount: number }[]>;
 
   getScheduledDueByDay(
     deckId: string,
@@ -213,6 +306,8 @@ export interface IDatabaseService {
   getDeckReviewCountRange(deckId: string, startDate: string, endDate: string): Promise<number>;
   countNewCardsToday(deckId: string, nextDayStartsAt?: number): Promise<number>;
   countReviewCardsToday(deckId: string, nextDayStartsAt?: number): Promise<number>;
+  // Distinct cards (new + review) studied today across ALL decks (global daily cap).
+  countCardsStudiedTodayAllDecks(nextDayStartsAt?: number): Promise<number>;
 
   purgeDatabase(): Promise<void>;
   resetDeckProgress(deckId: string): Promise<void>;

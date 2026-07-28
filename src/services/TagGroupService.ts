@@ -4,6 +4,7 @@ import type {
   DeckProfile,
 } from "../database/types";
 import type { IDatabaseService } from "../database/DatabaseService.interface";
+import { naturalCompare } from "../utils/string";
 
 export class TagGroupService {
   constructor(private db: IDatabaseService) {}
@@ -45,7 +46,7 @@ export class TagGroupService {
       });
     }
 
-    return deckGroups.sort((a, b) => a.tag.localeCompare(b.tag));
+    return deckGroups.sort((a, b) => naturalCompare(a.tag, b.tag));
   }
 
   private deduplicateDecks(decks: DeckWithProfile[]): DeckWithProfile[] {

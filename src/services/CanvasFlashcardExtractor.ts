@@ -1,5 +1,6 @@
 import { FlashcardParser, type ParsedFlashcard } from "./FlashcardParser";
 import { CanvasParser, type CanvasTextEdge, type CanvasTextNode } from "./CanvasParser";
+import { edgeBindingKey, nodeBindingKey, stripAnchorTokens } from "../utils/anchors";
 
 /**
  * CanvasFlashcardExtractor - Turns a .canvas file into ParsedFlashcards.
@@ -23,7 +24,7 @@ export class CanvasFlashcardExtractor {
 
   static extract(
     rawJson: string,
-    headerLevel = 2,
+    headerLevel: number | number[] = 2,
     fileTitle?: string,
     clozeEnabled = false,
   ): ParsedFlashcard[] {
@@ -55,6 +56,15 @@ export class CanvasFlashcardExtractor {
         fileTitle,
         clozeEnabled,
       );
+      // A node yielding exactly one non-cloze card is identified by its native
+      // node id (unless the node text already carries an anchor token).
+      if (
+        standaloneCards.length === 1 &&
+        standaloneCards[0].type !== "cloze" &&
+        !standaloneCards[0].anchorKey
+      ) {
+        standaloneCards[0].anchorKey = nodeBindingKey(node.id);
+      }
       for (const card of standaloneCards) {
         card.sourceNodeId = node.id;
         out.push(card);
@@ -75,8 +85,8 @@ export class CanvasFlashcardExtractor {
     nodeText: Map<string, string>,
     clozeEnabled: boolean,
   ): ParsedFlashcard[] {
-    const fromText = nodeText.get(edge.fromNode) ?? "";
-    const toText = nodeText.get(edge.toNode) ?? "";
+    const fromText = stripAnchorTokens(nodeText.get(edge.fromNode) ?? "");
+    const toText = stripAnchorTokens(nodeText.get(edge.toNode) ?? "");
 
     const { cleaned: front, tags } = FlashcardParser.extractAndStripTags(fromText);
     const back = toText;
@@ -103,6 +113,7 @@ export class CanvasFlashcardExtractor {
         sourceNodeId: edge.fromNode,
         edgeId: edge.id,
         hint,
+        anchorKey: edgeBindingKey(edge.id, cm.order),
       }));
     }
 
@@ -117,6 +128,7 @@ export class CanvasFlashcardExtractor {
         sourceNodeId: edge.fromNode,
         edgeId: edge.id,
         hint,
+        anchorKey: edgeBindingKey(edge.id),
       },
     ];
   }
