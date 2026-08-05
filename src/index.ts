@@ -202,6 +202,7 @@ export { AiRefactoringService } from "./services/ai/AiRefactoringService";
 export { createProvider } from "./services/ai/providers";
 export {
   DECKS_PRO_DEFAULT_BASE_URL,
+  DECKS_PRO_SITE_URL,
   PROVIDER_MODELS,
   DECKS_TIER_FAST,
   DECKS_TIER_QUALITY,

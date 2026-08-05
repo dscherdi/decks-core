@@ -10,6 +10,9 @@ export interface AiModelOption {
 export const DECKS_PRO_DEFAULT_BASE_URL =
   "https://decks-backend.dscherdil.workers.dev";
 
+// Public website: sign-in, subscription management, and the client link flow.
+export const DECKS_PRO_SITE_URL = "https://decksmd.app";
+
 /** Decks Pro generation tier sentinels (resolved by the backend). */
 export const DECKS_TIER_FAST = "decks-tier-fast";
 export const DECKS_TIER_QUALITY = "decks-tier-quality";

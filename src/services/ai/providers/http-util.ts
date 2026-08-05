@@ -1,5 +1,23 @@
 import type { HttpClient, HttpRequest, HttpResponse } from "../HttpClient";
 import { AiError } from "../types";
+import { I18n } from "../../../i18n/I18n";
+
+/** Map the backend's quota reason onto a localized, actionable message. */
+function quotaMessage(body: string): string {
+  const s = I18n.t.settings.ai;
+  let code = "";
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object" && "code" in parsed) {
+      code = String(parsed.code);
+    }
+  } catch {
+    // Non-JSON body — fall through to the generic message.
+  }
+  if (code === "daily_quota_exceeded") return s.dailyLimitReached;
+  if (code === "trial_exhausted") return s.trialExhausted;
+  return s.subscriptionNone;
+}
 
 /** Throw if the request has already been aborted. */
 export function checkAborted(signal?: AbortSignal): void {
@@ -28,6 +46,12 @@ export async function sendJson(
   }
   if (res.status === 429) {
     throw new AiError("rate_limited", truncate(res.text), res.status);
+  }
+  // 402 carries a machine-readable reason from the hosted backend. Surfacing
+  // the raw body here would show the user a JSON dump instead of telling them
+  // whether to wait until tomorrow or subscribe.
+  if (res.status === 402) {
+    throw new AiError("quota_exceeded", quotaMessage(res.text), res.status);
   }
   if (res.status < 200 || res.status >= 300) {
     throw new AiError(

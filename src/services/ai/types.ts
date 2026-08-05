@@ -95,6 +95,7 @@ export type AiErrorCode =
   | "provider_error"
   | "invalid_output"
   | "rate_limited"
+  | "quota_exceeded"
   | "aborted";
 
 export class AiError extends Error {
