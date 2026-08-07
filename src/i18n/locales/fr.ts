@@ -6,6 +6,12 @@ export const fr: Translations = {
     docs: "Ouvrir la documentation",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "Générez des cartes à partir de vos notes, PDF et diapositives numérisées sans configurer de clé API. Essai gratuit — tout le reste de Decks demeure gratuit.",
+    cta: "En savoir plus",
+  },
+
   views: {
     decks: "Paquets",
     review: "Réviser",
@@ -1462,6 +1468,11 @@ export const fr: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "Le modèle n'a rien trouvé de plus à ajouter à partir de cette source.",
+      clearCards: "Vider",
+      clearConfirmTitle: "Supprimer les cartes générées ?",
+      clearConfirmMessage:
+        "{count} cartes conservées ne sont pas encore enregistrées et seront supprimées. Les cartes déjà enregistrées restent dans votre coffre.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

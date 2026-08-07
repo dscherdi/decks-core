@@ -3,6 +3,7 @@ import { AiGenerationService } from "../AiGenerationService";
 import { createProvider } from "../providers";
 import {
   buildGenerationMessages,
+  COVERED_MARKER,
   GenerationStreamParser,
   parseGeneratedCards,
   CARD_DELIMITER,
@@ -468,5 +469,29 @@ describe("AiGenerationService", () => {
     expect(result.debug).toBeTruthy();
     expect(result.debug?.provider).toBe("openai");
     expect(result.debug?.raw).toContain("FRONT: Q1");
+  });
+});
+
+describe("the source-covered marker", () => {
+  // It rides on the same channel as the cards, so it must never be mistaken for
+  // one — a card whose front reads "===COVERED===" would be a visible bug.
+  it("is stripped rather than parsed as a card", () => {
+    const text = block("Q1", "A1") + `\n${COVERED_MARKER}\n`;
+    expect(parseGeneratedCards(text)).toEqual([card("Q1", "A1")]);
+  });
+
+  it("is detected mid-stream and does not leak into the card text", () => {
+    const parser = new GenerationStreamParser();
+    parser.push(block("Q1", "A1"));
+    expect(parser.covered).toBe(false);
+    const { completed } = parser.push(`${COVERED_MARKER}\n`);
+    expect(parser.covered).toBe(true);
+    expect(completed.every((c) => !c.front.includes("COVERED"))).toBe(true);
+  });
+
+  it("stays false when the model says nothing", () => {
+    const parser = new GenerationStreamParser();
+    parser.push(block("Q1", "A1"));
+    expect(parser.covered).toBe(false);
   });
 });

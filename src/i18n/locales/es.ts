@@ -6,6 +6,12 @@ export const es: Translations = {
     docs: "Abrir documentación",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "Genera tarjetas a partir de tus notas, PDF y diapositivas escaneadas sin configurar una clave de API. Pruébalo gratis: todo lo demás en Decks sigue siendo gratuito.",
+    cta: "Más información",
+  },
+
   views: {
     decks: "Mazos",
     review: "Repasar",
@@ -1465,6 +1471,11 @@ export const es: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "El modelo no encontró nada más que añadir de esta fuente.",
+      clearCards: "Vaciar",
+      clearConfirmTitle: "¿Descartar las tarjetas generadas?",
+      clearConfirmMessage:
+        "{count} tarjetas marcadas aún no se han guardado y se descartarán. Las tarjetas ya guardadas permanecen en tu bóveda.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

@@ -1,19 +1,22 @@
 import type { RefactorImage } from "./types";
 import {
   CARD_DELIMITER,
+  COVERED_MARKER,
   CONTINUE_TRIGGER,
   DECKS_OVERVIEW,
   DEDUP_RULE,
   GENERATION_FORMAT,
 } from "./prompts";
 
-export { CARD_DELIMITER };
+export { CARD_DELIMITER, COVERED_MARKER };
 
 /** A single AI-generated flashcard (front/back, with optional notes). */
 export interface GeneratedCard {
   front: string;
   back: string;
   notes: string;
+  /** 1-based index of the labelled source section this came from, when known. */
+  section?: number;
 }
 
 export interface GenerateRequest {
@@ -85,24 +88,27 @@ interface SegmentFields {
   front: string;
   back: string;
   notes: string;
+  /** The source section index the model attributed this card to, if any. */
+  section: string;
   /** Whether any FRONT/BACK/NOTES label was seen (used for partial cards). */
   started: boolean;
 }
 
-const LABEL_RE = /^\s*(FRONT|BACK|NOTES)\s*:(.*)$/i;
+const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SECTION)\s*:(.*)$/i;
 
 /** Parse one card block (text between delimiters) into its fields. */
 function parseSegment(segment: string): SegmentFields {
-  const buf: Record<"front" | "back" | "notes", string[]> = {
+  const buf: Record<"front" | "back" | "notes" | "section", string[]> = {
     front: [],
     back: [],
     notes: [],
+    section: [],
   };
-  let current: "front" | "back" | "notes" | null = null;
+  let current: "front" | "back" | "notes" | "section" | null = null;
   for (const line of segment.split("\n")) {
     const m = LABEL_RE.exec(line);
     if (m) {
-      current = m[1].toLowerCase() as "front" | "back" | "notes";
+      current = m[1].toLowerCase() as "front" | "back" | "notes" | "section";
       buf[current].push(m[2]);
     } else if (current) {
       buf[current].push(line);
@@ -112,6 +118,7 @@ function parseSegment(segment: string): SegmentFields {
     front: buf.front.join("\n").trim(),
     back: buf.back.join("\n").trim(),
     notes: buf.notes.join("\n").trim(),
+    section: buf.section.join("\n").trim(),
     started: current !== null,
   };
 }
@@ -119,13 +126,17 @@ function parseSegment(segment: string): SegmentFields {
 /** A completed card needs at least a front; map fields to a GeneratedCard. */
 function toCard(fields: SegmentFields): GeneratedCard | null {
   if (!fields.front) return null;
-  return { front: fields.front, back: fields.back, notes: fields.notes };
+  // An index, not a title: the model echoing a heading invites paraphrase, and
+  // an out-of-range or absent value simply means unattributed.
+  const n = Number.parseInt(fields.section, 10);
+  const section = Number.isInteger(n) && n > 0 ? n : undefined;
+  return { front: fields.front, back: fields.back, notes: fields.notes, section };
 }
 
 /** Parse a full (non-streamed) response into cards — the fallback path. */
 export function parseGeneratedCards(fullText: string): GeneratedCard[] {
   const out: GeneratedCard[] = [];
-  for (const segment of fullText.split(CARD_DELIMITER)) {
+  for (const segment of fullText.split(COVERED_MARKER).join("").split(CARD_DELIMITER)) {
     const card = toCard(parseSegment(segment));
     if (card) out.push(card);
   }
@@ -140,12 +151,19 @@ export function parseGeneratedCards(fullText: string): GeneratedCard[] {
  */
 export class GenerationStreamParser {
   private buffer = "";
+  /** Set once the model signals the source is exhausted. */
+  covered = false;
 
   push(delta: string): {
     completed: GeneratedCard[];
     partial: GeneratedCard | null;
   } {
     this.buffer += delta;
+    // Strip the marker before card parsing so it can never leak into a card.
+    if (this.buffer.includes(COVERED_MARKER)) {
+      this.covered = true;
+      this.buffer = this.buffer.split(COVERED_MARKER).join("");
+    }
     const completed: GeneratedCard[] = [];
     let idx: number;
     while ((idx = this.buffer.indexOf(CARD_DELIMITER)) >= 0) {

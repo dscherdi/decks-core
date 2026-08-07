@@ -6,6 +6,12 @@ export const ja: Translations = {
     docs: "ドキュメントを開く",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "APIキーを設定しなくても、ノートやPDF、スキャンしたスライドからフラッシュカードを生成できます。無料でお試し——Decksのその他の機能は引き続き無料です。",
+    cta: "詳しく見る",
+  },
+
   views: {
     decks: "デッキ",
     review: "復習",
@@ -1423,6 +1429,11 @@ export const ja: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "このソースからこれ以上追加できるものは見つかりませんでした。",
+      clearCards: "クリア",
+      clearConfirmTitle: "生成したカードを破棄しますか？",
+      clearConfirmMessage:
+        "保持中の {count} 枚はまだ保存されておらず、破棄されます。保存済みのカードは Vault に残ります。",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

@@ -109,6 +109,13 @@ export class PdfOcrCache {
     ocrModel: string,
     signal?: AbortSignal,
   ): Promise<string> {
+    // A page that failed to render has nothing to transcribe. Sending it anyway
+    // spends a call and gets back a refusal, which the caller would cache as the
+    // page's text — so fail here instead, where it is still obviously a bug.
+    if (!image.dataBase64) {
+      throw new AiError("provider_error", "OCR called with an empty page image");
+    }
+
     const config = await this.buildConfig();
     config.model = ocrModel;
     const provider = createProvider(config, this.http);

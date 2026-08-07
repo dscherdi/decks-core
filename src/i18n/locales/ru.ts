@@ -6,6 +6,12 @@ export const ru: Translations = {
     docs: "Открыть документацию",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "Создавайте карточки из заметок, PDF и отсканированных слайдов без настройки API-ключа. Попробуйте бесплатно — всё остальное в Decks остаётся бесплатным.",
+    cta: "Подробнее",
+  },
+
   views: {
     decks: "Колоды",
     review: "Повторение",
@@ -1438,6 +1444,11 @@ export const ru: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "Модель не нашла в этом источнике ничего нового.",
+      clearCards: "Очистить",
+      clearConfirmTitle: "Удалить сгенерированные карточки?",
+      clearConfirmMessage:
+        "{count} отмеченных карточек ещё не сохранены и будут удалены. Уже сохранённые карточки останутся в вашем хранилище.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

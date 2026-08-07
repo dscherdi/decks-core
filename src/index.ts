@@ -305,6 +305,8 @@ export {
   extractPageText,
   buildSectionContent,
   pagesForSelection,
+  sectionsForSelection,
+  type SelectedSection,
 } from "./services/pdf/pdf";
 export type {
   ChapterNode,

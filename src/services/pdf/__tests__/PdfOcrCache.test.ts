@@ -3,6 +3,7 @@ import type { HttpClient } from "../../ai/HttpClient";
 import type { RefactorImage } from "../../ai/types";
 import { PdfOcrCache, type FileStore, type PageRenderer } from "../PdfOcrCache";
 import { hashImage, type PdfDoc } from "../pdf";
+import { ocrSentinelForTier, DECKS_TIER_FAST, DECKS_TIER_QUALITY } from "../../ai/models";
 
 /** In-memory FileStore for exercising the cache's file I/O. */
 function fakeFiles(): { files: FileStore; store: Map<string, string> } {
@@ -44,12 +45,18 @@ describe("PdfOcrCache get/set", () => {
     expect(store.get(`cache/pdf/abc/${OCR}/7.md`)).toBe("hello");
   });
 
-  it("caches the two tiers separately", async () => {
+  // Transcription does not vary with the generation tier, so both tiers now
+  // resolve to one sentinel and share one cached page rather than paying twice
+  // for identical text.
+  it("gives both tiers the same page", async () => {
     const { files } = fakeFiles();
     const cache = make("pdf-ocr", files);
-    await cache.set("h", "decks-ocr-fast", 1, "fast text");
-    expect(await cache.get("h", "decks-ocr-quality", 1)).toBeNull();
-    expect(await cache.get("h", "decks-ocr-fast", 1)).toBe("fast text");
+    const forFlash = ocrSentinelForTier(DECKS_TIER_FAST);
+    const forThinking = ocrSentinelForTier(DECKS_TIER_QUALITY);
+
+    expect(forFlash).toBe(forThinking);
+    await cache.set("h", forFlash, 1, "page text");
+    expect(await cache.get("h", forThinking, 1)).toBe("page text");
   });
 });
 

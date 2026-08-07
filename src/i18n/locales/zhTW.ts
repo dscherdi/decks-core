@@ -6,6 +6,12 @@ export const zhTW: Translations = {
     docs: "開啟文件",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "無需設定 API 金鑰，即可從筆記、PDF 與掃描的投影片產生卡片。免費試用——Decks 的其他功能仍然免費。",
+    cta: "了解更多",
+  },
+
   views: {
     decks: "牌組",
     review: "複習",
@@ -1398,6 +1404,11 @@ export const zhTW: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "模型未能從此來源找到更多可新增的內容。",
+      clearCards: "清空",
+      clearConfirmTitle: "捨棄已產生的卡片？",
+      clearConfirmMessage:
+        "已保留的 {count} 張卡片尚未儲存，將被捨棄。已儲存的卡片仍保留在你的保管庫中。",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

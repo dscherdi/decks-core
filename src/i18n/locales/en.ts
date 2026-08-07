@@ -3,6 +3,13 @@ export const en = {
     docs: "Open documentation",
   },
 
+  /** Shown in the release-notes tab and at the top of settings. */
+  pro: {
+    heading: "Decks Pro",
+    body: "Generate flashcards from your notes, PDFs and scanned slides without setting up an API key. Free to try — everything else in Decks stays free.",
+    cta: "Learn more",
+  },
+
   views: {
     decks: "Decks",
     review: "Review",
@@ -1372,6 +1379,11 @@ export const en = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "The model found nothing further to add from this source.",
+      clearCards: "Clear",
+      clearConfirmTitle: "Clear generated cards?",
+      clearConfirmMessage:
+        "{count} cards you kept have not been saved yet and will be discarded. Cards already saved stay in your vault.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

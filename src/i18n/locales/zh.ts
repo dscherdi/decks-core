@@ -6,6 +6,12 @@ export const zh: Translations = {
     docs: "打开文档",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "无需配置 API 密钥，即可从笔记、PDF 和扫描的幻灯片生成卡片。免费试用——Decks 的其他功能仍然免费。",
+    cta: "了解更多",
+  },
+
   views: {
     decks: "牌组",
     review: "复习",
@@ -1378,6 +1384,11 @@ export const zh: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "模型未能从该来源中找到更多可添加的内容。",
+      clearCards: "清空",
+      clearConfirmTitle: "放弃已生成的卡片？",
+      clearConfirmMessage:
+        "已保留的 {count} 张卡片尚未保存，将被放弃。已保存的卡片仍保留在你的仓库中。",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

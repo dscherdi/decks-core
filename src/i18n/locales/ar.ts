@@ -6,6 +6,12 @@ export const ar: Translations = {
     docs: "فتح المستندات",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "أنشئ بطاقات من ملاحظاتك وملفات PDF والشرائح الممسوحة ضوئيًا دون إعداد مفتاح API. جرّبه مجانًا — يبقى كل شيء آخر في Decks مجانيًا.",
+    cta: "اعرف المزيد",
+  },
+
   views: {
     decks: "الرزم",
     review: "مراجعة",
@@ -1413,6 +1419,11 @@ export const ar: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "لم يعثر النموذج على شيء آخر لإضافته من هذا المصدر.",
+      clearCards: "مسح",
+      clearConfirmTitle: "تجاهل البطاقات المولّدة؟",
+      clearConfirmMessage:
+        "{count} من البطاقات المحتفظ بها لم تُحفظ بعد وسيتم تجاهلها. تبقى البطاقات المحفوظة في خزنتك.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

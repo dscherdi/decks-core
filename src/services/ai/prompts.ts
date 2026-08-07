@@ -3,6 +3,16 @@
 /** Delimiter the model emits after each card block. */
 export const CARD_DELIMITER = "===END===";
 
+/**
+ * Emitted once the model judges the source exhausted.
+ *
+ * A binary judgement is far more reliable than a self-estimated percentage, and
+ * it answers the only question the user has: is there any point pressing
+ * Continue? Treated as a hint — it stops the loop early, it does not disable
+ * anything.
+ */
+export const COVERED_MARKER = "===COVERED===";
+
 /** Short explanation of how Decks cards work. */
 export const DECKS_OVERVIEW = [
   "You create spaced-repetition flashcards for Decks, an Obsidian plugin.",
@@ -20,9 +30,11 @@ export const GENERATION_FORMAT = [
   "",
   "Rules for the output:",
   `- End every card with a line containing only ${CARD_DELIMITER}.`,
+  `- When the source holds nothing substantive left to turn into a card, end your reply with a line containing only ${COVERED_MARKER}. Emit it only when the material is genuinely exhausted, not merely because the batch is full.`,
   '- Start each field on its own line with the label "FRONT:", "BACK:", or "NOTES:".',
   "- A field value may span multiple lines and may contain Markdown and $LaTeX$.",
   '- "NOTES:" is optional; include it empty or omit it when there is nothing to add.',
+  '- When the source is split into numbered sections like "# [2] Title", add a "SECTION: 2" line naming the section the card came from. Use the number only, and omit the line if the source has no such headings.',
   "- Output only the card blocks — no JSON, numbering, prose, or code fences.",
   "- Write the FRONT in normal sentence case.",
 ].join("\n");

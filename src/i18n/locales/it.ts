@@ -6,6 +6,12 @@ export const it: Translations = {
     docs: "Apri la documentazione",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "Genera schede dai tuoi appunti, dai PDF e dalle diapositive scansionate senza configurare una chiave API. Provalo gratis: tutto il resto di Decks resta gratuito.",
+    cta: "Scopri di più",
+  },
+
   views: {
     decks: "Mazzi",
     review: "Ripassa",
@@ -1447,6 +1453,11 @@ export const it: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "Il modello non ha trovato altro da aggiungere da questa fonte.",
+      clearCards: "Svuota",
+      clearConfirmTitle: "Eliminare le carte generate?",
+      clearConfirmMessage:
+        "{count} carte tenute non sono ancora state salvate e verranno eliminate. Le carte già salvate restano nel tuo vault.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

@@ -41,15 +41,21 @@ export const PROVIDER_MODELS: Record<AiProviderId, AiModelOption[]> = {
   // Decks Pro exposes generation *tiers*, not raw models. The client stores/sends
   // a tier sentinel that the backend resolves.
   "decks-pro": [
-    { id: DECKS_TIER_FAST, name: "Fast & general" },
-    { id: DECKS_TIER_QUALITY, name: "High quality & thinking" },
+    { id: DECKS_TIER_FAST, name: "Flash" },
+    { id: DECKS_TIER_QUALITY, name: "Thinking" },
   ],
 };
 
+/** Sent by the client for PDF page OCR; the backend resolves it. */
+export const DECKS_OCR = "decks-ocr";
+
 /**
- * OCR sentinel for a Decks Pro tier. Sent by the client for PDF page OCR; the
- * backend resolves it.
+ * OCR sentinel for a Decks Pro tier — one value, whatever the tier.
+ *
+ * Transcription does not vary with the generation tier, so a tier-dependent
+ * sentinel only split the page cache: the same PDF re-transcribed, and re-paid
+ * for, after switching tier.
  */
-export function ocrSentinelForTier(tier: string): string {
-  return tier === DECKS_TIER_QUALITY ? "decks-ocr-quality" : "decks-ocr-fast";
+export function ocrSentinelForTier(_tier: string): string {
+  return DECKS_OCR;
 }

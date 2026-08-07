@@ -6,6 +6,12 @@ export const de: Translations = {
     docs: "Dokumentation öffnen",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "Erstelle Karteikarten aus deinen Notizen, PDFs und gescannten Folien, ohne einen API-Schlüssel einzurichten. Kostenlos testen — alles andere in Decks bleibt kostenlos.",
+    cta: "Mehr erfahren",
+  },
+
   views: {
     decks: "Stapel",
     review: "Wiederholen",
@@ -1474,6 +1480,11 @@ export const de: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "Das Modell hat aus dieser Quelle nichts Weiteres gefunden.",
+      clearCards: "Leeren",
+      clearConfirmTitle: "Generierte Karten verwerfen?",
+      clearConfirmMessage:
+        "{count} behaltene Karten sind noch nicht gespeichert und werden verworfen. Bereits gespeicherte Karten bleiben in deinem Vault.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

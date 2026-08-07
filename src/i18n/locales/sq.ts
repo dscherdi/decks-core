@@ -6,6 +6,12 @@ export const sq: Translations = {
     docs: "Hap dokumentacionin",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "Krijo karta nga shënimet, PDF-të dhe sllajdet e skanuara pa konfiguruar një çelës API. Provoje falas — gjithçka tjetër në Decks mbetet falas.",
+    cta: "Mëso më shumë",
+  },
+
   views: {
     decks: "Pakot",
     review: "Rishiko",
@@ -1466,6 +1472,11 @@ export const sq: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "Modeli nuk gjeti asgjë më shumë për të shtuar nga ky burim.",
+      clearCards: "Pastro",
+      clearConfirmTitle: "Të hidhen kartat e gjeneruara?",
+      clearConfirmMessage:
+        "{count} karta të mbajtura nuk janë ruajtur ende dhe do të hidhen. Kartat e ruajtura mbeten në vault-in tuaj.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

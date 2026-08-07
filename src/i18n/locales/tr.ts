@@ -6,6 +6,12 @@ export const tr: Translations = {
     docs: "Belgeleri aç",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "API anahtarı kurmadan notlarınızdan, PDF'lerinizden ve taranmış slaytlarınızdan kart oluşturun. Ücretsiz deneyin — Decks'teki diğer her şey ücretsiz kalır.",
+    cta: "Daha fazla bilgi",
+  },
+
   views: {
     decks: "Desteler",
     review: "Tekrar",
@@ -1452,6 +1458,11 @@ export const tr: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "Model bu kaynaktan eklenecek başka bir şey bulamadı.",
+      clearCards: "Temizle",
+      clearConfirmTitle: "Oluşturulan kartlar atılsın mı?",
+      clearConfirmMessage:
+        "Tuttuğunuz {count} kart henüz kaydedilmedi ve atılacak. Kaydedilmiş kartlar kasanızda kalır.",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",

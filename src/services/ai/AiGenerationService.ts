@@ -5,6 +5,7 @@ import type { ProviderCompleteRequest } from "./providers/AiProvider";
 import {
   buildGenerationMessages,
   GenerationStreamParser,
+  COVERED_MARKER,
   parseGeneratedCards,
   type GeneratedCard,
   type GenerateRequest,
@@ -38,6 +39,11 @@ export interface GenerateResult {
   debug?: GenerateDebugInfo;
   /** True when the model hit its output-token limit (finish_reason "length"). */
   truncated?: boolean;
+  /**
+   * The model reported the source exhausted. A hint, not a verdict — it stops
+   * the batch loop early rather than preventing another run.
+   */
+  covered?: boolean;
 }
 
 /**
@@ -148,6 +154,7 @@ export class AiGenerationService {
         return {
           cards,
           truncated,
+          covered: parser.covered,
           debug: req.debug ? makeDebug(streamedRaw) : undefined,
         };
       } catch (e) {
@@ -183,6 +190,10 @@ export class AiGenerationService {
     }
     for (const c of parseGeneratedCards(raw)) emit(c);
     handlers.onPartial?.(null);
-    return { cards, debug: req.debug ? makeDebug(raw) : undefined };
+    return {
+      cards,
+      covered: raw.includes(COVERED_MARKER),
+      debug: req.debug ? makeDebug(raw) : undefined,
+    };
   }
 }

@@ -6,6 +6,12 @@ export const hi: Translations = {
     docs: "दस्तावेज़ खोलें",
   },
 
+  pro: {
+    heading: "Decks Pro",
+    body: "API कुंजी सेट किए बिना अपने नोट्स, PDF और स्कैन की गई स्लाइड्स से फ्लैशकार्ड बनाएँ। मुफ़्त आज़माएँ — Decks में बाकी सब कुछ मुफ़्त रहता है।",
+    cta: "और जानें",
+  },
+
   views: {
     decks: "डेक्स",
     review: "समीक्षा",
@@ -1452,6 +1458,11 @@ export const hi: Translations = {
       pdfModeText: "Text only",
       pdfModeOcr: "OCR all pages",
       pdfSelectAll: "Select all",
+      sourceCovered: "मॉडल को इस स्रोत से जोड़ने के लिए और कुछ नहीं मिला।",
+      clearCards: "साफ़ करें",
+      clearConfirmTitle: "बनाए गए कार्ड हटाएँ?",
+      clearConfirmMessage:
+        "रखे गए {count} कार्ड अभी सहेजे नहीं गए हैं और हटा दिए जाएँगे। पहले से सहेजे कार्ड आपके वॉल्ट में बने रहेंगे।",
       pdfClear: "Clear",
       pdfOcrProgress: "Reading pages {done}/{total}…",
       pdfCached: "cached",
