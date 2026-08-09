@@ -4,6 +4,7 @@ import {
     edgeBindingKey,
     extractAnchorTokens,
     extractLineAnchors,
+    findAnchorSpans,
     formatAnchorToken,
     headerBindingKey,
     isAnchorCommentBody,
@@ -130,5 +131,64 @@ describe("generateAnchorId", () => {
         const base = generateAnchorId("front");
         expect(generateAnchorId("front", 1)).not.toBe(base);
         expect(generateAnchorId("front", 1)).toBe(generateAnchorId("front", 1));
+    });
+});
+
+describe("findAnchorSpans", () => {
+    const splice = (line: string): string =>
+        findAnchorSpans(line)
+            .slice()
+            .reverse()
+            .reduce((acc, s) => acc.slice(0, s.start) + acc.slice(s.end), line);
+
+    it("returns nothing for a line with no token", () => {
+        expect(findAnchorSpans("plain text")).toEqual([]);
+        expect(findAnchorSpans("")).toEqual([]);
+    });
+
+    it("includes the preceding space so the span matches stripAnchorTokens", () => {
+        expect(findAnchorSpans("Text %%dk:c:ab12%%")).toEqual([
+            { role: "c", id: "ab12", start: 4, end: 18 },
+        ]);
+    });
+
+    it("handles a token at offset 0 and a tab separator", () => {
+        expect(findAnchorSpans("%%dk:h:x1%%")).toEqual([
+            { role: "h", id: "x1", start: 0, end: 11 },
+        ]);
+        expect(findAnchorSpans("a\t%%dk:h:x1%%")[0].start).toBe(1);
+    });
+
+    it("returns multiple tokens in order", () => {
+        const spans = findAnchorSpans("a %%dk:c:aa%% b %%dk:c:bb%%");
+        expect(spans.map((s) => s.id)).toEqual(["aa", "bb"]);
+        expect(spans[0].start).toBeLessThan(spans[1].start);
+    });
+
+    it("keeps a table row well formed when the span is spliced out", () => {
+        expect(splice("| chat %%dk:t:bb22%% | Au |")).toBe("| chat | Au |");
+    });
+
+    it("ignores malformed tokens", () => {
+        for (const bad of ["%%dk:x:abc%%", "%%dk:h:ABC%%", "%%dk:h:%%", "%% dk:h:abc%%"]) {
+            expect(findAnchorSpans(bad)).toEqual([]);
+        }
+    });
+
+    it("does not carry regex state between calls", () => {
+        const line = "Text %%dk:c:ab12%%";
+        expect(findAnchorSpans(line)).toEqual(findAnchorSpans(line));
+    });
+
+    it("splices to exactly what stripAnchorTokens produces", () => {
+        for (const line of [
+            "Text %%dk:c:ab12%%",
+            "%%dk:h:x1%%",
+            "| chat %%dk:t:bb22%% | Au |",
+            "a %%dk:c:aa%% b %%dk:c:bb%%",
+            "no tokens here",
+        ]) {
+            expect(splice(line)).toBe(stripAnchorTokens(line));
+        }
     });
 });

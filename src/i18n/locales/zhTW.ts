@@ -1612,6 +1612,8 @@ export const zhTW: Translations = {
       enableBackgroundRefreshDesc: "自動重新整理側邊面板中的牌組統計資料",
       enableNotices: "啟用系統通知",
       enableNoticesDesc: "顯示已完成複習階段與同步操作的通知訊息",
+      hideAnchorTokens: "隱藏卡片 ID 標記",
+      hideAnchorTokensDesc: "在即時預覽中編輯時隱藏 Decks 寫入筆記的 %%dk:…%% 標記。游標所在行會重新顯示，且永遠不會從檔案中刪除。",
       reviewDisplayMode: "複習顯示模式",
       reviewDisplayModeDesc:
         "複習與瀏覽視窗開啟的位置。分頁可以拖曳至側邊欄、底部面板或獨立視窗中。",

@@ -1685,6 +1685,9 @@ export const sq: Translations = {
       enableNotices: "Aktivizo njoftimet",
       enableNoticesDesc:
         "Shfaq mesazhet e njoftimeve për sesionet dhe sinkronizimet e përfunduara",
+      hideAnchorTokens: "Fshih shënuesit e ID-së së kartës",
+      hideAnchorTokensDesc:
+        "Fsheh shënuesit %%dk:…%% që Decks shkruan në shënimet e tua gjatë redaktimit në pamjen paraprake të drejtpërdrejtë. Ata rishfaqen në rreshtin ku ndodhet kursori dhe nuk hiqen kurrë nga skedari.",
       reviewDisplayMode: "Mënyra e shfaqjes së rishikimit",
       reviewDisplayModeDesc:
         "Ku hapen sesionet e rishikimit dhe shfletimit. Skedat mund të tërhiqen në panelet anësore ose dritare të veçanta.",

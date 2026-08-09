@@ -1684,6 +1684,9 @@ export const es: Translations = {
       enableNotices: "Activar notificaciones",
       enableNoticesDesc:
         "Muestra mensajes para sesiones completadas y operaciones de sincronización",
+      hideAnchorTokens: "Ocultar marcadores de ID de tarjeta",
+      hideAnchorTokensDesc:
+        "Oculta los marcadores %%dk:…%% que Decks escribe en tus notas mientras editas en vista previa en vivo. Reaparecen en la línea donde está el cursor y nunca se eliminan del archivo.",
       reviewDisplayMode: "Modo de visualización del repaso",
       reviewDisplayModeDesc:
         "Dónde se abren las sesiones de repaso y exploración. Las pestañas pueden arrastrarse a barras laterales, paneles inferiores o ventanas separadas.",

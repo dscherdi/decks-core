@@ -1679,6 +1679,9 @@ export const fr: Translations = {
       enableNotices: "Activer les notifications",
       enableNoticesDesc:
         "Affiche des notifications pour les sessions terminées et les opérations de synchronisation",
+      hideAnchorTokens: "Masquer les marqueurs d'ID de carte",
+      hideAnchorTokensDesc:
+        "Masque les marqueurs %%dk:…%% que Decks écrit dans vos notes lors de l'édition en aperçu en direct. Ils réapparaissent sur la ligne où se trouve le curseur et ne sont jamais supprimés du fichier.",
       reviewDisplayMode: "Mode d'affichage de la révision",
       reviewDisplayModeDesc:
         "Où les sessions de révision et navigation s'ouvrent. Les onglets peuvent être glissés vers les barres latérales, panneaux inférieurs ou fenêtres séparées.",

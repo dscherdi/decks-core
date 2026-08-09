@@ -1635,6 +1635,8 @@ export const ja: Translations = {
       enableBackgroundRefreshDesc: "サイドパネルの統計を自動的に更新します",
       enableNotices: "通知を有効化",
       enableNoticesDesc: "完了したセッションと同期操作に関する通知を表示",
+      hideAnchorTokens: "カード ID マーカーを非表示",
+      hideAnchorTokensDesc: "ライブプレビューでの編集中、Decks がノートに書き込む %%dk:…%% マーカーを非表示にします。カーソルのある行では再表示され、ファイルから削除されることはありません。",
       reviewDisplayMode: "復習の表示モード",
       reviewDisplayModeDesc:
         "復習・閲覧セッションを開く場所。タブはサイドバー、下部パネル、別ウィンドウにドラッグできます。",

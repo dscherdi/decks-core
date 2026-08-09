@@ -68,6 +68,34 @@ export function extractLineAnchors(lines: string[]): {
     return { lines: cleanedLines, anchors };
 }
 
+export interface AnchorSpan extends AnchorToken {
+    /** Offset of the first character to hide, including preceding inline whitespace. */
+    start: number;
+    /** Offset just past the closing `%%`. */
+    end: number;
+}
+
+/** Private instance: `lastIndex` is reset per call, so no state leaks between callers. */
+const SPAN_REGEX = new RegExp(STRIP_PATTERN, "g");
+
+/**
+ * Locate every anchor token in one line, as offsets. Same match rule as
+ * `stripAnchorTokens`, so hiding a span shows exactly what the parser sees.
+ */
+export function findAnchorSpans(line: string): AnchorSpan[] {
+    const spans: AnchorSpan[] = [];
+    SPAN_REGEX.lastIndex = 0;
+    for (let m = SPAN_REGEX.exec(line); m !== null; m = SPAN_REGEX.exec(line)) {
+        spans.push({
+            role: m[1] as AnchorRole,
+            id: m[2],
+            start: m.index,
+            end: m.index + m[0].length,
+        });
+    }
+    return spans;
+}
+
 /** Render a token for writing into a note. */
 export function formatAnchorToken(role: AnchorRole, id: string): string {
     return `%%dk:${role}:${id}%%`;

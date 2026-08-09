@@ -270,6 +270,7 @@ export {
   stripAnchorTokens,
   extractAnchorTokens,
   extractLineAnchors,
+  findAnchorSpans,
   formatAnchorToken,
   headerBindingKey,
   clozeBindingKey,
@@ -282,7 +283,12 @@ export {
   edgeBindingKey,
   nodeBindingKey,
 } from "./utils/anchors";
-export type { AnchorRole, AnchorToken, LineAnchor } from "./utils/anchors";
+export type {
+  AnchorRole,
+  AnchorToken,
+  AnchorSpan,
+  LineAnchor,
+} from "./utils/anchors";
 export {
   toLocalDateString,
   toLocalDateTimeString,

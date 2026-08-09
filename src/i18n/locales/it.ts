@@ -1664,6 +1664,9 @@ export const it: Translations = {
       enableNotices: "Attiva notifiche",
       enableNoticesDesc:
         "Mostra notifiche per sessioni completate e operazioni di sincronizzazione",
+      hideAnchorTokens: "Nascondi i marcatori ID delle carte",
+      hideAnchorTokensDesc:
+        "Nasconde i marcatori %%dk:…%% che Decks scrive nelle tue note durante la modifica in anteprima live. Riappaiono sulla riga in cui si trova il cursore e non vengono mai rimossi dal file.",
       reviewDisplayMode: "Modalità di visualizzazione del ripasso",
       reviewDisplayModeDesc:
         "Dove si aprono le sessioni di ripasso e navigazione. Le schede possono essere trascinate in barre laterali, pannelli inferiori o finestre separate.",

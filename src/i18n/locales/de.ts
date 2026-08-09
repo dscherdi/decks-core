@@ -1693,6 +1693,9 @@ export const de: Translations = {
       enableNotices: "Benachrichtigungen aktivieren",
       enableNoticesDesc:
         "Benachrichtigungen für abgeschlossene Wiederholungssitzungen und Sync-Operationen anzeigen",
+      hideAnchorTokens: "Karten-ID-Markierungen ausblenden",
+      hideAnchorTokensDesc:
+        "Blendet die %%dk:…%%-Markierungen, die Decks in deine Notizen schreibt, in der Live-Vorschau aus. In der Zeile mit dem Cursor erscheinen sie wieder; aus der Datei werden sie nie entfernt.",
       reviewDisplayMode: "Anzeigemodus für Wiederholungen",
       reviewDisplayModeDesc:
         "Wo Wiederholungs- und Durchsuchen-Sitzungen geöffnet werden. Tabs können in Seitenleisten, untere Panels oder separate Fenster gezogen werden.",

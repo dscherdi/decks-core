@@ -1628,6 +1628,8 @@ export const ar: Translations = {
         "تحديث الإحصائيات في اللوحة الجانبية تلقائياً",
       enableNotices: "تفعيل الإشعارات",
       enableNoticesDesc: "إظهار رسائل الجلسات المكتملة وعمليات المزامنة",
+      hideAnchorTokens: "إخفاء علامات معرّف البطاقة",
+      hideAnchorTokensDesc: "إخفاء علامات %%dk:…%% التي يكتبها Decks في ملاحظاتك أثناء التحرير في المعاينة المباشرة. تظهر مجددًا في السطر الذي به المؤشر ولا تُحذف من الملف أبدًا.",
       reviewDisplayMode: "وضع عرض المراجعة",
       reviewDisplayModeDesc: "مكان فتح جلسات المراجعة والتصفح.",
       flashcardManagerDisplayMode: "وضع عرض مدير البطاقات",

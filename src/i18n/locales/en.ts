@@ -1579,6 +1579,8 @@ export const en = {
       enableBackgroundRefreshDesc: "Automatically refresh deck stats in the side panel",
       enableNotices: "Enable notices",
       enableNoticesDesc: "Show notification messages for completed review sessions and sync operations",
+      hideAnchorTokens: "Hide card ID markers",
+      hideAnchorTokensDesc: "Hide the %%dk:…%% markers Decks writes into your notes while editing in Live Preview. They reappear on the line your cursor is on, and are never removed from the file.",
       reviewDisplayMode: "Review display mode",
       reviewDisplayModeDesc: "Where review and browse sessions open. Tabs can be dragged to sidebars, bottom panels, or separate windows.",
       flashcardManagerDisplayMode: "Flashcard manager display mode",

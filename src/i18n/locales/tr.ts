@@ -1671,6 +1671,9 @@ export const tr: Translations = {
       enableNotices: "Bildirimleri etkinleştir",
       enableNoticesDesc:
         "Tamamlanan tekrar oturumları ve eşitleme işlemleri için bildirim mesajlarını göster",
+      hideAnchorTokens: "Kart kimliği işaretlerini gizle",
+      hideAnchorTokensDesc:
+        "Canlı önizlemede düzenleme yaparken Decks'in notlarınıza yazdığı %%dk:…%% işaretlerini gizler. İmlecin bulunduğu satırda yeniden görünür ve dosyadan asla kaldırılmaz.",
       reviewDisplayMode: "Tekrar görünüm modu",
       reviewDisplayModeDesc:
         "Tekrar ve göz atma oturumlarının nerede açılacağı. Sekmeler yan çubuklara, alt panellere veya ayrı pencerelere sürüklenebilir.",

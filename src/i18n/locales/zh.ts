@@ -1589,6 +1589,8 @@ export const zh: Translations = {
       enableBackgroundRefreshDesc: "自动刷新侧边面板的牌组统计",
       enableNotices: "启用通知",
       enableNoticesDesc: "为已完成的复习会话和同步操作显示通知",
+      hideAnchorTokens: "隐藏卡片 ID 标记",
+      hideAnchorTokensDesc: "在实时预览中编辑时隐藏 Decks 写入笔记的 %%dk:…%% 标记。光标所在行会重新显示，且永远不会从文件中删除。",
       reviewDisplayMode: "复习显示模式",
       reviewDisplayModeDesc:
         "复习和浏览会话的打开位置。标签页可拖动到侧栏、底部面板或独立窗口。",
