@@ -7,6 +7,7 @@ import {
   diffFields,
   buildMessages,
 } from "../refactor-prompt";
+import { DECKS_TIER_FAST } from "../models";
 import { AiError } from "../types";
 import type { AiProviderConfig, RefactorFieldSet } from "../types";
 
@@ -210,7 +211,7 @@ describe("DecksProProvider", () => {
       ),
     );
     const provider = createProvider(
-      { provider: "decks-pro", model: "deepseek/deepseek-v4-flash", apiKey: "DECKS-abc" },
+      { provider: "decks-pro", model: DECKS_TIER_FAST, apiKey: "DECKS-abc" },
       http,
     );
     await provider.complete({ system: "system", user: "user" });
@@ -218,7 +219,8 @@ describe("DecksProProvider", () => {
     expect(req.url).toBe("https://decks-backend.dscherdil.workers.dev/api/generate");
     expect(req.headers["Authorization"]).toBe("Bearer DECKS-abc");
     const body = JSON.parse(req.body ?? "{}");
-    expect(body.model).toBe("deepseek/deepseek-v4-flash");
+    // The tier sentinel travels as-is; the backend decides what to run.
+    expect(body.model).toBe(DECKS_TIER_FAST);
     expect(body.response_format).toBeUndefined();
   });
 
@@ -229,7 +231,7 @@ describe("DecksProProvider", () => {
     const provider = createProvider(
       {
         provider: "decks-pro",
-        model: "deepseek/deepseek-v4-flash",
+        model: DECKS_TIER_FAST,
         apiKey: "DECKS-abc",
         baseUrl: "http://localhost:8787",
       },

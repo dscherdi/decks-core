@@ -2,16 +2,33 @@
  * UI utility functions for preventing blocking operations
  */
 
+/** Longest a yield may wait for a frame before giving up on one. */
+const YIELD_FALLBACK_MS = 32;
+
 /**
- * Yield control to the UI thread to prevent blocking
- * Uses requestAnimationFrame in browser environments, setTimeout in Node.js (tests)
+ * Yield control to the UI thread to prevent blocking. Prefers a frame, so work
+ * resumes right after paint; falls back to a timer in Node (tests).
+ *
+ * The frame is *raced* against a short timer rather than awaited outright:
+ * `requestAnimationFrame` never fires while a document is hidden, so a yield in
+ * the middle of a write sequence would otherwise hang for as long as the app is
+ * backgrounded — leaving, say, a rated card whose review log was never written.
+ * Resolving on whichever comes first keeps the sequence moving off-screen while
+ * still riding the frame when there is one.
  */
 export async function yieldToUI(): Promise<void> {
   await new Promise((resolve) => {
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      resolve(null);
+    };
     if (typeof requestAnimationFrame !== "undefined") {
-      requestAnimationFrame(() => resolve(null));
+      requestAnimationFrame(finish);
+      setTimeout(finish, YIELD_FALLBACK_MS);
     } else {
-      setTimeout(() => resolve(null), 0);
+      setTimeout(finish, 0);
     }
   });
 }

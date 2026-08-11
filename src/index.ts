@@ -226,6 +226,14 @@ export type {
   GeneratedCard,
   GenerateRequest,
 } from "./services/ai/generation-prompt";
+export {
+  buildHeaderParagraphCard,
+  buildHeaderParagraphContent,
+  buildTableContent,
+  headingHashes,
+} from "./services/ai/compose";
+export { planAnchorLine } from "./utils/anchor-token-plan";
+export type { AnchorLinePlan } from "./utils/anchor-token-plan";
 export { DECKS_OVERVIEW, SPLIT_INSTRUCTION } from "./services/ai/prompts";
 export { cardTypeFieldGuidance } from "./services/ai/refactor-prompt";
 export { AiError, REFACTOR_FIELD_KEYS } from "./services/ai/types";
