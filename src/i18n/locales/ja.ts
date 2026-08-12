@@ -529,7 +529,7 @@ export const ja: Translations = {
     columnTagGroup: "タググループ",
     columnCustomDeck: "カスタムデッキ",
     columnNew: "新規",
-    columnDue: "対象",
+    columnDue: "期限",
     statTotal: "合計",
     statPastMonth: "先月",
     statPastWeek: "先週",

@@ -524,7 +524,7 @@ export const ar: Translations = {
     columnTagGroup: "مجموعة العلامات",
     columnCustomDeck: "رزمة مخصصة",
     columnNew: "جديدة",
-    columnDue: "مستحقة",
+    columnDue: "مستحق",
     statTotal: "الإجمالي",
     statPastMonth: "الشهر الماضي",
     statPastWeek: "الأسبوع الماضي",

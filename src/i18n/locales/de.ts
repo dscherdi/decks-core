@@ -547,7 +547,7 @@ export const de: Translations = {
     columnTagGroup: "Tag-Gruppe",
     columnCustomDeck: "Benutzerdefinierter Stapel",
     columnNew: "Neu",
-    columnDue: "Fällig",
+    columnDue: "Fäll.",
     statTotal: "Gesamt",
     statPastMonth: "Letzter Monat",
     statPastWeek: "Letzte Woche",

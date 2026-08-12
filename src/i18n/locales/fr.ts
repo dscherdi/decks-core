@@ -537,7 +537,7 @@ export const fr: Translations = {
     columnDeck: "Paquet",
     columnTagGroup: "Groupe d'étiquettes",
     columnCustomDeck: "Paquet personnalisé",
-    columnNew: "Nouvelles",
+    columnNew: "Nouv.",
     columnDue: "Dues",
     statTotal: "Total",
     statPastMonth: "Mois dernier",

@@ -533,7 +533,7 @@ export const tr: Translations = {
     columnTagGroup: "Etiket grubu",
     columnCustomDeck: "Özel deste",
     columnNew: "Yeni",
-    columnDue: "Günü Gelen",
+    columnDue: "Gelen",
     statTotal: "Toplam",
     statPastMonth: "Geçen ay",
     statPastWeek: "Geçen hafta",

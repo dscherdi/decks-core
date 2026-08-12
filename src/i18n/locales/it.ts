@@ -532,7 +532,7 @@ export const it: Translations = {
     columnTagGroup: "Gruppo di tag",
     columnCustomDeck: "Mazzo personalizzato",
     columnNew: "Nuove",
-    columnDue: "Da ripassare",
+    columnDue: "Rip.",
     statTotal: "Totale",
     statPastMonth: "Ultimo mese",
     statPastWeek: "Ultima settimana",
