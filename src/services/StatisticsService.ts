@@ -375,30 +375,41 @@ export class StatisticsService {
       todayStart.getTime() + days * 24 * 60 * 60 * 1000
     );
 
+    // A forecast counts what will actually be served: cards in review state,
+    // neither suspended nor buried. Without these the same day reads higher here
+    // than in the deck list, which does apply them — and a paused card appearing
+    // in a forecast is simply wrong.
+    const SCHEDULABLE = `state = 'review'
+        AND suspended_at IS NULL
+        AND (buried_until IS NULL OR buried_until <= ?)`;
+
     let sql: string;
     let params: (string | number | null)[];
+    const now = new Date().toISOString();
 
     if (deckIds.length === 0) {
       sql = `
         SELECT ${getLocalDateSQL("due_date")} as date, COUNT(*) as due_count
         FROM flashcards
-        WHERE due_date >= ? AND due_date <= ?
+        WHERE due_date >= ? AND due_date <= ? AND ${SCHEDULABLE}
         GROUP BY ${getLocalDateSQL("due_date")}
         ORDER BY ${getLocalDateSQL("due_date")}
       `;
-      params = [todayStart.toISOString(), forecastEnd.toISOString()];
+      params = [todayStart.toISOString(), forecastEnd.toISOString(), now];
     } else {
       const placeholders = deckIds.map(() => "?").join(",");
       sql = `
         SELECT ${getLocalDateSQL("due_date")} as date, COUNT(*) as due_count
         FROM flashcards
-        WHERE due_date >= ? AND due_date <= ? AND deck_id IN (${placeholders})
+        WHERE due_date >= ? AND due_date <= ? AND ${SCHEDULABLE}
+          AND deck_id IN (${placeholders})
         GROUP BY ${getLocalDateSQL("due_date")}
         ORDER BY ${getLocalDateSQL("due_date")}
       `;
       params = [
         todayStart.toISOString(),
         forecastEnd.toISOString(),
+        now,
         ...deckIds,
       ];
     }
@@ -408,12 +419,12 @@ export class StatisticsService {
     let overdueParams: (string | number | null)[];
 
     if (deckIds.length === 0) {
-      overdueSql = `SELECT COUNT(*) as count FROM flashcards WHERE due_date < ? AND state != 'new'`;
-      overdueParams = [todayStart.toISOString()];
+      overdueSql = `SELECT COUNT(*) as count FROM flashcards WHERE due_date < ? AND ${SCHEDULABLE}`;
+      overdueParams = [todayStart.toISOString(), now];
     } else {
       const placeholders = deckIds.map(() => "?").join(",");
-      overdueSql = `SELECT COUNT(*) as count FROM flashcards WHERE due_date < ? AND state != 'new' AND deck_id IN (${placeholders})`;
-      overdueParams = [todayStart.toISOString(), ...deckIds];
+      overdueSql = `SELECT COUNT(*) as count FROM flashcards WHERE due_date < ? AND ${SCHEDULABLE} AND deck_id IN (${placeholders})`;
+      overdueParams = [todayStart.toISOString(), now, ...deckIds];
     }
 
     const [results, overdueResults] = await Promise.all([
