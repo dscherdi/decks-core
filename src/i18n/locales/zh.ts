@@ -470,6 +470,9 @@ export const zh: Translations = {
     settingShuffleQuestions: "随机排列题目顺序。",
     settingShuffleOptions: "随机排列选项顺序。",
     settingOptionLabels: "选项的标注方式。",
+    flagQuestion: "标记以便回看",
+    unflagQuestion: "取消标记该题目",
+    goToQuestion: "跳转到第 {number} 题",
   },
   deckList: {
     srMigration: "从 Spaced Repetition 迁移",
@@ -655,6 +658,11 @@ export const zh: Translations = {
     dueNext14: "未来 14 天到期的卡片",
     next14Days: "未来 14 天",
     youHold: "你保持着",
+    hideAnswer: "隐藏答案",
+    deleteCardConfirm: "从卡片数据库中删除这张卡片？",
+    fileOrder: "文件顺序",
+    clozeLabel: "填空",
+    maskLabel: "遮挡",
   },
 
   manager: {

@@ -496,6 +496,9 @@ export const fr: Translations = {
     settingShuffleQuestions: "Mélanger l’ordre des questions.",
     settingShuffleOptions: "Mélanger l’ordre des options de réponse.",
     settingOptionLabels: "Comment les options sont étiquetées.",
+    flagQuestion: "Marquer pour y revenir",
+    unflagQuestion: "Démarquer cette question",
+    goToQuestion: "Aller à la question {number}",
   },
   deckList: {
     srMigration: "Migrer depuis Spaced Repetition",
@@ -689,6 +692,11 @@ export const fr: Translations = {
     dueNext14: "Cartes à réviser sur les 14 prochains jours",
     next14Days: "14 prochains jours",
     youHold: "Tu tiens",
+    hideAnswer: "Masquer la réponse",
+    deleteCardConfirm: "Supprimer cette carte de la base de données des cartes ?",
+    fileOrder: "Ordre du fichier",
+    clozeLabel: "Lacune",
+    maskLabel: "Masque",
   },
 
   manager: {

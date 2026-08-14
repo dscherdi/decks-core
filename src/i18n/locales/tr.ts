@@ -491,6 +491,9 @@ export const tr: Translations = {
     settingShuffleQuestions: "Soruların sırasını karıştır.",
     settingShuffleOptions: "Cevap seçeneklerinin sırasını karıştır.",
     settingOptionLabels: "Cevap seçeneklerinin nasıl etiketleneceği.",
+    flagQuestion: "Sonra dönmek için işaretle",
+    unflagQuestion: "Bu sorunun işaretini kaldır",
+    goToQuestion: "{number}. soruya git",
   },
   deckList: {
     srMigration: "Spaced Repetition’dan taşı",
@@ -680,6 +683,11 @@ export const tr: Translations = {
     dueNext14: "Önümüzdeki 14 günde tekrarı gelen kartlar",
     next14Days: "Önümüzdeki 14 gün",
     youHold: "Elinde",
+    hideAnswer: "Cevabı gizle",
+    deleteCardConfirm: "Bu kart, kart veritabanından silinsin mi?",
+    fileOrder: "Dosya sırası",
+    clozeLabel: "Boşluk",
+    maskLabel: "Maske",
   },
 
   manager: {

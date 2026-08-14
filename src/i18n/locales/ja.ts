@@ -487,6 +487,9 @@ export const ja: Translations = {
     settingShuffleQuestions: "問題の順番をランダムにする。",
     settingShuffleOptions: "選択肢の順番をランダムにする。",
     settingOptionLabels: "選択肢のラベルの付け方。",
+    flagQuestion: "後で見直すフラグ",
+    unflagQuestion: "この問題のフラグを解除",
+    goToQuestion: "問題 {number} へ移動",
   },
   deckList: {
     srMigration: "Spaced Repetition から移行",
@@ -676,6 +679,11 @@ export const ja: Translations = {
     dueNext14: "今後 14 日間に期限が来るカード",
     next14Days: "今後 14 日間",
     youHold: "保持中",
+    hideAnswer: "答えを隠す",
+    deleteCardConfirm: "このカードをカードデータベースから削除しますか？",
+    fileOrder: "ファイル順",
+    clozeLabel: "穴埋め",
+    maskLabel: "マスク",
   },
 
   manager: {

@@ -488,6 +488,9 @@ export const ru: Translations = {
     settingShuffleQuestions: "Перемешивать порядок вопросов.",
     settingShuffleOptions: "Перемешивать порядок вариантов ответа.",
     settingOptionLabels: "Как обозначаются варианты ответа.",
+    flagQuestion: "Отметить, чтобы вернуться",
+    unflagQuestion: "Снять отметку с этого вопроса",
+    goToQuestion: "Перейти к вопросу {number}",
   },
   deckList: {
     srMigration: "Перенести из Spaced Repetition",
@@ -679,6 +682,11 @@ export const ru: Translations = {
     dueNext14: "Карточки к повтору за ближайшие 14 дней",
     next14Days: "Ближайшие 14 дней",
     youHold: "У вас",
+    hideAnswer: "Скрыть ответ",
+    deleteCardConfirm: "Удалить эту карточку из базы карточек?",
+    fileOrder: "Порядок в файле",
+    clozeLabel: "Пропуск",
+    maskLabel: "Маска",
   },
 
   manager: {

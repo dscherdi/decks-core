@@ -466,6 +466,9 @@ export const en = {
     settingShuffleQuestions: "Randomize the order of questions.",
     settingShuffleOptions: "Randomize the order of answer options.",
     settingOptionLabels: "How answer options are labelled.",
+    flagQuestion: "Flag to revisit",
+    unflagQuestion: "Unflag this question",
+    goToQuestion: "Go to question {number}",
   },
   deckList: {
     moreActions: "More actions",
@@ -648,6 +651,11 @@ export const en = {
     dueNext14: "Cards due over the next 14 days",
     next14Days: "Next 14 days",
     youHold: "You hold",
+    hideAnswer: "Hide answer",
+    deleteCardConfirm: "Delete this card from the card database?",
+    fileOrder: "File order",
+    clozeLabel: "Cloze",
+    maskLabel: "Mask",
   },
 
   manager: {

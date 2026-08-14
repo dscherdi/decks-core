@@ -498,6 +498,9 @@ export const es: Translations = {
     settingShuffleQuestions: "Aleatorizar el orden de las preguntas.",
     settingShuffleOptions: "Aleatorizar el orden de las opciones.",
     settingOptionLabels: "Cómo se etiquetan las opciones.",
+    flagQuestion: "Marcar para volver",
+    unflagQuestion: "Quitar la marca de esta pregunta",
+    goToQuestion: "Ir a la pregunta {number}",
   },
   deckList: {
     srMigration: "Migrar desde Spaced Repetition",
@@ -689,6 +692,11 @@ export const es: Translations = {
     dueNext14: "Tarjetas pendientes en los próximos 14 días",
     next14Days: "Próximos 14 días",
     youHold: "Mantienes",
+    hideAnswer: "Ocultar respuesta",
+    deleteCardConfirm: "¿Eliminar esta tarjeta de la base de datos de tarjetas?",
+    fileOrder: "Orden del archivo",
+    clozeLabel: "Hueco",
+    maskLabel: "Máscara",
   },
 
   manager: {

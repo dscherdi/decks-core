@@ -498,6 +498,9 @@ export const sq: Translations = {
     settingShuffleQuestions: "Rendit pyetjet rastësisht.",
     settingShuffleOptions: "Rendit rastësisht opsionet e përgjigjes.",
     settingOptionLabels: "Si etiketohen opsionet e përgjigjes.",
+    flagQuestion: "Shëno për t'u rikthyer",
+    unflagQuestion: "Hiq shënimin nga kjo pyetje",
+    goToQuestion: "Shko te pyetja {number}",
   },
   deckList: {
     srMigration: "Migro nga Spaced Repetition",
@@ -690,6 +693,11 @@ export const sq: Translations = {
     dueNext14: "Kartat për përsëritje në 14 ditët e ardhshme",
     next14Days: "14 ditët e ardhshme",
     youHold: "Ke",
+    hideAnswer: "Fshih përgjigjen",
+    deleteCardConfirm: "Të fshihet kjo kartë nga baza e të dhënave e kartave?",
+    fileOrder: "Rendi në skedar",
+    clozeLabel: "Boshllëk",
+    maskLabel: "Maskë",
   },
 
   manager: {

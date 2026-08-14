@@ -505,6 +505,9 @@ export const de: Translations = {
     settingShuffleQuestions: "Reihenfolge der Fragen zufällig anordnen.",
     settingShuffleOptions: "Reihenfolge der Antwortoptionen zufällig anordnen.",
     settingOptionLabels: "Wie Antwortoptionen beschriftet werden.",
+    flagQuestion: "Zum Wiederkommen markieren",
+    unflagQuestion: "Markierung dieser Frage entfernen",
+    goToQuestion: "Zu Frage {number} springen",
   },
   deckList: {
     srMigration: "Von Spaced Repetition migrieren",
@@ -698,6 +701,11 @@ export const de: Translations = {
     dueNext14: "Fällige Karten der nächsten 14 Tage",
     next14Days: "Nächste 14 Tage",
     youHold: "Du hältst",
+    hideAnswer: "Antwort verbergen",
+    deleteCardConfirm: "Diese Karte aus der Kartendatenbank löschen?",
+    fileOrder: "Dateireihenfolge",
+    clozeLabel: "Lückentext",
+    maskLabel: "Maske",
   },
 
   manager: {

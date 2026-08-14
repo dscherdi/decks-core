@@ -494,6 +494,9 @@ export const hi: Translations = {
     settingShuffleQuestions: "प्रश्नों का क्रम बेतरतीब करें।",
     settingShuffleOptions: "उत्तर विकल्पों का क्रम बेतरतीब करें।",
     settingOptionLabels: "उत्तर विकल्प कैसे लेबल हों।",
+    flagQuestion: "बाद में देखने के लिए फ्लैग करें",
+    unflagQuestion: "इस प्रश्न को अनफ्लैग करें",
+    goToQuestion: "प्रश्न {number} पर जाएं",
   },
   deckList: {
     srMigration: "Spaced Repetition से माइग्रेट करें",
@@ -684,6 +687,11 @@ export const hi: Translations = {
     dueNext14: "अगले 14 दिनों में देय कार्ड",
     next14Days: "अगले 14 दिन",
     youHold: "आपके पास",
+    hideAnswer: "उत्तर छिपाएं",
+    deleteCardConfirm: "इस कार्ड को कार्ड डेटाबेस से हटाएं?",
+    fileOrder: "फ़ाइल क्रम",
+    clozeLabel: "क्लोज़",
+    maskLabel: "मास्क",
   },
 
   manager: {

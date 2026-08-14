@@ -318,6 +318,15 @@ export {
   formatStepInterval,
 } from "./utils/step-parser";
 export { yieldToUI, yieldEvery, processWithYielding } from "./utils/ui";
+export { shouldShowReleaseNotes } from "./utils/release-notes";
+export type { ReleaseNotesOptions } from "./utils/release-notes";
+export {
+  getTestDeckPath,
+  getTestDeckContent,
+  getTemplateShowcaseFolder,
+  getTemplateShowcasePath,
+  getTemplateShowcaseContent,
+} from "./utils/test-deck";
 export {
   hashPdf,
   hashImage,

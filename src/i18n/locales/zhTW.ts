@@ -473,6 +473,9 @@ export const zhTW: Translations = {
     settingShuffleQuestions: "隨機排列題目順序。",
     settingShuffleOptions: "隨機排列選項順序。",
     settingOptionLabels: "選項的標註方式。",
+    flagQuestion: "標記以便回看",
+    unflagQuestion: "取消標記該題目",
+    goToQuestion: "跳至第 {number} 題",
   },
   deckList: {
     srMigration: "從 Spaced Repetition 遷移",
@@ -660,6 +663,11 @@ export const zhTW: Translations = {
     dueNext14: "未來 14 天到期的卡片",
     next14Days: "未來 14 天",
     youHold: "你保持著",
+    hideAnswer: "隱藏答案",
+    deleteCardConfirm: "從卡片資料庫中刪除這張卡片？",
+    fileOrder: "檔案順序",
+    clozeLabel: "填空",
+    maskLabel: "遮擋",
   },
 
   manager: {

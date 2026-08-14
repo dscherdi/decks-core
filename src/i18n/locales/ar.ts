@@ -482,6 +482,9 @@ export const ar: Translations = {
     settingShuffleQuestions: "ترتيب الأسئلة عشوائياً.",
     settingShuffleOptions: "ترتيب خيارات الإجابة عشوائياً.",
     settingOptionLabels: "كيف تُسمّى خيارات الإجابة.",
+    flagQuestion: "تمييز للمراجعة لاحقاً",
+    unflagQuestion: "إلغاء تمييز هذا السؤال",
+    goToQuestion: "الانتقال إلى السؤال {number}",
   },
   deckList: {
     srMigration: "الترحيل من Spaced Repetition",
@@ -670,6 +673,11 @@ export const ar: Translations = {
     dueNext14: "البطاقات المستحقة خلال الأربعة عشر يوماً القادمة",
     next14Days: "الأيام الـ14 القادمة",
     youHold: "لديك",
+    hideAnswer: "إخفاء الإجابة",
+    deleteCardConfirm: "حذف هذه البطاقة من قاعدة بيانات البطاقات؟",
+    fileOrder: "ترتيب الملف",
+    clozeLabel: "فراغات",
+    maskLabel: "قناع",
   },
 
   manager: {
