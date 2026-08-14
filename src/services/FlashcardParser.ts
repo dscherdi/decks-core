@@ -58,6 +58,19 @@ export class FlashcardParser {
   private static readonly TABLE_ROW_REGEX = /^\|.*\|$/;
   private static readonly TABLE_SEPARATOR_REGEX = /^\|[\s-]+\|[\s-]+\|(?:[\s-]+\|)?$/;
   private static readonly CLOZE_REGEX = /==((?:(?!==).)+)==/g;
+  /** Inline code runs, matched by their own backtick fence so `` ` `` nests. */
+  private static readonly INLINE_CODE_REGEX = /(`+)(?:(?!\1)[\s\S])*?\1/g;
+
+  /** Half-open [from, to) ranges of the inline code spans on one line. */
+  private static inlineCodeSpans(line: string): [number, number][] {
+    const spans: [number, number][] = [];
+    const regex = new RegExp(FlashcardParser.INLINE_CODE_REGEX.source, "g");
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(line)) !== null) {
+      spans.push([match.index, match.index + match[0].length]);
+    }
+    return spans;
+  }
   private static readonly IMAGE_EMBED_REGEX =
     /^!\[\[[^\]]+\.(png|jpe?g|gif|svg|bmp|webp|avif|heic|heif|tiff?)(\|[^\]]*)?\]\]$|^!\[[^\]]*\]\([^)]+\.(png|jpe?g|gif|svg|bmp|webp|avif|heic|heif|tiff?)(\s+[^)]+)?\)$/i;
   private static readonly NUMBERED_LIST_REGEX = /^\d+\.\s+(.+)$/;
@@ -252,9 +265,16 @@ export class FlashcardParser {
     let order = 0;
     for (let lineIndex = 0; lineIndex < sourceLines.length; lineIndex++) {
       const regex = new RegExp(FlashcardParser.CLOZE_REGEX.source, "g");
+      const spans = FlashcardParser.inlineCodeSpans(sourceLines[lineIndex]);
       let match: RegExpExecArray | null;
       let indexInLine = 0;
       while ((match = regex.exec(sourceLines[lineIndex])) !== null) {
+        // A note explaining the syntax writes `==like this==` in code, and the
+        // renderer leaves code spans alone — so a cloze taken from one could
+        // never be masked, and the card could never be answered. Skipped
+        // before `indexInLine` counts it, so the real deletions stay in order.
+        const start = match.index;
+        if (spans.some(([from, to]) => start >= from && start < to)) continue;
         matches.push({ text: match[1], order, lineIndex, indexInLine });
         order++;
         indexInLine++;
