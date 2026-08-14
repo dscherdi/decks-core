@@ -70,7 +70,7 @@ export const tr: Translations = {
     intro:
       "Decks'e hoş geldiniz! Bu dosyayı (veya herhangi bir dosyayı) bir bilgi kartı destesine dönüştürmek için, frontmatter'a veya metnin herhangi bir yerine `{tag}` etiketini eklemeniz yeterlidir.",
     formatsHint:
-      "Decks dört ana formatı destekler. Notlarınıza en uygun olanı seçin.",
+      "Decks beş ana formatı destekler. Notlarınıza en uygun olanı seçin.",
     section1: "1. Başlık-paragraf formatı",
     section1Body:
       "Varsayılan olarak Decks, kartın ön yüzü olarak **H2 başlıklarını (`##`)**, arka yüzü olarak ise hemen altındaki paragrafı kullanır. *(Bu başlık seviyesini deste ayarlarından değiştirebilirsiniz).*.",

@@ -61,7 +61,7 @@ export const en = {
     filename: "Decks — Getting started.md",
     title: "Getting started with Decks",
     intro: "Welcome to Decks! To turn this file (or any file) into a flashcard deck, simply add the `{tag}` tag to your frontmatter or anywhere in the body.",
-    formatsHint: "Decks supports four main formats. Pick the one that fits your notes best.",
+    formatsHint: "Decks supports five main formats. Pick the one that fits your notes best.",
     section1: "1. Header-paragraph format",
     section1Body: "By default, Decks uses **H2 headings (`##`)** as the front of the card, and the paragraph directly below it as the back. *(You can change this header level in the deck settings).*",
     q1: "What is spaced repetition?",

@@ -70,7 +70,7 @@ export const es: Translations = {
     intro:
       "¡Te damos la bienvenida a Decks! Para convertir este archivo (o cualquier otro) en un mazo de tarjetas, simplemente añade la etiqueta `{tag}` en el frontmatter o en cualquier parte del texto.",
     formatsHint:
-      "Decks admite cuatro formatos principales. Elige el que mejor se adapte a tus notas.",
+      "Decks admite cinco formatos principales. Elige el que mejor se adapte a tus notas.",
     section1: "1. Formato de encabezado-párrafo",
     section1Body:
       "Por defecto, Decks utiliza **encabezados H2 (`##`)** como el anverso de la tarjeta, y el párrafo directamente debajo como el reverso. *(Puedes cambiar este nivel de encabezado en los ajustes del mazo).*.",

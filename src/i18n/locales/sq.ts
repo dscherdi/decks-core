@@ -70,7 +70,7 @@ export const sq: Translations = {
     intro:
       "Mirësevini në Decks! Për ta kthyer këtë skedar (ose çdo skedar tjetër) në një pako kartash, thjesht shto etiketën `{tag}` në frontmatter-in tënd ose kudo në tekst.",
     formatsHint:
-      "Decks mbështet katër formate kryesore. Zgjidh atë që u përshtatet më së miri shënimeve të tua.",
+      "Decks mbështet pesë formate kryesore. Zgjidh atë që u përshtatet më së miri shënimeve të tua.",
     section1: "1. Formati titull-paragraf",
     section1Body:
       "Si parazgjedhje, Decks përdor **Titujt H2 (`##`)** si pjesën e përparme të kartës, dhe paragrafin direkt poshtë tij si pjesën e pasme. *(Mund ta ndryshosh këtë nivel titulli në cilësimet e pakos).*.",

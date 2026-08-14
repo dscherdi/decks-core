@@ -68,7 +68,7 @@ export const it: Translations = {
     intro:
       "Benvenuto in Decks! Per trasformare questo file (o qualsiasi altro) in un mazzo di flashcard, aggiungi semplicemente il tag `{tag}` al tuo frontmatter o ovunque nel testo.",
     formatsHint:
-      "Decks supporta quattro formati principali. Scegli quello che si adatta meglio ai tuoi appunti.",
+      "Decks supporta cinque formati principali. Scegli quello che si adatta meglio ai tuoi appunti.",
     section1: "1. Formato intestazione-paragrafo",
     section1Body:
       "Per impostazione predefinita, Decks utilizza le **intestazioni H2 (`##`)** come fronte della carta, e il paragrafo direttamente sotto come retro. *(Puoi cambiare questo livello di intestazione nelle impostazioni del mazzo).*.",

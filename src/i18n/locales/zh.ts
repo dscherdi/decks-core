@@ -65,7 +65,7 @@ export const zh: Translations = {
     title: "Decks 快速入门",
     intro:
       "欢迎使用 Decks！要将此文件（或任何文件）转换为抽认卡牌组，只需将 `{tag}` 标签添加到 frontmatter 或正文中的任何位置。",
-    formatsHint: "Decks 支持四种主要格式。选择最适合您笔记的格式。",
+    formatsHint: "Decks 支持五种主要格式。选择最适合您笔记的格式。",
     section1: "1. 标题-段落格式",
     section1Body:
       "默认情况下，Decks 使用 **H2 标题 (`##`)** 作为卡片的正面，其正下方的段落作为背面。*(您可以在牌组设置中更改此标题级别)。*",

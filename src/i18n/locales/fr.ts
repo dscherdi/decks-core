@@ -68,7 +68,7 @@ export const fr: Translations = {
     intro:
       "Bienvenue sur Decks ! Pour transformer ce fichier (ou n'importe quel autre) en un paquet de cartes mémoire, ajoutez simplement la balise `{tag}` dans le frontmatter ou n'importe où dans le corps du texte.",
     formatsHint:
-      "Decks prend en charge quatre formats principaux. Choisissez celui qui convient le mieux à vos notes.",
+      "Decks prend en charge cinq formats principaux. Choisissez celui qui convient le mieux à vos notes.",
     section1: "1. Format en-tête-paragraphe",
     section1Body:
       "Par défaut, Decks utilise les **en-têtes H2 (`##`)** comme recto de la carte, et le paragraphe directement en dessous comme verso. *(Vous pouvez modifier ce niveau d'en-tête dans les paramètres du paquet).*.",

@@ -326,6 +326,10 @@ export {
   getTemplateShowcaseFolder,
   getTemplateShowcasePath,
   getTemplateShowcaseContent,
+  getExamDeckPath,
+  getExamDeckTag,
+  getExamDeckFrontmatterTag,
+  getExamDeckContent,
 } from "./utils/test-deck";
 export {
   hashPdf,

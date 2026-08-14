@@ -67,7 +67,7 @@ export const zhTW: Translations = {
     title: "Decks 快速入門",
     intro:
       "歡迎使用 Decks！若要將此檔案 (或任何檔案) 轉換為閃卡牌組，只需將 `{tag}` 標籤新增至 frontmatter 或內文中的任何位置。",
-    formatsHint: "Decks 支援四種主要格式。請選擇最適合您筆記的格式。",
+    formatsHint: "Decks 支援五種主要格式。請選擇最適合您筆記的格式。",
     section1: "1. 標題-段落格式",
     section1Body:
       "預設情況下，Decks 使用 **H2 標題 (`##`)** 作為卡片的正面，其正下方的段落作為背面。*(您可以在牌組設定中更改此標題層級)。*",

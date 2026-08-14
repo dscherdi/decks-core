@@ -70,7 +70,7 @@ export const de: Translations = {
     intro:
       "Willkommen bei Decks! Um diese Datei (oder eine beliebige andere) in einen Karteikarten-Stapel zu verwandeln, füge einfach das Tag `{tag}` zu den Frontmatter-Eigenschaften oder irgendwo im Text hinzu.",
     formatsHint:
-      "Decks unterstützt vier Hauptformate. Wähle dasjenige, das am besten zu deinen Notizen passt.",
+      "Decks unterstützt fünf Hauptformate. Wähle dasjenige, das am besten zu deinen Notizen passt.",
     section1: "1. Überschrift-Absatz-Format",
     section1Body:
       "Standardmäßig verwendet Decks **H2-Überschriften (`##`)** als Vorderseite der Karte und den direkt darunter liegenden Absatz als Rückseite. *(Du kannst diese Überschriftenebene in den Deck-Einstellungen ändern).*",
