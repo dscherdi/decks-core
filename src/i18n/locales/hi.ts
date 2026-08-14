@@ -1421,6 +1421,11 @@ export const hi: Translations = {
     selectTag: "टैग चुनें",
     selectType: "प्रकार चुनें",
     value: "मान",
+    badgeType: "प्रकार",
+    badgeInterval: "अंतराल",
+    badgeReps: "पुनरावृत्ति",
+    badgeNot: "{label} नहीं",
+    badgeNotText: "\"{value}\" नहीं",
   },
 
   modals: {

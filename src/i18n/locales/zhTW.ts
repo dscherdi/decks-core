@@ -1370,6 +1370,11 @@ export const zhTW: Translations = {
     selectTag: "選擇標籤",
     selectType: "選擇類型",
     value: "值",
+    badgeType: "類型",
+    badgeInterval: "間隔",
+    badgeReps: "複習次數",
+    badgeNot: "非{label}",
+    badgeNotText: "不含「{value}」",
   },
 
   modals: {

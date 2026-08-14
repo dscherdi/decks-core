@@ -1384,6 +1384,11 @@ export const ar: Translations = {
     selectTag: "اختر وسماً",
     selectType: "اختر نوعاً",
     value: "القيمة",
+    badgeType: "النوع",
+    badgeInterval: "الفاصل",
+    badgeReps: "التكرارات",
+    badgeNot: "بدون {label}",
+    badgeNotText: "ليس \"{value}\"",
   },
 
   modals: {

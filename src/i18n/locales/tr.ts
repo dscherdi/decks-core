@@ -1421,6 +1421,11 @@ export const tr: Translations = {
     selectTag: "Bir etiket seç",
     selectType: "Bir tür seç",
     value: "Değer",
+    badgeType: "Tür",
+    badgeInterval: "Aralık",
+    badgeReps: "Tekrar",
+    badgeNot: "{label} değil",
+    badgeNotText: "\"{value}\" değil",
   },
 
   modals: {

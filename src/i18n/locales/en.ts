@@ -1348,6 +1348,11 @@ export const en = {
     selectTag: "Select a tag",
     selectType: "Select a type",
     value: "Value",
+    badgeType: "Type",
+    badgeInterval: "Interval",
+    badgeReps: "Reps",
+    badgeNot: "Not {label}",
+    badgeNotText: "not \"{value}\"",
   },
 
   modals: {

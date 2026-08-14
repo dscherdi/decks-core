@@ -1362,6 +1362,11 @@ export const zh: Translations = {
     selectTag: "选择标签",
     selectType: "选择类型",
     value: "值",
+    badgeType: "类型",
+    badgeInterval: "间隔",
+    badgeReps: "复习次数",
+    badgeNot: "非{label}",
+    badgeNotText: "不含“{value}”",
   },
 
   modals: {

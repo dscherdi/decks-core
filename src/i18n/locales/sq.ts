@@ -1434,6 +1434,11 @@ export const sq: Translations = {
     selectTag: "Zgjidh një etiketë",
     selectType: "Zgjidh një lloj",
     value: "Vlera",
+    badgeType: "Lloji",
+    badgeInterval: "Intervali",
+    badgeReps: "Përs.",
+    badgeNot: "Pa {label}",
+    badgeNotText: "jo \"{value}\"",
   },
 
   modals: {

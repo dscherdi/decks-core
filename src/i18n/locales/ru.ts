@@ -1418,6 +1418,11 @@ export const ru: Translations = {
     selectTag: "Выберите тег",
     selectType: "Выберите тип",
     value: "Значение",
+    badgeType: "Тип",
+    badgeInterval: "Интервал",
+    badgeReps: "Повт.",
+    badgeNot: "Без «{label}»",
+    badgeNotText: "не «{value}»",
   },
 
   modals: {

@@ -1403,6 +1403,11 @@ export const ja: Translations = {
     selectTag: "タグを選択",
     selectType: "種類を選択",
     value: "値",
+    badgeType: "種類",
+    badgeInterval: "間隔",
+    badgeReps: "反復回数",
+    badgeNot: "{label}でない",
+    badgeNotText: "「{value}」を含まない",
   },
 
   modals: {

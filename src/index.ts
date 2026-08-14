@@ -48,6 +48,12 @@ export { CanvasFlashcardExtractor } from "./services/CanvasFlashcardExtractor";
 export { compileFilter } from "./services/FilterEngine";
 export type { FilterCompileOptions, CompiledFilter } from "./services/FilterEngine";
 export { evaluateFilter } from "./services/FilterEvaluator";
+export {
+  formatBadgeParts,
+  formatBadgeLabel,
+  isPositiveFlag,
+} from "./services/FilterBadgeFormatter";
+export type { BadgeParts, DeckLookup } from "./services/FilterBadgeFormatter";
 export { Scheduler } from "./services/Scheduler";
 export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession } from "./services/Scheduler";
 export { StatisticsService } from "./services/StatisticsService";

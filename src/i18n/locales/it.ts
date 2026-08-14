@@ -1426,6 +1426,11 @@ export const it: Translations = {
     selectTag: "Scegli un tag",
     selectType: "Scegli un tipo",
     value: "Valore",
+    badgeType: "Tipo",
+    badgeInterval: "Intervallo",
+    badgeReps: "Rip.",
+    badgeNot: "Senza {label}",
+    badgeNotText: "non «{value}»",
   },
 
   modals: {
