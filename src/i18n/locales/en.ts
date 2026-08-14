@@ -1641,7 +1641,7 @@ export const en = {
       trialExhausted: "Free trial used up. Subscribe to keep generating.",
       dailyLimitReached: "Daily limit reached. It resets tomorrow.",
       account: "Decks Pro account",
-      accountSignedOut: "Sign in to use Decks Pro without a license key.",
+      accountSignedOut: "Sign in to use Decks Pro.",
       accountSignedInAs: "Signed in as {email}",
       accountSignedIn: "Signed in",
       signIn: "Sign in to Decks Pro",

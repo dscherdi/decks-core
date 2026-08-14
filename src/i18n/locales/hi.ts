@@ -1720,7 +1720,7 @@ export const hi: Translations = {
       trialExhausted: "\u0928\u093f\u0903\u0936\u0941\u0932\u094d\u0915 \u091f\u094d\u0930\u093e\u092f\u0932 \u0938\u092e\u093e\u092a\u094d\u0924\u0964 \u091c\u093e\u0930\u0940 \u0930\u0916\u0928\u0947 \u0915\u0947 \u0932\u093f\u090f \u0938\u0926\u0938\u094d\u092f\u0924\u093e \u0932\u0947\u0902\u0964",
       dailyLimitReached: "\u0926\u0948\u0928\u093f\u0915 \u0938\u0940\u092e\u093e \u092a\u0942\u0930\u0940 \u0939\u094b \u0917\u0908\u0964 \u092f\u0939 \u0915\u0932 \u0930\u0940\u0938\u0947\u091f \u0939\u094b\u0917\u0940\u0964",
       account: "Decks Pro खाता",
-      accountSignedOut: "लाइसेंस कुंजी के बिना Decks Pro उपयोग करने के लिए साइन इन करें।",
+      accountSignedOut: "Decks Pro उपयोग करने के लिए साइन इन करें।",
       accountSignedInAs: "{email} के रूप में साइन इन",
       accountSignedIn: "साइन इन किया गया",
       signIn: "Decks Pro में साइन इन करें",

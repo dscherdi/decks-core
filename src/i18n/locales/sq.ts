@@ -1734,7 +1734,7 @@ export const sq: Translations = {
       trialExhausted: "Prova falas mbaroi. Abonohu p\u00ebr t\u00eb vazhduar.",
       dailyLimitReached: "Kufiri ditor u arrit. Rivendoset nes\u00ebr.",
       account: "Llogaria Decks Pro",
-      accountSignedOut: "Hyr për ta përdorur Decks Pro pa çelës licence.",
+      accountSignedOut: "Hyr për ta përdorur Decks Pro.",
       accountSignedInAs: "I identifikuar si {email}",
       accountSignedIn: "I identifikuar",
       signIn: "Hyr në Decks Pro",

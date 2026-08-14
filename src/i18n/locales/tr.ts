@@ -1720,7 +1720,7 @@ export const tr: Translations = {
       trialExhausted: "\u00dccretsiz deneme bitti. Devam etmek i\u00e7in abone ol.",
       dailyLimitReached: "G\u00fcnl\u00fck s\u0131n\u0131ra ula\u015f\u0131ld\u0131. Yar\u0131n s\u0131f\u0131rlan\u0131r.",
       account: "Decks Pro hesabı",
-      accountSignedOut: "Lisans anahtarı olmadan Decks Pro kullanmak için oturum açın.",
+      accountSignedOut: "Decks Pro kullanmak için oturum açın.",
       accountSignedInAs: "{email} olarak oturum açıldı",
       accountSignedIn: "Oturum açıldı",
       signIn: "Decks Pro'da oturum aç",

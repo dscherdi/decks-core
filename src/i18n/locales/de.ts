@@ -1742,7 +1742,7 @@ export const de: Translations = {
       trialExhausted: "Testphase aufgebraucht. Abonniere, um weiter zu generieren.",
       dailyLimitReached: "Tageslimit erreicht. Es wird morgen zur\u00fcckgesetzt.",
       account: "Decks-Pro-Konto",
-      accountSignedOut: "Melde dich an, um Decks Pro ohne Lizenzschlüssel zu nutzen.",
+      accountSignedOut: "Melde dich an, um Decks Pro zu nutzen.",
       accountSignedInAs: "Angemeldet als {email}",
       accountSignedIn: "Angemeldet",
       signIn: "Bei Decks Pro anmelden",

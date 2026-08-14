@@ -1646,7 +1646,7 @@ export const zh: Translations = {
       trialExhausted: "\u514d\u8d39\u8bd5\u7528\u5df2\u7528\u5b8c\u3002\u8ba2\u9605\u540e\u53ef\u7ee7\u7eed\u751f\u6210\u3002",
       dailyLimitReached: "\u5df2\u8fbe\u6bcf\u65e5\u4e0a\u9650\uff0c\u660e\u5929\u91cd\u7f6e\u3002",
       account: "Decks Pro 账户",
-      accountSignedOut: "登录后即可无需许可证密钥使用 Decks Pro。",
+      accountSignedOut: "登录后即可使用 Decks Pro。",
       accountSignedInAs: "已登录：{email}",
       accountSignedIn: "已登录",
       signIn: "登录 Decks Pro",

@@ -1691,7 +1691,7 @@ export const ja: Translations = {
       trialExhausted: "\u7121\u6599\u30c8\u30e9\u30a4\u30a2\u30eb\u3092\u4f7f\u3044\u5207\u308a\u307e\u3057\u305f\u3002\u7d9a\u3051\u308b\u306b\u306f\u767b\u9332\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
       dailyLimitReached: "1 \u65e5\u306e\u4e0a\u9650\u306b\u9054\u3057\u307e\u3057\u305f\u3002\u660e\u65e5\u30ea\u30bb\u30c3\u30c8\u3055\u308c\u307e\u3059\u3002",
       account: "Decks Pro アカウント",
-      accountSignedOut: "サインインすると、ライセンスキーなしで Decks Pro を利用できます。",
+      accountSignedOut: "サインインすると Decks Pro を利用できます。",
       accountSignedInAs: "{email} でサインイン中",
       accountSignedIn: "サインイン済み",
       signIn: "Decks Pro にサインイン",

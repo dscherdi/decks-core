@@ -1681,7 +1681,7 @@ export const ar: Translations = {
       trialExhausted: "\u0627\u0646\u062a\u0647\u062a \u0627\u0644\u062a\u062c\u0631\u0628\u0629 \u0627\u0644\u0645\u062c\u0627\u0646\u064a\u0629. \u0627\u0634\u062a\u0631\u0643 \u0644\u0644\u0645\u062a\u0627\u0628\u0639\u0629.",
       dailyLimitReached: "\u062a\u0645 \u0628\u0644\u0648\u063a \u0627\u0644\u062d\u062f \u0627\u0644\u064a\u0648\u0645\u064a. \u062a\u062a\u0645 \u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u062a\u0639\u064a\u064a\u0646 \u063a\u062f\u064b\u0627.",
       account: "حساب Decks Pro",
-      accountSignedOut: "سجّل الدخول لاستخدام Decks Pro دون مفتاح ترخيص.",
+      accountSignedOut: "سجّل الدخول لاستخدام Decks Pro.",
       accountSignedInAs: "مسجّل الدخول باسم {email}",
       accountSignedIn: "مسجّل الدخول",
       signIn: "تسجيل الدخول إلى Decks Pro",

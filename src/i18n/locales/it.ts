@@ -1715,7 +1715,7 @@ export const it: Translations = {
       trialExhausted: "Prova gratuita esaurita. Abbonati per continuare a generare.",
       dailyLimitReached: "Limite giornaliero raggiunto. Si azzera domani.",
       account: "Account Decks Pro",
-      accountSignedOut: "Accedi per usare Decks Pro senza chiave di licenza.",
+      accountSignedOut: "Accedi per usare Decks Pro.",
       accountSignedInAs: "Accesso effettuato come {email}",
       accountSignedIn: "Accesso effettuato",
       signIn: "Accedi a Decks Pro",

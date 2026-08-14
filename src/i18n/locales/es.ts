@@ -1733,7 +1733,7 @@ export const es: Translations = {
       trialExhausted: "Prueba gratuita agotada. Suscr\u00edbete para seguir generando.",
       dailyLimitReached: "L\u00edmite diario alcanzado. Se restablece ma\u00f1ana.",
       account: "Cuenta de Decks Pro",
-      accountSignedOut: "Inicia sesión para usar Decks Pro sin clave de licencia.",
+      accountSignedOut: "Inicia sesión para usar Decks Pro.",
       accountSignedInAs: "Sesión iniciada como {email}",
       accountSignedIn: "Sesión iniciada",
       signIn: "Iniciar sesión en Decks Pro",
