@@ -2,6 +2,7 @@ import type { DeckListSortMode } from "../settings";
 import type { FileDeck, DeckGroup, CustomDeckGroup } from "../database/types";
 import { generateDeckGroupId } from "./hash";
 import { naturalCompare } from "./string";
+import { I18n } from "../i18n/I18n";
 
 /**
  * View-model for the unified Decks tree. Three top-level `section` nodes
@@ -107,9 +108,12 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   const { fileDecks, deckGroups, customDeckGroups, getStats, pinnedIds, minDeckCardCount, flat } = input;
   const minCount = Number.isFinite(minDeckCardCount) && minDeckCardCount > 0 ? minDeckCardCount : 0;
 
-  const filesSection = makeNode({ id: "sec:files", kind: "section", section: "files", name: "Files", depth: 0 });
-  const tagsSection = makeNode({ id: "sec:tags", kind: "section", section: "tags", name: "Tags", depth: 0 });
-  const customSection = makeNode({ id: "sec:custom", kind: "section", section: "custom", name: "Custom", depth: 0 });
+  // Section names are resolved here rather than stored, so a rebuilt tree always
+  // carries the language in force now.
+  const t = I18n.t.deckList;
+  const filesSection = makeNode({ id: "sec:files", kind: "section", section: "files", name: t.tabFiles, depth: 0 });
+  const tagsSection = makeNode({ id: "sec:tags", kind: "section", section: "tags", name: t.tabTags, depth: 0 });
+  const customSection = makeNode({ id: "sec:custom", kind: "section", section: "custom", name: t.tabCustom, depth: 0 });
 
   // --- Files: nest by vault folder path (tree) or flat leaves ---------------
   const folderByPath = new Map<string, TreeNode>();
@@ -194,7 +198,13 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   }
 
   // Lift pinned leaves into a dedicated top block (folders stay in place).
-  const pinnedSection = makeNode({ id: "sec:pinned", kind: "section", section: "pinned", name: "Pinned", depth: 0 });
+  const pinnedSection = makeNode({
+    id: "sec:pinned",
+    kind: "section",
+    section: "pinned",
+    name: I18n.t.deckList.pinned,
+    depth: 0,
+  });
   for (const section of sections) extractPinned(section, pinnedSection);
   for (const child of pinnedSection.children) child.depth = 1;
   aggregate(pinnedSection);
