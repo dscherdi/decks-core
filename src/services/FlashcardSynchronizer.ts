@@ -73,6 +73,23 @@ export interface SyncResult {
   skippedEmptyParse?: boolean;
 }
 
+/**
+ * Whether a sync would empty a deck that still has cards, and should therefore
+ * be refused.
+ *
+ * The asymmetry decides it: refusing costs a sync that the next one repeats,
+ * proceeding costs the deck. An empty parse is far more often a header level
+ * that stopped matching, or a parser that stopped recognising a format, than a
+ * person deleting every card while keeping the note.
+ */
+export function wouldEmptyDeck(
+  parsedCount: number,
+  existingCount: number,
+  allowEmptyResult?: boolean,
+): boolean {
+  return parsedCount === 0 && existingCount > 0 && !allowEmptyResult;
+}
+
 export interface SyncData {
   deckId: string;
   deckName: string;
@@ -83,6 +100,12 @@ export interface SyncData {
   reverseCards?: boolean;
   clozeEnabled?: boolean;
   examEnabled?: boolean;
+  /**
+   * Allow a parse that yields nothing to delete a deck's remaining cards.
+   * Off by default: an empty result is far more often a misconfiguration than
+   * an edit. Set it where emptiness is a real state — a canvas with no edges.
+   */
+  allowEmptyResult?: boolean;
 }
 
 /**
@@ -446,17 +469,27 @@ export class FlashcardSynchronizer {
       }
       bindingsStmt.free();
 
-      // Safety: an EMPTY file read for a deck that still has cards is a read race,
-      // not a real edit — a live deck file always has at least its frontmatter tag,
-      // so empty content can never be a legitimate "user removed every card".
-      // Deleting here would wipe the deck; abort so the next sync retries. Non-empty
-      // content that parses to zero (the user genuinely cleared the file, or a
-      // canvas whose last edge was removed) proceeds and deletes normally. The
-      // caller must not stamp mtime for a skipped sync.
+      /*
+       * Safety: a deck that had cards and now parses to none is refused.
+       *
+       * This used to require the file to be EMPTY, on the reasoning that only a
+       * read race could empty a live deck file. That left the larger hole open:
+       * a note that reads perfectly and parses to zero — a header level that no
+       * longer matches the profile, a parser that stopped recognising the format
+       * — deleted every card in the deck, and a full refresh applied it to the
+       * whole vault at once.
+       *
+       * The asymmetry is what decides it. Refusing costs a sync that the next
+       * one repeats; proceeding costs the deck. Scheduling survives either way
+       * (ids are content-derived and review_logs restores state), but only if
+       * the cards come back at all.
+       *
+       * Callers that know an empty result is legitimate — a canvas whose last
+       * edge was removed — opt out with allowEmptyResult. The caller must not
+       * stamp mtime for a skipped sync.
+       */
       if (
-        expandedCards.length === 0 &&
-        existingFlashcards.length > 0 &&
-        data.fileContent.trim() === ""
+        wouldEmptyDeck(expandedCards.length, existingFlashcards.length, data.allowEmptyResult)
       ) {
         return {
           success: true,
