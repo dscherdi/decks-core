@@ -6,6 +6,11 @@ export const zh: Translations = {
     docs: "打开文档",
   },
 
+  mobileApp: {
+    heading: "iPhone 和 iPad 版 DecksMD",
+    body: "同一个仓库、同样的 markdown，在手机上复习。卡片、排程与历史都留在你的文件里。",
+    cta: "从 App Store 下载",
+  },
   pro: {
     heading: "Decks Pro",
     body: "无需配置 API 密钥，即可从笔记、PDF 和扫描的幻灯片生成卡片。免费试用——Decks 的其他功能仍然免费。",

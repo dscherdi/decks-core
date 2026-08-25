@@ -6,6 +6,11 @@ export const sq: Translations = {
     docs: "Hap dokumentacionin",
   },
 
+  mobileApp: {
+    heading: "DecksMD për iPhone dhe iPad",
+    body: "E njëjta kasafortë, i njëjti markdown, i përsëritur në telefon. Kartat, planifikimi dhe historiku mbeten në skedarët e tu.",
+    cta: "Shkarkoje në App Store",
+  },
   pro: {
     heading: "Decks Pro",
     body: "Krijo karta nga shënimet, PDF-të dhe sllajdet e skanuara pa konfiguruar një çelës API. Provoje falas — gjithçka tjetër në Decks mbetet falas.",

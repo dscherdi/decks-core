@@ -6,6 +6,11 @@ export const tr: Translations = {
     docs: "Belgeleri aç",
   },
 
+  mobileApp: {
+    heading: "iPhone ve iPad için DecksMD",
+    body: "Aynı kasa, aynı markdown, telefonunda tekrar. Kartlar, planlama ve geçmiş dosyalarında kalır.",
+    cta: "App Store’dan indirin",
+  },
   pro: {
     heading: "Decks Pro",
     body: "API anahtarı kurmadan notlarınızdan, PDF'lerinizden ve taranmış slaytlarınızdan kart oluşturun. Ücretsiz deneyin — Decks'teki diğer her şey ücretsiz kalır.",

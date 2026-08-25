@@ -6,6 +6,11 @@ export const es: Translations = {
     docs: "Abrir documentación",
   },
 
+  mobileApp: {
+    heading: "DecksMD para iPhone y iPad",
+    body: "La misma bóveda, el mismo markdown, repasado en el móvil. Tarjetas, programación e historial siguen en tus archivos.",
+    cta: "Descargar en el App Store",
+  },
   pro: {
     heading: "Decks Pro",
     body: "Genera tarjetas a partir de tus notas, PDF y diapositivas escaneadas sin configurar una clave de API. Pruébalo gratis: todo lo demás en Decks sigue siendo gratuito.",

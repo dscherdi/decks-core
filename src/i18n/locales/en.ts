@@ -4,6 +4,11 @@ export const en = {
   },
 
   /** Shown in the release-notes tab and at the top of settings. */
+  mobileApp: {
+    heading: "DecksMD for iPhone and iPad",
+    body: "The same vault, the same markdown, reviewed on your phone. Cards, scheduling and history stay in your files.",
+    cta: "Download on the App Store",
+  },
   pro: {
     heading: "Decks Pro",
     body: "Generate flashcards from your notes, PDFs and scanned slides without setting up an API key. Free to try — everything else in Decks stays free.",

@@ -6,6 +6,11 @@ export const ar: Translations = {
     docs: "فتح المستندات",
   },
 
+  mobileApp: {
+    heading: "DecksMD لـ iPhone و iPad",
+    body: "الخزنة نفسها وملفات markdown نفسها، تراجعها على هاتفك. البطاقات والجدولة والسجل تبقى داخل ملفاتك.",
+    cta: "التنزيل من App Store",
+  },
   pro: {
     heading: "Decks Pro",
     body: "أنشئ بطاقات من ملاحظاتك وملفات PDF والشرائح الممسوحة ضوئيًا دون إعداد مفتاح API. جرّبه مجانًا — يبقى كل شيء آخر في Decks مجانيًا.",

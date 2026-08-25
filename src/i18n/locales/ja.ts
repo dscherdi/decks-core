@@ -6,6 +6,11 @@ export const ja: Translations = {
     docs: "ドキュメントを開く",
   },
 
+  mobileApp: {
+    heading: "iPhone・iPad 版 DecksMD",
+    body: "同じVault、同じmarkdownを、スマホで復習。カードもスケジュールも履歴も、ファイルの中にとどまります。",
+    cta: "App Store からダウンロード",
+  },
   pro: {
     heading: "Decks Pro",
     body: "APIキーを設定しなくても、ノートやPDF、スキャンしたスライドからフラッシュカードを生成できます。無料でお試し——Decksのその他の機能は引き続き無料です。",

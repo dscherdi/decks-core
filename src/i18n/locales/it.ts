@@ -6,6 +6,11 @@ export const it: Translations = {
     docs: "Apri la documentazione",
   },
 
+  mobileApp: {
+    heading: "DecksMD per iPhone e iPad",
+    body: "Lo stesso vault, lo stesso markdown, ripassato sul telefono. Carte, pianificazione e cronologia restano nei tuoi file.",
+    cta: "Scarica su App Store",
+  },
   pro: {
     heading: "Decks Pro",
     body: "Genera schede dai tuoi appunti, dai PDF e dalle diapositive scansionate senza configurare una chiave API. Provalo gratis: tutto il resto di Decks resta gratuito.",

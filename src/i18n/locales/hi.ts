@@ -6,6 +6,11 @@ export const hi: Translations = {
     docs: "दस्तावेज़ खोलें",
   },
 
+  mobileApp: {
+    heading: "iPhone और iPad के लिए DecksMD",
+    body: "वही वॉल्ट, वही markdown, फ़ोन पर दोहराएँ। कार्ड, शेड्यूलिंग और इतिहास आपकी फ़ाइलों में ही रहते हैं।",
+    cta: "App Store से डाउनलोड करें",
+  },
   pro: {
     heading: "Decks Pro",
     body: "API कुंजी सेट किए बिना अपने नोट्स, PDF और स्कैन की गई स्लाइड्स से फ्लैशकार्ड बनाएँ। मुफ़्त आज़माएँ — Decks में बाकी सब कुछ मुफ़्त रहता है।",

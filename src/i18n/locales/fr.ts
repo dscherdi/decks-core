@@ -6,6 +6,11 @@ export const fr: Translations = {
     docs: "Ouvrir la documentation",
   },
 
+  mobileApp: {
+    heading: "DecksMD pour iPhone et iPad",
+    body: "Le même coffre, le même markdown, révisé sur votre téléphone. Cartes, planification et historique restent dans vos fichiers.",
+    cta: "Télécharger dans l’App Store",
+  },
   pro: {
     heading: "Decks Pro",
     body: "Générez des cartes à partir de vos notes, PDF et diapositives numérisées sans configurer de clé API. Essai gratuit — tout le reste de Decks demeure gratuit.",
