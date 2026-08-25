@@ -77,17 +77,26 @@ export interface SyncResult {
  * Whether a sync would empty a deck that still has cards, and should therefore
  * be refused.
  *
- * The asymmetry decides it: refusing costs a sync that the next one repeats,
- * proceeding costs the deck. An empty parse is far more often a header level
- * that stopped matching, or a parser that stopped recognising a format, than a
- * person deleting every card while keeping the note.
+ * `refuseEmptyResult` is the caller's, because only the caller can tell the two
+ * cases apart. A note whose cards were cut out and pasted into another note
+ * parses to nothing and *should* empty — that is how a deck moves, and its
+ * history follows. A note nobody touched that suddenly parses to nothing is a
+ * header level that stopped matching, and emptying it loses the deck.
+ *
+ * From in here the two are identical: heading present, no cards. What separates
+ * them is whether the file changed since the last sync, which the caller knows
+ * and this does not.
  */
 export function wouldEmptyDeck(
   parsedCount: number,
   existingCount: number,
-  allowEmptyResult?: boolean,
+  reasons: { contentEmpty: boolean; refuseEmptyResult?: boolean },
 ): boolean {
-  return parsedCount === 0 && existingCount > 0 && !allowEmptyResult;
+  if (parsedCount !== 0 || existingCount === 0) return false;
+  // An empty read is always a race, never an edit: a live deck file has at
+  // least its frontmatter tag. That protection is unconditional.
+  if (reasons.contentEmpty) return true;
+  return reasons.refuseEmptyResult === true;
 }
 
 export interface SyncData {
@@ -101,11 +110,13 @@ export interface SyncData {
   clozeEnabled?: boolean;
   examEnabled?: boolean;
   /**
-   * Allow a parse that yields nothing to delete a deck's remaining cards.
-   * Off by default: an empty result is far more often a misconfiguration than
-   * an edit. Set it where emptiness is a real state — a canvas with no edges.
+   * Refuse to let a parse that yields nothing delete the deck's remaining
+   * cards. Set it only when the caller knows the note has not changed since the
+   * last sync — an empty parse over unchanged content is a configuration fault,
+   * never an edit. Left unset, an empty parse empties the deck as it always has,
+   * which is what a deck being moved out of a note depends on.
    */
-  allowEmptyResult?: boolean;
+  refuseEmptyResult?: boolean;
 }
 
 /**
@@ -484,12 +495,15 @@ export class FlashcardSynchronizer {
        * (ids are content-derived and review_logs restores state), but only if
        * the cards come back at all.
        *
-       * Callers that know an empty result is legitimate — a canvas whose last
-       * edge was removed — opt out with allowEmptyResult. The caller must not
-       * stamp mtime for a skipped sync.
+       * Only a caller that knows the note is unchanged asks for this, via
+       * refuseEmptyResult; left alone, an empty parse empties the deck as it
+       * always has. The caller must not stamp mtime for a skipped sync.
        */
       if (
-        wouldEmptyDeck(expandedCards.length, existingFlashcards.length, data.allowEmptyResult)
+        wouldEmptyDeck(expandedCards.length, existingFlashcards.length, {
+          contentEmpty: data.fileContent.trim() === "",
+          refuseEmptyResult: data.refuseEmptyResult,
+        })
       ) {
         return {
           success: true,
