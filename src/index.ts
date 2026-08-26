@@ -392,6 +392,15 @@ export {
   unescapeTableCell,
 } from "./utils/markdown-table";
 export { cardFieldDefs, fieldSetValue } from "./utils/card-fields";
+export type { NoteAccess } from "./services/NoteAccess";
+export { AnchorStamper } from "./services/AnchorStamper";
+export type { StampOutcome } from "./services/AnchorStamper";
+export {
+  findBreadcrumbSection,
+  findFlashcardLineInRange,
+  findFlashcardLine,
+  findFlashcardSegment,
+} from "./utils/source-navigator";
 export type { CardFieldDef } from "./utils/card-fields";
 export { prepareClozeMath } from "./utils/clozeMath";
 export type { PreparedClozeMath } from "./utils/clozeMath";
