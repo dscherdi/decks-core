@@ -130,7 +130,14 @@ export interface IDatabaseService {
   getDeckWithProfile(deckId: string): Promise<DeckWithProfile | null>;
   getAllDecksWithProfiles(): Promise<DeckWithProfile[]>;
 
-  createFlashcard(flashcard: Omit<Flashcard, "id" | "created" | "modified">): Promise<void>;
+  /**
+   * `id` is optional: omitted, it is derived from the front text. Callers that
+   * mint their own — cloze, reverse, occlusion and spatial cards all use a
+   * different scheme from a plain front hash — pass it explicitly.
+   */
+  createFlashcard(
+    flashcard: Omit<Flashcard, "id" | "created" | "modified"> & { id?: string }
+  ): Promise<void>;
   getFlashcardById(flashcardId: string): Promise<Flashcard | null>;
   getFlashcardsByDeck(deckId: string): Promise<Flashcard[]>;
   getAllFlashcards(): Promise<Flashcard[]>;
