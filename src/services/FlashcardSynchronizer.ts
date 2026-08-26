@@ -13,7 +13,6 @@ import {
   generateOcclusionV2FlashcardId,
 } from "../utils/hash";
 import { occlusionV2HashInput, occlusionImageName } from "./occlusion/OcclusionV2";
-import { levenshteinSimilarityAbove } from "../utils/string";
 import { reverseBindingKey } from "../utils/anchors";
 
 export interface FlashcardUpdates {
@@ -712,15 +711,11 @@ export class FlashcardSynchronizer {
 
       // Smart Rename Detection. A rename = same card, edited front: the old id's
       // delete + the new id's create are paired into a "migrate" that carries the
-      // scheduling state (and re-points review_logs). Strong matches (identical
-      // back) resolve first via a Map — O(creates). Only the leftovers try the
-      // fuzzy front comparison, which is pre-filtered and capped: an uncapped
-      // creates × deletes Levenshtein sweep froze multi-minute on large
-      // re-imports where both sides' content had shifted.
+      // scheduling state (and re-points review_logs). Matching is by identical
+      // back, resolved through a Map — O(creates), with no pairwise sweep.
       progressCallback?.(65, "Detecting renamed flashcards...");
       const matchedCreates = new Set<number>();
       const matchedDeletes = new Set<number>();
-      const FUZZY_PAIR_BUDGET = 200_000;
 
       const pushMigrate = (newCardData: ParsedCardData, oldCard: Flashcard): void => {
         batchOperations.push({
@@ -788,36 +783,11 @@ export class FlashcardSynchronizer {
         matchedDeletes.add(deleteIdx);
       }
 
-      // Fuzzy pass (leftovers only): >80% front similarity. Skipped entirely when
-      // the pair count exceeds the budget — unmatched cards then fall back to
-      // plain create/delete, and the create still restores FSRS from review_logs.
-      const fuzzyCreates = cardsToCreate.length - matchedCreates.size;
-      const fuzzyDeletes = cardsToDelete.length - matchedDeletes.size;
-      if (fuzzyCreates * fuzzyDeletes <= FUZZY_PAIR_BUDGET) {
-        for (let createIdx = 0; createIdx < cardsToCreate.length; createIdx++) {
-          if (matchedCreates.has(createIdx)) continue;
-          const newCardData = cardsToCreate[createIdx];
-
-          for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
-            if (matchedDeletes.has(deleteIdx)) continue;
-            const oldCard = cardsToDelete[deleteIdx];
-            if (oldCard.anchor) continue;
-
-            if (!levenshteinSimilarityAbove(newCardData.parsed.front, oldCard.front, 80)) {
-              continue;
-            }
-            pushMigrate(newCardData, oldCard);
-            matchedCreates.add(createIdx);
-            matchedDeletes.add(deleteIdx);
-            break; // Found a match, move to next create
-          }
-        }
-      } else {
-        progressCallback?.(
-          65,
-          `Skipping fuzzy rename detection (${fuzzyCreates}x${fuzzyDeletes} pairs exceed budget)`
-        );
-      }
+      // No fuzzy pass. Front similarity was a guess, and a capped guess at
+      // that — the budget below turned it off on exactly the large decks where
+      // a rename is most likely, so it was never a floor anyone could rely on.
+      // Renames are recovered exactly instead: by anchor where a card has one,
+      // and by identical back above where it does not.
 
       // Process remaining creates (not matched)
       progressCallback?.(70, "Creating new flashcards...");
