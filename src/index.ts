@@ -310,6 +310,12 @@ export {
   getLocalHourSQL,
 } from "./utils/date-utils";
 export {
+  buildBackupFilename,
+  parseBackupFilename,
+  backupTimestamp,
+} from "./utils/backup-names";
+export type { ParsedBackupName } from "./utils/backup-names";
+export {
   parseSteps,
   validateLearningSteps,
   validateRelearningSteps,
