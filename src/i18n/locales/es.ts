@@ -1829,6 +1829,10 @@ export const es: Translations = {
       deckTagDesc:
         "Etiqueta base para identificar mazos de tarjetas. Los archivos con esta etiqueta (o sub-etiquetas como {tag}/math) se tratan como mazos. La etiqueta por defecto cambió de #flashcards a #decks. Si usabas #flashcards, seguirá funcionando hasta que lo cambies aquí.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Etiquetas ignoradas",
+      ignoredTagsDesc:
+        "Etiquetas que se mantienen fuera del árbol de etiquetas. Las demás etiquetas de una nota de mazo la agrupan junto a su etiqueta de mazo; indica aquí las que no deberían hacerlo, separadas por comas o saltos de línea. Ignorar una etiqueta también oculta todo lo que cuelga de ella.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Carpeta de búsqueda",
       folderSearchPathDesc:
         "Limita el análisis a una carpeta concreta. Selecciona 'escanear todo el vault' para analizar todos los archivos.",

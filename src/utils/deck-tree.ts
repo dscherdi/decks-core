@@ -144,8 +144,17 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   pruneEmptyFolders(filesSection);
 
   // --- Tags: nest by nested-tag path (tree) or flat group leaves ------------
+  // A deck note's flat frontmatter tags become groups too, so the section can be
+  // far wider than the deck-tag subtree alone. The same min-count floor the file
+  // list uses keeps one-off tags out of it; pinned groups are exempt, as there.
+  const tagGroups = deckGroups.filter((group) => {
+    if (minCount <= 0) return true;
+    if (pinnedIds.has(generateDeckGroupId(group.tag))) return true;
+    return (getStats(generateDeckGroupId(group.tag))?.totalCount ?? 0) >= minCount;
+  });
+
   if (flat) {
-    for (const group of deckGroups) {
+    for (const group of tagGroups) {
       const name = group.tag.replace(/^#/, "");
       tagsSection.children.push(
         makeNode({ id: `tag:${name}`, kind: "leaf", name, depth: 1, group })
@@ -153,7 +162,7 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
     }
   } else {
     const tagByPath = new Map<string, TreeNode>();
-    for (const group of deckGroups) {
+    for (const group of tagGroups) {
       const path = group.tag.replace(/^#/, "");
       const segs = path.split("/");
       let parent = tagsSection;

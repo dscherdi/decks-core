@@ -1783,6 +1783,10 @@ export const ja: Translations = {
       deckTagDesc:
         "デッキを識別するベースタグ。このタグ（または {tag}/math のようなサブタグ）が付いたファイルがデッキとして扱われます。既定タグは #flashcards から #decks に変更されました。#flashcards も、ここで変更するまでは引き続き使用できます。",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "無視するタグ",
+      ignoredTagsDesc:
+        "タグツリーに表示しないタグ。デッキノートの他のタグはデッキタグと並んでグループを作ります。そうしたくないものをカンマまたは改行区切りでここに入力してください。タグを無視すると、その配下もすべて非表示になります。",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "検索フォルダ",
       folderSearchPathDesc:
         "スキャンを特定のフォルダに限定します。「Vault 全体をスキャン」を選ぶとすべてのファイルがスキャンされます。",

@@ -1809,6 +1809,10 @@ export const it: Translations = {
       deckTagDesc:
         "Tag base per identificare i mazzi. I file con questo tag (o sotto-tag come {tag}/math) sono trattati come mazzi. Il tag predefinito è cambiato da #flashcards a #decks. Se usavi #flashcards, continuerà a funzionare finché non lo cambi qui.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Tag ignorati",
+      ignoredTagsDesc:
+        "Tag tenuti fuori dall'albero dei tag. Gli altri tag di una nota-mazzo la raggruppano accanto al suo tag del mazzo: elenca qui quelli che non devono farlo, separati da virgole o da a capo. Ignorare un tag nasconde anche tutto ciò che sta sotto di esso.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Percorso di ricerca",
       folderSearchPathDesc:
         "Limita la scansione a una cartella specifica. Seleziona « scansiona tutto il vault » per scansionare tutti i file.",

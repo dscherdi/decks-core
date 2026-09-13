@@ -1838,6 +1838,10 @@ export const de: Translations = {
       deckTagDesc:
         "Basis-Tag zur Identifizierung von Karteikarten-Stapeln. Dateien mit diesem Tag (oder Unter-Tags wie {tag}/math) werden als Stapel behandelt. Das Standard-Tag wurde von #flashcards auf #decks geändert. #flashcards funktioniert weiterhin, bis du es hier änderst.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Ignorierte Tags",
+      ignoredTagsDesc:
+        "Tags, die nicht im Tag-Baum erscheinen. Die übrigen Tags einer Stapel-Notiz gruppieren sie neben ihrem Stapel-Tag — trage hier die ein, die das nicht sollen, getrennt durch Kommas oder Zeilenumbrüche. Ein ignoriertes Tag blendet auch alles darunter aus.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Ordnersuchpfad",
       folderSearchPathDesc:
         'Scan auf einen bestimmten Ordner beschränken. „Ganzen Vault scannen" wählen, um alle Dateien zu scannen.',

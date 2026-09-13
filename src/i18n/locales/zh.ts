@@ -1737,6 +1737,10 @@ export const zh: Translations = {
       deckTagDesc:
         "用于识别卡片牌组的基础标签。带有此标签（或像 {tag}/math 的子标签）的文件将被视为牌组。默认标签已从 #flashcards 改为 #decks。如果你之前使用 #flashcards，在此处更改前仍会继续工作。",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "忽略的标签",
+      ignoredTagsDesc:
+        "不在标签树中显示的标签。牌组笔记的其他标签会与其牌组标签并列分组 — 在此列出不应如此的标签，以逗号或换行分隔。忽略一个标签也会隐藏其下的全部内容。",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "搜索文件夹",
       folderSearchPathDesc:
         "将扫描限制到特定文件夹。选择「扫描整个 Vault」以扫描所有文件。",

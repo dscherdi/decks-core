@@ -1824,6 +1824,10 @@ export const fr: Translations = {
       deckTagDesc:
         "Étiquette de base pour identifier les paquets. Les fichiers ayant cette étiquette (ou des sous-étiquettes comme {tag}/math) sont traités comme paquets. L'étiquette par défaut est passée de #flashcards à #decks. Si tu utilisais #flashcards, il continuera de fonctionner jusqu'à ce que tu le changes ici.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Étiquettes ignorées",
+      ignoredTagsDesc:
+        "Étiquettes exclues de l'arbre des étiquettes. Les autres étiquettes d'une note de paquet la regroupent à côté de son étiquette de paquet — indique ici celles qui ne devraient pas, séparées par des virgules ou des retours à la ligne. Ignorer une étiquette masque aussi tout ce qui se trouve en dessous.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Chemin de recherche",
       folderSearchPathDesc:
         "Limite l'analyse à un dossier spécifique. Sélectionne « analyser tout le vault » pour analyser tous les fichiers.",

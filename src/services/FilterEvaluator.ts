@@ -10,8 +10,12 @@ import {
 } from "./FilterEngine";
 
 export interface FilterEvaluationContext {
-  /** Map of deckId -> deckTag (e.g. "biology") */
-  deckTagMap: Map<string, string>;
+  /**
+   * deckId -> every tag the deck is reachable by, its own deck tag first and
+   * then its flat frontmatter tags. Callers that only want the deck tag read
+   * element 0.
+   */
+  deckTagMap: Map<string, string[]>;
   thresholds?: FilterCompileOptions;
 }
 
@@ -24,7 +28,7 @@ function fieldValue(card: Flashcard, field: string, ctx: FilterEvaluationContext
     case "deckId":
       return card.deckId;
     case "deckTag":
-      return ctx.deckTagMap.get(card.deckId) ?? "";
+      return ctx.deckTagMap.get(card.deckId) ?? [];
     case "type":
       return card.type;
     case "sourceFile":
@@ -103,7 +107,7 @@ function evaluateRule(
       return card.state === "new";
     case "equals": {
       const v = fieldValue(card, rule.field, ctx);
-      if (rule.field === "tags") {
+      if (rule.field === "tags" || rule.field === "deckTag") {
         return (v as string[]).includes(rule.value);
       }
       if (typeof v === "number") {
@@ -113,7 +117,7 @@ function evaluateRule(
     }
     case "not_equals": {
       const v = fieldValue(card, rule.field, ctx);
-      if (rule.field === "tags") {
+      if (rule.field === "tags" || rule.field === "deckTag") {
         return !(v as string[]).includes(rule.value);
       }
       if (typeof v === "number") {
@@ -126,12 +130,20 @@ function evaluateRule(
       if (rule.field === "tags") {
         return (v as string[]).includes(rule.value);
       }
+      if (rule.field === "deckTag") {
+        const needle = rule.value.toLowerCase();
+        return (v as string[]).some((tag) => tag.toLowerCase().includes(needle));
+      }
       return String(v).toLowerCase().includes(rule.value.toLowerCase());
     }
     case "not_contains": {
       const v = fieldValue(card, rule.field, ctx);
       if (rule.field === "tags") {
         return !(v as string[]).includes(rule.value);
+      }
+      if (rule.field === "deckTag") {
+        const needle = rule.value.toLowerCase();
+        return !(v as string[]).some((tag) => tag.toLowerCase().includes(needle));
       }
       return !String(v).toLowerCase().includes(rule.value.toLowerCase());
     }
@@ -163,7 +175,7 @@ function evaluateRule(
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
       if (values.length === 0) return false;
-      if (rule.field === "tags") {
+      if (rule.field === "tags" || rule.field === "deckTag") {
         const tags = fieldValue(card, rule.field, ctx) as string[];
         return values.some((v) => tags.includes(v));
       }

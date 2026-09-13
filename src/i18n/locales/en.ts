@@ -1730,6 +1730,10 @@ export const en = {
       deckTag: "Deck tag",
       deckTagDesc: "Base tag used to identify flashcard decks. Files tagged with this (or sub-tags like {tag}/math) will be treated as decks. The default tag has been renamed from #flashcards to #decks. If you were using #flashcards, it will continue to work until you change it here.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Ignored tags",
+      ignoredTagsDesc:
+        "Tags kept out of the tag tree. A deck note's other tags group it alongside its deck tag — list here the ones that shouldn't, separated by commas or newlines. Ignoring a tag also hides everything beneath it.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Folder search path",
       folderSearchPathDesc: "Limit scanning to a specific folder. Select 'scan entire vault' to scan all files.",
       folderSearchPathDefault: "Scan entire vault (default)",

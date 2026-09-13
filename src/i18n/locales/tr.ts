@@ -1816,6 +1816,10 @@ export const tr: Translations = {
       deckTagDesc:
         "Bilgi kartı destelerini tanımlamak için kullanılan temel etiket. Bununla (veya {tag}/matematik gibi alt etiketlerle) etiketlenmiş dosyalar deste olarak kabul edilecektir. Varsayılan etiket #flashcards yerine #decks olarak değiştirilmiştir. Eğer #flashcards kullanıyorsanız, buradan değiştirene kadar çalışmaya devam edecektir.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Yoksayılan etiketler",
+      ignoredTagsDesc:
+        "Etiket ağacının dışında tutulan etiketler. Bir deste notunun diğer etiketleri onu deste etiketinin yanında gruplandırır — bunu yapmaması gerekenleri burada virgül veya satır sonuyla ayırarak yazın. Bir etiketi yoksaymak altındaki her şeyi de gizler.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Klasör arama yolu",
       folderSearchPathDesc:
         "Taramayı belirli bir klasörle sınırlandırın. Tüm dosyaları taramak için 'tüm kasayı tara' seçeneğini belirleyin.",

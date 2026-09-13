@@ -1,3 +1,4 @@
+import type { TagScopeOptions } from "../utils/deck-tags";
 import type {
   Deck,
   DeckProfile,
@@ -124,8 +125,14 @@ export interface IDatabaseService {
   getTagMappingsForProfile(profileId: string): Promise<ProfileTagMapping[]>;
   getAllTagMappings(): Promise<ProfileTagMapping[]>;
   getProfileIdForTag(tag: string): Promise<string | null>;
+  /**
+   * Resolve a profile from an ordered list of a deck's tags. Earlier tags win
+   * outright, so a deck tag's mapping is never overridden by one its note picked
+   * up from a flat tag; within one tag the most specific mapping wins.
+   */
+  getProfileIdForTags(tags: readonly string[]): Promise<string | null>;
   deleteTagMapping(id: string): Promise<void>;
-  applyProfileToTag(profileId: string, tag: string): Promise<number>;
+  applyProfileToTag(profileId: string, tag: string, scope?: TagScopeOptions): Promise<number>;
 
   getDeckWithProfile(deckId: string): Promise<DeckWithProfile | null>;
   getAllDecksWithProfiles(): Promise<DeckWithProfile[]>;

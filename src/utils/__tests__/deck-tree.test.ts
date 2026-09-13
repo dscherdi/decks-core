@@ -196,6 +196,47 @@ describe("buildDeckTree — Tags", () => {
     expect(c.name).toBe("c");
     expect(findNode(tree, "tag:flat")!.kind).toBe("leaf");
   });
+
+  it("gives a flat tag its own root, alongside the deck-tag subtree", () => {
+    const tree = build({ deckGroups: groups, getStats: stats });
+    const tags = tree.sections.find((s) => s.section === "tags")!;
+    expect(tags.children.map((c) => c.id).sort()).toEqual(["tag:a", "tag:flat"]);
+  });
+
+  it("totals the section over unique decks when a deck sits in several tags", () => {
+    // One deck reachable by its deck tag and by two flat tags.
+    const overlapping = [group("#decks/spanish", ["x"]), group("#math", ["x"]), group("#retry", ["x"])];
+    const overlapStats = statsGetter({
+      x: { newCount: 5, dueCount: 2, totalCount: 9 },
+      [generateDeckGroupId("#decks/spanish")]: { newCount: 5, dueCount: 2, totalCount: 9 },
+      [generateDeckGroupId("#math")]: { newCount: 5, dueCount: 2, totalCount: 9 },
+      [generateDeckGroupId("#retry")]: { newCount: 5, dueCount: 2, totalCount: 9 },
+    });
+    const tree = build({ deckGroups: overlapping, getStats: overlapStats });
+    const tags = tree.sections.find((s) => s.section === "tags")!;
+    expect([...tags.deckIds]).toEqual(["x"]);
+    // Counted once, not once per tag it appears under.
+    expect(tags).toMatchObject({ newCount: 5, dueCount: 2 });
+  });
+
+  it("hides tag groups below the min-card floor but keeps pinned ones", () => {
+    const tree = build({
+      deckGroups: groups,
+      getStats: stats,
+      minDeckCardCount: 5,
+    });
+    // #flat has 8 cards and stays; #a/b/c has 3 and goes.
+    expect(findNode(tree, "tag:flat")).toBeDefined();
+    expect(findNode(tree, "tag:a/b/c")).toBeUndefined();
+
+    const pinned = build({
+      deckGroups: groups,
+      getStats: stats,
+      minDeckCardCount: 5,
+      pinnedIds: new Set([generateDeckGroupId("#a/b/c")]),
+    });
+    expect(findNode(pinned, "tag:a/b/c")).toBeDefined();
+  });
 });
 
 // --- Flat view --------------------------------------------------------------

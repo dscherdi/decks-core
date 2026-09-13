@@ -1759,6 +1759,10 @@ export const zhTW: Translations = {
       deckTagDesc:
         "用於識別閃卡牌組的基本標籤。帶有此標籤 (或子標籤如 {tag}/math) 的檔案將被視為牌組。預設標籤已從 #flashcards 更改為 #decks。如果您之前使用 #flashcards，它將繼續生效，直到您在此處進行更改。",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "忽略的標籤",
+      ignoredTagsDesc:
+        "不在標籤樹中顯示的標籤。牌組筆記的其他標籤會與其牌組標籤並列分組 — 請在此列出不應如此的標籤，以逗號或換行分隔。忽略一個標籤也會隱藏其下的全部內容。",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "資料夾搜尋路徑",
       folderSearchPathDesc:
         "將掃描範圍限制在特定的資料夾。選擇「掃描整個儲存庫」以掃描所有檔案。",

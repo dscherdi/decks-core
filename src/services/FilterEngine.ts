@@ -55,6 +55,24 @@ function tagDelimitedParam(tag: string): string {
   return `%,${tag.toLowerCase()},%`;
 }
 
+// A deck is reachable by any tag it carries: its own deck tag (d.tag) and the
+// flat frontmatter tags in the JSON array d.file_tags. The JSON quotes delimit
+// an entry the same way the commas above delimit a card tag, so `#math` matches
+// #math without also matching #math/algebra. COALESCE keeps a NULL file_tags
+// from poisoning the negated forms, where NULL would drop the row entirely.
+function deckTagsColumn(): string {
+  return "COALESCE(d.file_tags, '')";
+}
+
+function deckTagMatch(value: string, params: SqlJsValue[], exact: boolean): string {
+  if (exact) {
+    params.push(value, `%"${value}"%`);
+    return `(d.tag = ? OR ${deckTagsColumn()} LIKE ?)`;
+  }
+  params.push(`%${value}%`, `%${value}%`);
+  return `(d.tag LIKE ? OR ${deckTagsColumn()} LIKE ?)`;
+}
+
 function parseBoolValue(value: string): boolean {
   return value === "true" || value === "1";
 }
@@ -109,6 +127,7 @@ function compileRule(
     throw new Error(`Unknown filter field: ${rule.field}`);
   }
   const isTags = rule.field === "tags";
+  const isDeckTag = rule.field === "deckTag";
 
   switch (rule.operator) {
     case "is_due": {
@@ -124,6 +143,7 @@ function compileRule(
         params.push(tagDelimitedParam(rule.value));
         return `(${tagDelimitedColumn()} LIKE ?)`;
       }
+      if (isDeckTag) return deckTagMatch(rule.value, params, true);
       if (NUMERIC_FIELDS.has(rule.field)) {
         params.push(parseFloat(rule.value));
       } else {
@@ -135,6 +155,7 @@ function compileRule(
         params.push(tagDelimitedParam(rule.value));
         return `(${tagDelimitedColumn()} NOT LIKE ?)`;
       }
+      if (isDeckTag) return `(NOT ${deckTagMatch(rule.value, params, true)})`;
       if (NUMERIC_FIELDS.has(rule.field)) {
         params.push(parseFloat(rule.value));
       } else {
@@ -146,6 +167,7 @@ function compileRule(
         params.push(tagDelimitedParam(rule.value));
         return `(${tagDelimitedColumn()} LIKE ?)`;
       }
+      if (isDeckTag) return deckTagMatch(rule.value, params, false);
       params.push(`%${rule.value}%`);
       return `(${column} LIKE ?)`;
     case "not_contains":
@@ -153,6 +175,7 @@ function compileRule(
         params.push(tagDelimitedParam(rule.value));
         return `(${tagDelimitedColumn()} NOT LIKE ?)`;
       }
+      if (isDeckTag) return `(NOT ${deckTagMatch(rule.value, params, false)})`;
       params.push(`%${rule.value}%`);
       return `(${column} NOT LIKE ?)`;
     case "greater_than":
@@ -178,6 +201,9 @@ function compileRule(
           params.push(tagDelimitedParam(v));
         }
         return `(${clauses})`;
+      }
+      if (isDeckTag) {
+        return `(${values.map((v) => deckTagMatch(v, params, true)).join(" OR ")})`;
       }
       const placeholders = values.map(() => "?").join(", ");
       for (const v of values) {

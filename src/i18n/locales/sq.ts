@@ -1830,6 +1830,10 @@ export const sq: Translations = {
       deckTagDesc:
         "Etiketa bazë për të identifikuar pakot e kartave. Skedarët e etiketuar (psh. {tag}/math) do të trajtohen si pako. Etiketa e paracaktuar është #decks.",
       deckTagPlaceholder: "#decks",
+      ignoredTags: "Etiketat e shpërfillura",
+      ignoredTagsDesc:
+        "Etiketa që mbahen jashtë pemës së etiketave. Etiketat e tjera të një shënimi pakoje e grupojnë atë krahtë etiketës së pakos — shkruaj këtu ato që nuk duhet, të ndara me presje ose rreshta të rinj. Shpërfillja e një etikete fsheh edhe gjithçka nën të.",
+      ignoredTagsPlaceholder: "status, daily",
       folderSearchPath: "Shtegu i kërkimit të dosjeve",
       folderSearchPathDesc:
         "Kufizo kërkimin në një dosje specifike. Zgjidh 'skano të gjithë Vault-in' për të skanuar të gjithë skedarët.",

@@ -370,6 +370,19 @@ export {
 } from "./utils/string";
 export { sortDeckList, filterByMinCount } from "./utils/deck-sort";
 export {
+  normalizeTag,
+  ancestorTags,
+  isUnderTag,
+  matchesIgnore,
+  pickDeckTag,
+  flatTagsFor,
+  studyTagsFor,
+  pickProfileMapping,
+  parseIgnoredTags,
+  tagScopeFromSettings,
+} from "./utils/deck-tags";
+export type { TagScopeOptions } from "./utils/deck-tags";
+export {
   buildDeckTree,
   filterDeckTree,
   sortDeckTree,
