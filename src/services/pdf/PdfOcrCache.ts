@@ -13,6 +13,10 @@ const OCR_CONCURRENCY = 3;
 const OCR_MAX_ATTEMPTS = 3;
 const OCR_RETRY_BASE_MS = 300;
 
+// Long enough to outlast a limiter window; the sub-second backoff above is for
+// an upstream blip and burns all three attempts inside a second against a limit.
+const OCR_RATE_LIMIT_BACKOFF_MS = [5_000, 20_000];
+
 /** Minimal text file store the OCR cache writes to (vault adapter in the plugin). */
 export interface FileStore {
   exists(path: string): Promise<boolean>;
@@ -140,7 +144,11 @@ export class PdfOcrCache {
         this.logger?.debug(
           `OCR transient error (attempt ${attempt + 1}), retrying: ${String(e)}`,
         );
-        await delay(OCR_RETRY_BASE_MS * (attempt + 1), signal);
+        const wait = isRateLimit(e)
+          ? (OCR_RATE_LIMIT_BACKOFF_MS[attempt] ??
+             OCR_RATE_LIMIT_BACKOFF_MS[OCR_RATE_LIMIT_BACKOFF_MS.length - 1])
+          : OCR_RETRY_BASE_MS * (attempt + 1);
+        await delay(wait, signal);
       }
     }
     throw lastErr;
@@ -236,6 +244,9 @@ export class PdfOcrCache {
           if (signal?.aborted || (e instanceof AiError && e.code === "aborted")) {
             throw e;
           }
+          // Not a bad page but an unfinished run — blanking it would hand back a
+          // chapter with holes and no sign any were made.
+          if (isRateLimit(e)) throw e;
           this.logger?.debug(`OCR page ${pageNum} failed, skipping: ${String(e)}`);
           out.set(pageNum, "");
           onProgress?.({
@@ -253,6 +264,12 @@ export class PdfOcrCache {
     await Promise.all(Array.from({ length: poolSize }, () => worker()));
     return out;
   }
+}
+
+// Keyed on status, not body: our limit and an upstream one both arrive as 429,
+// and either way the answer is to wait rather than call the page unreadable.
+function isRateLimit(e: unknown): boolean {
+  return e instanceof AiError && (e.code === "rate_limited" || e.status === 429);
 }
 
 /** Whether an error is worth retrying (rate limit / 5xx / transient network). */

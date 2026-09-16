@@ -91,6 +91,46 @@ describe("PdfOcrCache.runOcr", () => {
     expect(progress).toEqual([true, true]);
   });
 
+  /**
+   * A rate-limited page used to be swallowed: the sub-second backoff could never
+   * outlast a limiter window, so all three attempts failed inside a second and
+   * the page was written into the chapter as empty text. The chapter came back
+   * with holes and nothing said so.
+   */
+  it("surfaces a rate-limited page instead of blanking it", async () => {
+    jest.useFakeTimers();
+    try {
+      const { files } = fakeFiles();
+      let calls = 0;
+      const limited: HttpClient = {
+        request: async () => {
+          calls++;
+          return {
+            status: 429,
+            text: '{"error":"too many requests — slow down","code":"rate_limited"}',
+            headers: {},
+          };
+        },
+      } as unknown as HttpClient;
+      const render: PageRenderer = async () =>
+        ({ mimeType: "image/jpeg", dataBase64: "AAAA" }) as RefactorImage;
+      const cache = new PdfOcrCache(files, () => "pdf-ocr", noConfig, limited, render);
+
+      const run = cache.runOcr({} as PdfDoc, "h", OCR, [1]);
+      const settled = run.then(
+        () => "resolved",
+        (e) => `rejected:${e instanceof Error ? e.name : String(e)}`,
+      );
+      // Past the longest backoff, so every attempt has been spent.
+      await jest.advanceTimersByTimeAsync(120_000);
+
+      expect(await settled).toBe("rejected:AiError");
+      expect(calls).toBeGreaterThan(1); // it retried rather than giving up at once
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("returns every page (keyed by page number) for a large cached set", async () => {
     const { files } = fakeFiles();
     const cache = make("pdf-ocr", files);

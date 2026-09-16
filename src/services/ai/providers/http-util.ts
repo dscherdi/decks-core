@@ -2,21 +2,38 @@ import type { HttpClient, HttpRequest, HttpResponse } from "../HttpClient";
 import { AiError } from "../types";
 import { I18n } from "../../../i18n/I18n";
 
-/** Map the backend's quota reason onto a localized, actionable message. */
-function quotaMessage(body: string): string {
-  const s = I18n.t.settings.ai;
-  let code = "";
+/** The backend's machine-readable reason, or "" for a non-JSON body. */
+function bodyCode(body: string): string {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed && typeof parsed === "object" && "code" in parsed) {
-      code = String(parsed.code);
+      return String(parsed.code);
     }
   } catch {
-    // Non-JSON body — fall through to the generic message.
+    // Not JSON — the caller falls through to a generic message.
   }
+  return "";
+}
+
+/** Map the backend's quota reason onto a localized, actionable message. */
+function quotaMessage(body: string): string {
+  const s = I18n.t.settings.ai;
+  const code = bodyCode(body);
   if (code === "daily_quota_exceeded") return s.dailyLimitReached;
   if (code === "trial_exhausted") return s.trialExhausted;
   return s.subscriptionNone;
+}
+
+// Null means "not one of ours" — a BYO provider's body is often the only clue
+// (a rejected key, an unknown model), so the caller shows it rather than a stock line.
+function hostedMessage(body: string, status: number): string | null {
+  const s = I18n.t.settings.ai;
+  const code = bodyCode(body);
+  if (code === "rate_limited") return s.rateLimited;
+  if (code === "upstream_unavailable") {
+    return status === 429 ? s.serviceBusy : s.serviceUnavailable;
+  }
+  return null;
 }
 
 /** Throw if the request has already been aborted. */
@@ -45,18 +62,22 @@ export async function sendJson(
     );
   }
   if (res.status === 429) {
-    throw new AiError("rate_limited", truncate(res.text), res.status);
+    throw new AiError(
+      "rate_limited",
+      hostedMessage(res.text, res.status) ?? I18n.t.settings.ai.rateLimited,
+      res.status,
+    );
   }
-  // 402 carries a machine-readable reason from the hosted backend. Surfacing
-  // the raw body here would show the user a JSON dump instead of telling them
-  // whether to wait until tomorrow or subscribe.
+  // 402 carries a machine-readable reason from the hosted backend, which decides
+  // whether the user should wait until tomorrow or subscribe.
   if (res.status === 402) {
     throw new AiError("quota_exceeded", quotaMessage(res.text), res.status);
   }
   if (res.status < 200 || res.status >= 300) {
     throw new AiError(
       "provider_error",
-      `Provider returned ${res.status}: ${truncate(res.text)}`,
+      hostedMessage(res.text, res.status) ??
+        `Provider returned ${res.status}: ${truncate(res.text)}`,
       res.status,
     );
   }

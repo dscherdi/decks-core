@@ -104,3 +104,41 @@ describe("DecksProProvider OCR payload", () => {
     expect(sent.images).toBeUndefined();
   });
 });
+
+// Both error screenshots showed a JSON body verbatim in the UI, because only 402
+// parsed the payload and every other status handed AiError the raw text.
+describe("error bodies reach the user as sentences", () => {
+  function failing(status: number, text: string): HttpClient {
+    return { request: async () => ({ status, headers: {}, text }) };
+  }
+  const run = (http: HttpClient) =>
+    providerFor(DECKS_TIER_FAST, http).complete({ system: "s", user: "u", json: false });
+
+  it("turns our rate-limit body into a message, not JSON", async () => {
+    const http = failing(429, '{"error":"too many requests — slow down","code":"rate_limited"}');
+    await expect(run(http)).rejects.toMatchObject({
+      code: "rate_limited",
+      message: expect.not.stringContaining("{"),
+    });
+  });
+
+  it("distinguishes a busy upstream from an unavailable one", async () => {
+    const busy = '{"error":"x","code":"upstream_unavailable"}';
+    await expect(run(failing(429, busy))).rejects.toMatchObject({
+      message: expect.not.stringContaining("{"),
+    });
+    await expect(run(failing(502, busy))).rejects.toMatchObject({
+      code: "provider_error",
+      message: expect.not.stringContaining("{"),
+    });
+  });
+
+  // A BYO provider's body is not ours to interpret and is often the only clue.
+  it("keeps an unrecognised provider body so the cause stays visible", async () => {
+    const http = failing(400, '{"error":{"message":"Invalid API key"}}');
+    await expect(run(http)).rejects.toMatchObject({
+      code: "provider_error",
+      message: expect.stringContaining("Invalid API key"),
+    });
+  });
+});
