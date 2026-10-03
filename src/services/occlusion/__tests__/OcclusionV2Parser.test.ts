@@ -82,6 +82,34 @@ masks:
     }
   });
 
+  it("refuses a mask with no usable position rather than shrinking it to a dot", () => {
+    const damaged = `image: "[[a.png]]"
+masks:
+  - id: ok
+    x: 10
+    y: 10
+    w: 20
+    h: 15
+  - id: k1
+    x: 10
+    y: oops`;
+    const res = OcclusionV2Parser.parseOcclusionBlock(damaged);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/mask 2/i);
+    expect(OcclusionV2Parser.parse(damaged, "", [])).toEqual([]);
+  });
+
+  it("still reads numbers written as quoted strings", () => {
+    const res = OcclusionV2Parser.parseOcclusionBlock(`image: "[[a.png]]"
+masks:
+  - id: m1
+    x: "12"
+    y: "30"
+    w: "18"
+    h: "9.5"`);
+    expect(res.ok && res.doc.masks[0]).toMatchObject({ x: 12, y: 30, w: 18, h: 9.5 });
+  });
+
   it("de-duplicates colliding mask ids deterministically", () => {
     const src = `image: "[[a.png]]"
 masks:

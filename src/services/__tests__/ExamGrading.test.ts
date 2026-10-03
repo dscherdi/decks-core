@@ -29,6 +29,18 @@ describe("stripInlineMarkdown", () => {
 });
 
 describe("isTypedAnswerCorrect", () => {
+  it("tolerant mode reads past punctuation and a leading 'the', exact mode does not", () => {
+    expect(isTypedAnswerCorrect("mitochondrian", "The mitochondrion.", "tolerant")).toBe(true);
+    expect(isTypedAnswerCorrect("the mitochondrion", "Mitochondrion", "tolerant")).toBe(true);
+    expect(isTypedAnswerCorrect("carbon 14", "carbon-14", "tolerant")).toBe(true);
+    expect(isTypedAnswerCorrect("mitochondrian", "The mitochondrion.", "exact")).toBe(false);
+  });
+
+  it("tolerant mode keeps other articles, which can be the answer", () => {
+    expect(isTypedAnswerCorrect("major", "A major", "tolerant")).toBe(false);
+    expect(isTypedAnswerCorrect("C++", "C", "tolerant")).toBe(false);
+  });
+
   it("exact mode requires normalized equality", () => {
     expect(isTypedAnswerCorrect(" argon ", "Argon", "exact")).toBe(true);
     expect(isTypedAnswerCorrect("argom", "Argon", "exact")).toBe(false);

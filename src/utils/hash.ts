@@ -79,6 +79,49 @@ export function generateAnchorId(input: string, occurrence = 0): string {
 }
 
 /**
+ * 64-bit FNV-1a over UTF-16 code units, as a base36 string with no leading zero.
+ * Kept in 16-bit limbs: the plugin's TypeScript target has no BigInt.
+ */
+export function hash64(text: string): string {
+    // Offset basis 0xcbf29ce484222325, least significant limb first.
+    let h0 = 0x2325, h1 = 0x8422, h2 = 0x9ce4, h3 = 0xcbf2;
+    const mix = (byte: number): void => {
+        h0 ^= byte;
+        // Multiply by the prime 0x100000001b3 = 2^40 + 0x1b3, modulo 2^64.
+        const t0 = h0 * 0x1b3;
+        const t1 = h1 * 0x1b3 + (t0 >>> 16);
+        const t2 = h2 * 0x1b3 + (t1 >>> 16) + (h0 << 8);
+        const t3 = h3 * 0x1b3 + (t2 >>> 16) + (h1 << 8);
+        h0 = t0 & 0xffff;
+        h1 = t1 & 0xffff;
+        h2 = t2 & 0xffff;
+        h3 = t3 & 0xffff;
+    };
+    for (let i = 0; i < text.length; i++) {
+        const unit = text.charCodeAt(i);
+        mix(unit & 0xff);
+        mix(unit >>> 8);
+    }
+    return limbsToBase36([h3, h2, h1, h0]);
+}
+
+/** Base36 of a big-endian array of 16-bit limbs, never empty and never "0". */
+function limbsToBase36(limbs: number[]): string {
+    const digits: string[] = [];
+    let rest = [...limbs];
+    while (rest.some((limb) => limb !== 0)) {
+        let carry = 0;
+        rest = rest.map((limb) => {
+            const value = carry * 0x10000 + limb;
+            carry = value % 36;
+            return Math.floor(value / 36);
+        });
+        digits.push(carry.toString(36));
+    }
+    return digits.length === 0 ? "1" : digits.reverse().join("");
+}
+
+/**
  * Generate deck ID using hash of filepath
  * @param filepath The filepath of the deck
  * @returns A deterministic ID in format "deck_HASH"

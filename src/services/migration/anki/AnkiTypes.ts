@@ -84,6 +84,7 @@ export interface AnkiParsedCard {
   imagePath?: string; // bare image path (for the occlusion card id)
   masks?: OcclusionMask[];
   maskId?: string; // this Anki IO note's specific mask (for history)
+  decksId?: string; // set by the renderer: the id this card's token carries
   media: string[]; // referenced media filenames
   scheduling: AnkiScheduling;
 }

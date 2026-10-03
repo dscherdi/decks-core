@@ -23,8 +23,10 @@ import {
   type FSRSProfile,
 } from "../algorithm/fsrs-weights";
 import { parseSteps } from "../utils/step-parser";
+import { addCalendarDays, studyDayStart } from "../utils/date-utils";
 import { yieldToUI } from "../utils/ui";
 import { formatTime } from "../utils/formatting";
+import { generateContentHash } from "../utils/hash";
 import type { RateOp } from "./SyncLog.types";
 import type { DecksSettings } from "../settings";
 
@@ -73,6 +75,8 @@ export class Scheduler {
   private db: IDatabaseService;
   private fsrs: FSRS;
   private currentSessionId: string | null = null;
+  /** Cards buried or suspended in each session before being graded; they leave its goal. */
+  private setAsideInSession = new Map<string, number>();
   private logger?: ILogger;
   private backupService: IBackupService;
   private settings: DecksSettings;
@@ -184,14 +188,14 @@ export class Scheduler {
     const session = await this.db.getReviewSessionById(sessionId);
     if (!session) return null;
 
+    const setAside = this.setAsideInSession.get(sessionId) ?? 0;
+    const goalTotal = Math.max(session.doneUnique, session.goalTotal - setAside);
     const progress =
-      session.goalTotal > 0
-        ? Math.min(100, (session.doneUnique / session.goalTotal) * 100)
-        : 0;
+      goalTotal > 0 ? Math.min(100, (session.doneUnique / goalTotal) * 100) : 0;
 
     return {
       doneUnique: session.doneUnique,
-      goalTotal: session.goalTotal,
+      goalTotal,
       progress,
     };
   }
@@ -255,6 +259,48 @@ export class Scheduler {
     return this.currentSessionId;
   }
 
+  /** Suspend a card, taking it out of the current session's goal if it had not been graded there. */
+  async suspendCard(cardId: string): Promise<void> {
+    await this.noteSetAside(cardId);
+    await this.db.suspendCard(cardId);
+  }
+
+  /** Bury a card until `untilIso`, taking it out of the current session's goal like suspend. */
+  async buryCard(cardId: string, untilIso: string): Promise<void> {
+    await this.noteSetAside(cardId);
+    await this.db.buryCard(cardId, untilIso);
+  }
+
+  private async noteSetAside(cardId: string): Promise<void> {
+    const sessionId = this.currentSessionId;
+    if (!sessionId || (await this.db.isCardReviewedInSession(sessionId, cardId))) return;
+    this.setAsideInSession.set(sessionId, (this.setAsideInSession.get(sessionId) ?? 0) + 1);
+  }
+
+  /**
+   * A card rated Again in the current session, once due before the session's window closes.
+   * Offered only when nothing else is left, so it comes back rather than the session ending.
+   */
+  private async getAgainCardInSession(now: Date): Promise<Flashcard | null> {
+    const sessionId = this.currentSessionId;
+    if (!sessionId) return null;
+    const session = await this.db.getReviewSessionById(sessionId);
+    if (!session || session.endedAt) return null;
+    const windowEnd = new Date(
+      new Date(session.startedAt).getTime() + this.settings.review.sessionDuration * 60_000
+    );
+    const rows = await this.db.querySql(
+      `SELECT * FROM flashcards
+       WHERE id IN (SELECT flashcard_id FROM review_logs WHERE session_id = ? AND rating = 1)
+         AND due_date <= ?
+         AND suspended_at IS NULL
+         AND (buried_until IS NULL OR buried_until <= ?)
+       ORDER BY due_date ASC LIMIT 1`,
+      [sessionId, windowEnd.toISOString(), now.toISOString()]
+    );
+    return rows.length > 0 ? this.rowToFlashcard(rows[0]) : null;
+  }
+
   /**
    * Get the next due card for review
    */
@@ -306,15 +352,20 @@ export class Scheduler {
       const newCard = await this.getNextNewCard(deckId);
       if (newCard) {
         this.debugLog(`Found new card: ${newCard.id}`);
-      } else {
-        this.debugLog(`No new cards found for deck: ${deckId}`);
+        this.perfLog("Scheduler.getNext", getNextPerfStart);
+        return newCard;
       }
-      this.perfLog("Scheduler.getNext", getNextPerfStart);
-      return newCard;
+      this.debugLog(`No new cards found for deck: ${deckId}`);
     } else if (!allowNew) {
       this.debugLog(`New cards not allowed for this request`);
     } else {
       this.debugLog(`New card quota exhausted for deck: ${deckId}`);
+    }
+
+    const again = await this.getAgainCardInSession(now);
+    if (again) {
+      this.perfLog("Scheduler.getNext", getNextPerfStart);
+      return again;
     }
 
     this.debugLog(`No cards available for deck: ${deckId}`);
@@ -1126,10 +1177,11 @@ export class Scheduler {
       globalRemaining > 0 &&
       (await this.hasNewCardQuotaForDeckGroup(deckGroup))
     ) {
-      return await this.getNextNewCardForDeckGroup(deckGroup);
+      const newCard = await this.getNextNewCardForDeckGroup(deckGroup);
+      if (newCard) return newCard;
     }
 
-    return null;
+    return await this.getAgainCardInSession(now);
   }
 
   private async getDeckIdsWithNewQuota(deckGroup: DeckGroup): Promise<string[]> {
@@ -1311,17 +1363,23 @@ export class Scheduler {
   // state in cram_cards — it never writes review_logs, never mutates flashcards,
   // and never emits sync ops (cross-device convergence is merge-before-save).
 
-  private cramDeckKeyAndKind(deckOrGroup: DeckOrGroup): {
+  private cramDeckKeyAndKind(
+    deckOrGroup: DeckOrGroup,
+    only?: readonly string[]
+  ): {
     deckKey: string;
     deckKind: "file" | "group" | "custom";
   } {
-    if (isDeckGroup(deckOrGroup)) {
-      return { deckKey: deckOrGroup.tag, deckKind: "group" };
-    }
-    if (isCustomDeck(deckOrGroup)) {
-      return { deckKey: deckOrGroup.id, deckKind: "custom" };
-    }
-    return { deckKey: deckOrGroup.id, deckKind: "file" };
+    const base = isDeckGroup(deckOrGroup)
+      ? { deckKey: deckOrGroup.tag, deckKind: "group" as const }
+      : isCustomDeck(deckOrGroup)
+        ? { deckKey: deckOrGroup.id, deckKind: "custom" as const }
+        : { deckKey: deckOrGroup.id, deckKind: "file" as const };
+    if (!only || only.length === 0) return base;
+    // A run narrowed to some cards is its own session, keyed by the cards asked
+    // for, so it neither resumes nor is resumed by a whole-deck run.
+    const ids = [...new Set(only)].sort().join(",");
+    return { ...base, deckKey: `${base.deckKey}|only:${generateContentHash(ids)}` };
   }
 
   private cramCardId(sessionId: string, flashcardId: string): string {
@@ -1343,9 +1401,10 @@ export class Scheduler {
    */
   async hasResumableCram(
     deckOrGroup: DeckOrGroup,
-    now: Date = new Date()
+    now: Date = new Date(),
+    only?: readonly string[]
   ): Promise<boolean> {
-    const { deckKey } = this.cramDeckKeyAndKind(deckOrGroup);
+    const { deckKey } = this.cramDeckKeyAndKind(deckOrGroup, only);
     const existing = await this.db.getActiveCramSessionForDeck(deckKey);
     if (!existing) return false;
     if (!this.isSameStudyDay(existing.startedAt, now)) return false;
@@ -1356,14 +1415,16 @@ export class Scheduler {
    * Start (or resume) a cram session over the given cards. If an unfinished
    * session with cards still to graduate already exists for this deck, it is
    * resumed; otherwise a fresh session is seeded with every card reset to a
-   * "new" learning state.
+   * "new" learning state. Pass `only` when `cards` is a chosen subset, so the
+   * run resumes as that subset rather than as the whole deck.
    */
   async startCramSession(
     deckOrGroup: DeckOrGroup,
     cards: Flashcard[],
-    now: Date = new Date()
+    now: Date = new Date(),
+    only?: readonly string[]
   ): Promise<NewSession> {
-    const { deckKey, deckKind } = this.cramDeckKeyAndKind(deckOrGroup);
+    const { deckKey, deckKind } = this.cramDeckKeyAndKind(deckOrGroup, only);
 
     const existing = await this.db.getActiveCramSessionForDeck(deckKey);
     if (existing) {
@@ -1473,13 +1534,12 @@ export class Scheduler {
     }
     await this.updateFSRSForDeck(deck);
 
-    // Drill from a synthetic card carrying only the cram-local scheduling state.
-    // lastReviewed is pinned a day back so each cram rating is evaluated on
-    // FSRS's long-term (spaced) path rather than the same-study-day short-term
-    // path — otherwise rapid re-reviews within one session would grow stability
-    // in tiny increments and a card could take dozens of Goods to reach 1 day.
-    const spacedLastReviewed = new Date(
-      now.getTime() - 24 * 60 * 60 * 1000
+    // A previous-study-day lastReviewed keeps cram on FSRS's spaced path. A calendar day back,
+    // not 24h (which stays in a 25-hour day), and before today's start if the clocks skipped it.
+    const todayStart = studyDayStart(now, this.settings.review.nextDayStartsAt ?? 4);
+    const dayBack = addCalendarDays(now, -1);
+    const spacedLastReviewed = (
+      dayBack < todayStart ? dayBack : new Date(todayStart.getTime() - 1)
     ).toISOString();
     const synthetic: Flashcard = {
       ...realCard,
@@ -1579,7 +1639,7 @@ export class Scheduler {
   }
 
   async getNextForCustomDeck(
-    _now: Date,
+    now: Date,
     customDeck: CustomDeckGroup,
     options: { allowNew?: boolean } = {}
   ): Promise<Flashcard | null> {
@@ -1602,7 +1662,7 @@ export class Scheduler {
       }
     }
 
-    return null;
+    return await this.getAgainCardInSession(now);
   }
 
 }

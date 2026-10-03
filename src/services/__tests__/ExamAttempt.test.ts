@@ -127,6 +127,30 @@ describe("drawExamQuestions", () => {
     expect(drawn.map((q) => q.card.id)).toEqual(pool.slice(0, 2).map((q) => q.card.id));
   });
 
+  it("keeps the note's order when questions are not shuffled", () => {
+    const pool = buildExamPool(
+      [mcqCard(), mcqCard(), mcqCard(), mcqCard(), mcqCard()],
+      EXAM_DECKS,
+      "tolerant"
+    ).eligible;
+    const order = pool.map((q) => q.card.id);
+    for (const seed of [1, 2, 3, 4]) {
+      const all = drawExamQuestions(
+        pool,
+        settings({ questionCount: 0, selectionMode: "random", shuffleQuestions: false }),
+        seeded(seed)
+      );
+      expect(all.map((q) => q.card.id)).toEqual(order);
+
+      const some = drawExamQuestions(
+        pool,
+        settings({ questionCount: 3, selectionMode: "random", shuffleQuestions: false }),
+        seeded(seed)
+      ).map((q) => q.card.id);
+      expect(some).toEqual(order.filter((id) => some.includes(id)));
+    }
+  });
+
   it("builds a display permutation when shuffleOptions is on", () => {
     const pool = buildExamPool([mcqCard()], EXAM_DECKS, "tolerant").eligible;
     const drawn = drawExamQuestions(pool, settings({ shuffleOptions: true }), seeded(3));

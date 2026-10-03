@@ -2,9 +2,12 @@ import {
   type ChapterNode,
   type PdfDoc,
   buildSectionContent,
+  buildSectionPages,
   extractOutline,
   hashImage,
   hashPdf,
+  pageFromLabel,
+  pageMarker,
   pagesForSelection,
 } from "../pdf";
 
@@ -142,7 +145,7 @@ describe("buildSectionContent", () => {
   it("text mode reads embedded text and never OCRs", async () => {
     const ocr = jest.fn();
     const out = await buildSectionContent(doc, [1, 3], "text", ocr);
-    expect(out).toBe(`${ALPHA}\n\n${GAMMA}`);
+    expect(out).toBe(`[p. 1]\n${ALPHA}\n\n[p. 3]\n${GAMMA}`);
     expect(ocr).not.toHaveBeenCalled();
   });
 
@@ -152,7 +155,7 @@ describe("buildSectionContent", () => {
     );
     const out = await buildSectionContent(doc, [1, 2], "ocr", ocr);
     expect(ocr).toHaveBeenCalledWith([1, 2], expect.any(Function));
-    expect(out).toBe("ocr-1\n\nocr-2");
+    expect(out).toBe("[p. 1]\nocr-1\n\n[p. 2]\nocr-2");
   });
 
   it("reports per-page progress as pages are processed", async () => {
@@ -173,6 +176,25 @@ describe("buildSectionContent", () => {
     ]);
   });
 
+  it("labels every page so a card can cite the one it came from", async () => {
+    const ocr = jest.fn();
+    const out = await buildSectionContent(doc, [1, 2, 3], "text", ocr);
+    // Page 2 is blank and is dropped, so its label must not appear either —
+    // a label with no text under it would invite the model to cite an empty page.
+    expect(out).toContain("[p. 1]");
+    expect(out).not.toContain("[p. 2]");
+    expect(out).toContain("[p. 3]");
+  });
+
+  it("buildSectionPages keeps the page number alongside its text", async () => {
+    const ocr = jest.fn();
+    const pages = await buildSectionPages(doc, [1, 2, 3], "text", ocr);
+    expect(pages).toEqual([
+      { page: 1, text: ALPHA },
+      { page: 3, text: GAMMA },
+    ]);
+  });
+
   it("text mode reports progress per embedded-text page read", async () => {
     const ocr = jest.fn();
     const progress: Array<[number, number]> = [];
@@ -184,5 +206,20 @@ describe("buildSectionContent", () => {
       [1, 2],
       [2, 2],
     ]);
+  });
+});
+
+describe("pageFromLabel", () => {
+  it("reads a bare number and the marker written into the source", () => {
+    expect(pageFromLabel("70")).toBe(70);
+    expect(pageFromLabel(pageMarker(70))).toBe(70);
+    expect(pageFromLabel(" p. 70 ")).toBe(70);
+    expect(pageFromLabel("Page 70")).toBe(70);
+  });
+
+  it("rejects anything that is not one positive page", () => {
+    for (const bad of ["", "0", "-3", "n/a", "70-71", "about 70", "[p. 0]"]) {
+      expect(pageFromLabel(bad)).toBeUndefined();
+    }
   });
 });

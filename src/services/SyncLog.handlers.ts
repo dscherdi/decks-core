@@ -20,6 +20,11 @@ import type { ILogger as Logger } from "../database/DatabaseService.interface";
 import type { SyncLogEntry } from "./SyncLog.types";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
 import type { ReviewLog } from "../database/types";
+import {
+  aiConceptId,
+  aiSessionValues,
+  aiStagedCardValues,
+} from "../database/ai-rows";
 
 export type OpHandler = (
   db: IDatabaseService,
@@ -72,6 +77,10 @@ const HANDLERS: Partial<Record<SyncLogEntry["o"], OpHandler>> = {
   card_reset: handleCardReset,
   weight_set_upsert: handleWeightSetUpsert,
   exam_session_complete: handleExamSessionComplete,
+  ai_session_upsert: handleAiSessionUpsert,
+  ai_staged_cards_upsert: handleAiStagedCardsUpsert,
+  ai_concepts_save: handleAiConceptsSave,
+  client_hello: async () => {},
 };
 
 /**
@@ -955,4 +964,117 @@ async function handleCardReset(
     [c, at]
   );
   await mirrorOverlayToFlashcard(db, c);
+}
+
+/** A session row, newer `modified` wins. `created` stays as first stored. */
+async function handleAiSessionUpsert(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  _logger: Logger
+): Promise<void> {
+  if (entry.o !== "ai_session_upsert") return;
+  await db.executeSql(
+    `INSERT INTO ai_sessions (
+       id, source_kind, source_ref, source_hash, selected_ids,
+       deck_id, profile_id, model, spend_cents, turns,
+       archived, touched_at, created, modified
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       source_kind = excluded.source_kind,
+       source_ref = excluded.source_ref,
+       source_hash = excluded.source_hash,
+       selected_ids = excluded.selected_ids,
+       deck_id = excluded.deck_id,
+       profile_id = excluded.profile_id,
+       model = excluded.model,
+       spend_cents = excluded.spend_cents,
+       turns = excluded.turns,
+       archived = excluded.archived,
+       touched_at = excluded.touched_at,
+       modified = excluded.modified
+     WHERE excluded.modified > ai_sessions.modified`,
+    aiSessionValues(entry.p)
+  );
+}
+
+/** Staged cards, newer `modified` wins, except that a saved row is never walked back. */
+async function handleAiStagedCardsUpsert(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  _logger: Logger
+): Promise<void> {
+  if (entry.o !== "ai_staged_cards_upsert") return;
+  for (const row of entry.p.rows) {
+    await db.executeSql(
+      `INSERT INTO ai_staged_cards (
+         id, session_id, front, back, notes, card_type,
+         options, correct, explanation, valid,
+         source_page, section_idx, concept_id, status,
+         rubric_verdict, rubric_codes, fix_proposal,
+         parent_id, origin, dedup_hash, created, modified
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         session_id = excluded.session_id,
+         front = excluded.front,
+         back = excluded.back,
+         notes = excluded.notes,
+         card_type = excluded.card_type,
+         options = excluded.options,
+         correct = excluded.correct,
+         explanation = excluded.explanation,
+         valid = excluded.valid,
+         source_page = excluded.source_page,
+         section_idx = excluded.section_idx,
+         concept_id = excluded.concept_id,
+         status = excluded.status,
+         rubric_verdict = excluded.rubric_verdict,
+         rubric_codes = excluded.rubric_codes,
+         fix_proposal = excluded.fix_proposal,
+         parent_id = excluded.parent_id,
+         origin = excluded.origin,
+         dedup_hash = excluded.dedup_hash,
+         modified = excluded.modified
+       WHERE excluded.modified > ai_staged_cards.modified
+         AND NOT (ai_staged_cards.status = 'saved' AND excluded.status <> 'saved')`,
+      aiStagedCardValues(row)
+    );
+  }
+}
+
+/** Replace a page's concepts unless this device already holds a later pass over it. */
+async function handleAiConceptsSave(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  _logger: Logger
+): Promise<void> {
+  if (entry.o !== "ai_concepts_save") return;
+  const { sourceHash, pages, concepts, at } = entry.p;
+  for (const page of new Set(pages)) {
+    const held = await db.querySql<{ created: string }>(
+      "SELECT created FROM ai_source_extractions WHERE source_hash = ? AND page = ?",
+      [sourceHash, page],
+      { asObject: true }
+    );
+    if (held.length > 0 && held[0].created >= at) continue;
+    await db.executeSql(
+      "DELETE FROM ai_source_concepts WHERE source_hash = ? AND page = ?",
+      [sourceHash, page]
+    );
+    for (const c of concepts) {
+      if (c.page !== page) continue;
+      await db.executeSql(
+        `INSERT OR REPLACE INTO ai_source_concepts
+           (id, source_hash, page, term, blurb, created, modified)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [aiConceptId(sourceHash, page, c.term), sourceHash, page, c.term, c.blurb, at, at]
+      );
+    }
+    await db.executeSql(
+      "INSERT OR REPLACE INTO ai_source_extractions (source_hash, page, created) VALUES (?, ?, ?)",
+      [sourceHash, page, at]
+    );
+  }
 }

@@ -55,6 +55,55 @@ export function toLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Clamps a rollover hour to 0–23; anything unusable means midnight. */
+function rolloverHour(nextDayStartsAt: number): number {
+  return Number.isFinite(nextDayStartsAt)
+    ? Math.min(23, Math.max(0, Math.floor(nextDayStartsAt)))
+    : 0;
+}
+
+/**
+ * When the study day containing `date` began, in local time. Before the
+ * rollover hour it is still the previous day's study day.
+ */
+export function studyDayStart(date: Date, nextDayStartsAt: number): Date {
+  const start = new Date(date);
+  start.setHours(rolloverHour(nextDayStartsAt), 0, 0, 0);
+  if (date < start) start.setDate(start.getDate() - 1);
+  return start;
+}
+
+/**
+ * The start of the study day `days` calendar days from the one containing `date`, at its own date's rollover
+ * hour: a start the clocks moved on one day does not carry its hour to the next.
+ */
+export function studyDayStartAfter(date: Date, nextDayStartsAt: number, days: number): Date {
+  const first = studyDayStart(date, nextDayStartsAt);
+  return new Date(first.getFullYear(), first.getMonth(), first.getDate() + days, rolloverHour(nextDayStartsAt));
+}
+
+/** The same wall-clock time `days` calendar days away: 24-hour steps drift on 23- and 25-hour days. */
+export function addCalendarDays(date: Date, days: number): Date {
+  // No step is an exact copy: setDate would move a repeated hour's second pass to its first.
+  if (days === 0) return new Date(date);
+  const out = new Date(date);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+/** The study day `date` falls in, as `YYYY-MM-DD`. */
+export function studyDayKey(date: Date, nextDayStartsAt: number): string {
+  return toLocalDateString(studyDayStart(date, nextDayStartsAt));
+}
+
+/** SQL fragment for the study day (`YYYY-MM-DD`) an ISO timestamp column falls in. */
+export function getStudyDaySQL(columnName: string, nextDayStartsAt: number): string {
+  const hours = rolloverHour(nextDayStartsAt);
+  return hours === 0
+    ? getLocalDateSQL(columnName)
+    : `DATE(${columnName}, 'localtime', '-${hours} hours')`;
+}
+
 /**
  * Converts a Date object to a local datetime string in YYYY-MM-DD HH:MM:SS format
  * For use in SQL queries that need local time

@@ -1,8 +1,11 @@
 import type { RefactorImage } from "./types";
+import { pageFromLabel } from "../pdf/pdf";
 import {
   CARD_DELIMITER,
+  MCQ_FORMAT,
   COVERED_MARKER,
   CONTINUE_TRIGGER,
+  REFINE_TRIGGER,
   DECKS_OVERVIEW,
   DEDUP_RULE,
   GENERATION_FORMAT,
@@ -17,6 +20,8 @@ export interface GeneratedCard {
   notes: string;
   /** 1-based index of the labelled source section this came from, when known. */
   section?: number;
+  /** The source page this came from. Unlike `section`, it is checkable. */
+  page?: number;
 }
 
 export interface GenerateRequest {
@@ -31,18 +36,27 @@ export interface GenerateRequest {
    * iterative batch continues without duplicates. Omit/empty on the first batch.
    */
   generatedSoFar?: GeneratedCard[];
+  /** The round a refining instruction replaces. The reply rewrites these cards
+   *  rather than adding to them. */
+  refining?: GeneratedCard[];
   /** When true, the built messages + raw response are attached for debugging. */
   debug?: boolean;
   /** Optional routing-category hint forwarded to the backend (Decks Pro). */
   category?: string;
+  /** What to generate. Omitted or "basic" produces ordinary flashcards. */
+  cardType?: GeneratedCardType;
 }
 
-/** Render prior cards back into the model's own output grammar. */
+/** What a generation run is asked to produce. */
+export type GeneratedCardType = "basic" | "mcq";
+
+/** Render prior cards back into the model's own output grammar, page included so a rewrite keeps it. */
 export function serializeCards(cards: GeneratedCard[]): string {
   return cards
     .map((c) => {
       const lines = [`FRONT: ${c.front}`, `BACK: ${c.back}`];
       if (c.notes) lines.push(`NOTES: ${c.notes}`);
+      if (c.page) lines.push(`PAGE: ${c.page}`);
       lines.push(CARD_DELIMITER);
       return lines.join("\n");
     })
@@ -65,9 +79,20 @@ export function buildGenerationMessages(req: GenerateRequest): {
   priorAssistant?: string;
   followupUser?: string;
 } {
-  const system = `${DECKS_OVERVIEW}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
+  const system =
+    req.cardType === "mcq"
+      ? `${DECKS_OVERVIEW}\n\n${MCQ_FORMAT}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`
+      : `${DECKS_OVERVIEW}\n\n${GENERATION_FORMAT}\n\n${DEDUP_RULE}`;
   const source = req.sourceContext?.trim();
   const instruction = req.prompt.trim();
+  if (req.refining?.length) {
+    return {
+      system,
+      user: source ? `Here are the source notes:\n\n${source}` : "Here are flashcards to revise.",
+      priorAssistant: `Here are the cards to revise:\n\n${serializeCards(req.refining)}`,
+      followupUser: `${instruction}\n\n${REFINE_TRIGGER}`,
+    };
+  }
   const priorAssistant = req.generatedSoFar?.length
     ? `Here are the cards generated so far:\n\n${serializeCards(req.generatedSoFar)}`
     : undefined;
@@ -90,25 +115,28 @@ interface SegmentFields {
   notes: string;
   /** The source section index the model attributed this card to, if any. */
   section: string;
+  /** The source page the model attributed this card to, if any. */
+  page: string;
   /** Whether any FRONT/BACK/NOTES label was seen (used for partial cards). */
   started: boolean;
 }
 
-const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SECTION)\s*:(.*)$/i;
+const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SECTION|PAGE)\s*:(.*)$/i;
 
 /** Parse one card block (text between delimiters) into its fields. */
 function parseSegment(segment: string): SegmentFields {
-  const buf: Record<"front" | "back" | "notes" | "section", string[]> = {
+  const buf: Record<"front" | "back" | "notes" | "section" | "page", string[]> = {
     front: [],
     back: [],
     notes: [],
     section: [],
+    page: [],
   };
-  let current: "front" | "back" | "notes" | "section" | null = null;
+  let current: "front" | "back" | "notes" | "section" | "page" | null = null;
   for (const line of segment.split("\n")) {
     const m = LABEL_RE.exec(line);
     if (m) {
-      current = m[1].toLowerCase() as "front" | "back" | "notes" | "section";
+      current = m[1].toLowerCase() as "front" | "back" | "notes" | "section" | "page";
       buf[current].push(m[2]);
     } else if (current) {
       buf[current].push(line);
@@ -119,6 +147,7 @@ function parseSegment(segment: string): SegmentFields {
     back: buf.back.join("\n").trim(),
     notes: buf.notes.join("\n").trim(),
     section: buf.section.join("\n").trim(),
+    page: buf.page.join("\n").trim(),
     started: current !== null,
   };
 }
@@ -130,7 +159,10 @@ function toCard(fields: SegmentFields): GeneratedCard | null {
   // an out-of-range or absent value simply means unattributed.
   const n = Number.parseInt(fields.section, 10);
   const section = Number.isInteger(n) && n > 0 ? n : undefined;
-  return { front: fields.front, back: fields.back, notes: fields.notes, section };
+  // The model echoes a page label we wrote into the source, so a value outside the
+  // labelled range is a hallucination; the caller clamps it against the selection.
+  const page = pageFromLabel(fields.page);
+  return { front: fields.front, back: fields.back, notes: fields.notes, section, page };
 }
 
 /** Parse a full (non-streamed) response into cards — the fallback path. */

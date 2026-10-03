@@ -41,6 +41,39 @@ export class DecksProProvider extends OpenAiProvider {
         })),
       };
     }
+    // Concepts: send the labelled source; the server builds the rubric.
+    if (req.rawConceptSource !== undefined) {
+      return { model: this.config.model, concepts: { source: req.rawConceptSource } };
+    }
+    // Grading: send the typed answers; the backend judges them.
+    if (req.rawGrade) {
+      return { model: this.config.model, grade: { items: req.rawGrade } };
+    }
+    if (req.rawConceptMap) {
+      return { model: this.config.model, conceptMap: req.rawConceptMap };
+    }
+    if (req.rawOverlap) {
+      return { model: this.config.model, overlap: { pairs: req.rawOverlap } };
+    }
+    // Chat: send the question and its grounding; the server builds the rubric.
+    if (req.rawChat) {
+      return { model: this.config.model, chat: req.rawChat };
+    }
+    // Critique: send the cards to be judged; the server builds the rubric.
+    if (req.rawCritique) {
+      return {
+        model: this.config.model,
+        cardType: req.rawCardType,
+        critique: {
+          cards: req.rawCritique.map(({ id, card }) => ({
+            id,
+            front: card.front,
+            back: card.back,
+            notes: card.notes,
+          })),
+        },
+      };
+    }
     // Refactor: send the raw request; the server builds the messages.
     if (req.rawRefactor) {
       const r = req.rawRefactor;
@@ -66,11 +99,13 @@ export class DecksProProvider extends OpenAiProvider {
         source: req.rawSource ?? "",
         prompt: req.rawPrompt ?? "",
         generatedSoFar: req.rawGeneratedSoFar,
+        refining: req.rawRefining,
         images: req.images?.map((im) => ({
           mimeType: im.mimeType,
           dataBase64: im.dataBase64,
         })),
         category: req.category,
+        cardType: req.rawCardType,
       };
     }
     return super.buildBody(req);

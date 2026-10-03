@@ -59,3 +59,30 @@ export const DECKS_OCR = "decks-ocr";
 export function ocrSentinelForTier(_tier: string): string {
   return DECKS_OCR;
 }
+
+/** Sent by the client for the second-pass critique; the backend resolves it. */
+export const DECKS_CRITIQUE_FAST = "decks-critique-fast";
+export const DECKS_CRITIQUE_QUALITY = "decks-critique-quality";
+
+/** Sent by the client for concept extraction; the backend resolves it. */
+export const DECKS_CONCEPTS = "decks-concepts";
+
+/** Sent by the client for a question about the source; the backend resolves it. */
+export const DECKS_CHAT = "decks-chat";
+
+/** Sent by the client to grade typed exam answers by meaning; the backend resolves it. */
+export const DECKS_GRADE = "decks-grade";
+
+/** Sent by the client to map cards to source concepts; the backend resolves it. */
+export const DECKS_CONCEPT_MAP = "decks-concept-map";
+
+/** Sent by the client to check card pairs for the same fact; the backend resolves it. */
+export const DECKS_OVERLAP = "decks-overlap";
+
+/** Critique sentinel for a tier. Both resolve to one slot; the pair is kept so
+ *  the tier can be split later without an older client falling through. */
+export function critiqueSentinelForTier(tier: string): string {
+  return tier === DECKS_TIER_QUALITY
+    ? DECKS_CRITIQUE_QUALITY
+    : DECKS_CRITIQUE_FAST;
+}

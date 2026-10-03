@@ -212,18 +212,39 @@ export type OcrRunner = (
   onEach?: () => void,
 ) => Promise<Map<number, string>>;
 
+/** One page of resolved source text, with the page it came from. */
+export interface PageText {
+  page: number;
+  text: string;
+}
+
+/** The label preceding each page's text, so a card can report its page. Defined
+ *  here because the generation prompt describes this exact shape. */
+export function pageMarker(page: number): string {
+  return `[p. ${page}]`;
+}
+
+const PAGE_VALUE_RE = /^\[?\s*(?:p(?:age)?\.?\s*)?(\d{1,5})\s*\]?$/i;
+
+/** A page named in a model's PAGE field: a bare number, or the marker echoed back. */
+export function pageFromLabel(value: string): number | undefined {
+  const m = PAGE_VALUE_RE.exec(value.trim());
+  const n = m ? Number.parseInt(m[1], 10) : Number.NaN;
+  return n > 0 ? n : undefined;
+}
+
 /**
- * Resolve the selected pages into a single source string. "text" uses each page's
+ * Resolve the selected pages into per-page source text. "text" uses each page's
  * embedded text layer; "ocr" transcribes each page via the injected `ocr` runner.
- * `onProgress(done, total)` fires once per processed page.
+ * `onProgress(done, total)` fires once per processed page. Blank pages are dropped.
  */
-export async function buildSectionContent(
+export async function buildSectionPages(
   doc: PdfDoc,
   pages: number[],
   mode: PdfParseMode,
   ocr: OcrRunner,
   onProgress?: (done: number, total: number) => void,
-): Promise<string> {
+): Promise<PageText[]> {
   const total = pages.length;
   let done = 0;
   const tick = (): void => {
@@ -242,12 +263,25 @@ export async function buildSectionContent(
     }
   }
 
-  const parts: string[] = [];
+  const out: PageText[] = [];
   for (const p of pages) {
-    const t = textByPage.get(p);
-    if (t) parts.push(t);
+    const text = textByPage.get(p);
+    if (text) out.push({ page: p, text });
   }
-  return parts.join("\n\n");
+  return out;
+}
+
+/** Resolve the selection into one source string, each page labelled with its
+ *  number so a card can cite a page rather than a section index. */
+export async function buildSectionContent(
+  doc: PdfDoc,
+  pages: number[],
+  mode: PdfParseMode,
+  ocr: OcrRunner,
+  onProgress?: (done: number, total: number) => void,
+): Promise<string> {
+  const resolved = await buildSectionPages(doc, pages, mode, ocr, onProgress);
+  return resolved.map((p) => `${pageMarker(p.page)}\n${p.text}`).join("\n\n");
 }
 
 /** Flatten selected chapter ids into the unique, sorted page numbers they cover. */
@@ -309,4 +343,32 @@ export function pagesForSelection(
   };
   walk(chapters);
   return [...pages].sort((a, b) => a - b);
+}
+
+/**
+ * The deepest chapters covering the given pages. Used to aim a new session at
+ * the material a set of pages came from without selecting the whole document.
+ */
+export function chapterIdsForPages(
+  chapters: ChapterNode[],
+  pages: readonly number[],
+): Set<string> {
+  const wanted = new Set(pages);
+  const out = new Set<string>();
+  const walk = (nodes: ChapterNode[]): boolean => {
+    let hit = false;
+    for (const node of nodes) {
+      const deeper = walk(node.children);
+      const covers = [...wanted].some(
+        (p) => p >= node.startPage && p <= node.endPage,
+      );
+      // A parent is only selected when no child of it already covers the page,
+      // so the selection stays as narrow as the outline allows.
+      if (covers && !deeper) out.add(node.id);
+      hit = hit || deeper || covers;
+    }
+    return hit;
+  };
+  walk(chapters);
+  return out;
 }

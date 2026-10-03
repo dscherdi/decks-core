@@ -1,6 +1,6 @@
 import type { Flashcard, TypedGradingMode } from "../database/types";
 import { classifyExamBody, type ExamInvalidReason } from "./ExamClassifier";
-import { checkTypeInGradability, getTypeInAnswerLine } from "./ExamGrading";
+import { checkTypeInGradability, getTypeInAnswerLine, MAX_MEANING_ANSWER_LENGTH } from "./ExamGrading";
 
 export interface CardHealthThresholds {
   leechThreshold: number;
@@ -39,7 +39,8 @@ function computeExamIssue(
   }
   if (examContext.typedGrading !== "self" && TYPE_IN_TYPES.has(card.type)) {
     const answer = getTypeInAnswerLine(card.back ?? "", card.clozeText ?? null);
-    const gradability = checkTypeInGradability(answer);
+    const maxLength = examContext.typedGrading === "meaning" ? MAX_MEANING_ANSWER_LENGTH : undefined;
+    const gradability = checkTypeInGradability(answer, maxLength);
     if (!gradability.gradable) return { kind: "answer-too-long" };
   }
   return null;

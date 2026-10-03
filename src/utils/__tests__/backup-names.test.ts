@@ -2,6 +2,7 @@ import {
   buildBackupFilename,
   parseBackupFilename,
   backupTimestamp,
+  backupTimeOfDay,
 } from "../backup-names";
 
 describe("backup filenames", () => {
@@ -9,6 +10,7 @@ describe("backup filenames", () => {
     expect(parseBackupFilename("backup-2026-08-18.db")).toEqual({
       date: "2026-08-18",
       deviceId: null,
+      time: null,
     });
     expect(backupTimestamp("backup-2026-08-18.db")).toBe(
       Date.parse("2026-08-18T12:00:00")
@@ -21,7 +23,32 @@ describe("backup filenames", () => {
     expect(parseBackupFilename(name)).toEqual({
       date: "2026-08-26",
       deviceId: "ios-33184bac5813",
+      time: null,
     });
+  });
+
+  it("adds the time for a backup that must not replace the day's", () => {
+    const name = buildBackupFilename("2026-08-26", "ios-33184bac5813", "093015");
+    expect(name).toBe("backup-2026-08-26-093015-ios-33184bac5813.db");
+    expect(parseBackupFilename(name)).toEqual({
+      date: "2026-08-26",
+      deviceId: "ios-33184bac5813",
+      time: "093015",
+    });
+    expect(name).not.toBe(buildBackupFilename("2026-08-26", "ios-33184bac5813"));
+    expect(backupTimestamp(name)).toBe(Date.parse("2026-08-26T09:30:15"));
+  });
+
+  it("reads a timed backup with no device", () => {
+    expect(parseBackupFilename("backup-2026-08-26-093015.db")).toEqual({
+      date: "2026-08-26",
+      deviceId: null,
+      time: "093015",
+    });
+  });
+
+  it("formats the local time of day", () => {
+    expect(backupTimeOfDay(new Date(2026, 7, 26, 9, 5, 7))).toBe("090507");
   });
 
   it("trims a device id long enough to bloat the name", () => {

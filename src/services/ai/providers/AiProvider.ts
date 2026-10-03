@@ -1,5 +1,7 @@
 import type { AiProviderId, RefactorImage, RefactorRequest } from "../types";
+import type { CritiqueCard } from "../critique-prompt";
 import type { GeneratedCard } from "../generation-prompt";
+import type { ExamJudgeItem } from "../../ExamAttempt";
 
 /** Transport-level request: the built messages plus optional image attachments. */
 export interface ProviderCompleteRequest {
@@ -35,8 +37,34 @@ export interface ProviderCompleteRequest {
   rawSource?: string;
   rawPrompt?: string;
   rawGeneratedSoFar?: GeneratedCard[];
+  /** The round a refining instruction replaces, for the server-side prompt. */
+  rawRefining?: GeneratedCard[];
   /** Raw refactor request sent when the server assembles the refactor prompt. */
   rawRefactor?: RefactorRequest;
+  /** Cards to be judged, for the server-side critique pass. */
+  rawCritique?: CritiqueCard[];
+  /** What the run is producing, for the server-side prompt. */
+  rawCardType?: string;
+  /** Page-labelled source for the server-side concept extraction. */
+  rawConceptSource?: string;
+  /** A question and its grounding, for the server-side answer. */
+  rawChat?: {
+    question: string;
+    source: string;
+    staged: string[];
+    uncovered: string[];
+    deck: string[];
+    history: Array<{ question: string; answer: string }>;
+  };
+  /** Typed exam answers for the backend to judge by meaning. */
+  rawGrade?: ExamJudgeItem[];
+  /** Concepts and cards for the backend to map. */
+  rawConceptMap?: {
+    concepts: Array<{ id: string; term: string; page: number; blurb?: string }>;
+    cards: Array<{ id: string; front: string; back: string; page?: number }>;
+  };
+  /** Card pairs for the backend to check for the same fact. */
+  rawOverlap?: Array<{ id: string; a: { front: string; back: string }; b: { front: string; back: string } }>;
   /** Optional routing-category hint passed through with the request. */
   category?: string;
 }

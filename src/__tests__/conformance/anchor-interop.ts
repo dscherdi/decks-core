@@ -1,5 +1,5 @@
 import { generateFlashcardId } from "../../utils/hash";
-import { headerBindingKey } from "../../utils/anchors";
+import { cardIdForKey } from "../../utils/anchors";
 import { AnchorStamper } from "../../services/AnchorStamper";
 import type { NoteAccess } from "../../services/NoteAccess";
 import type { IDatabaseService } from "../../index";
@@ -29,13 +29,8 @@ async function withHistory(db: IDatabaseService, cardId: string): Promise<void> 
 }
 
 /**
- * A token one surface stamps has to be usable by the other.
- *
- * The app mints anchors now, and its bindings do not travel — they live in its
- * own database. What travels is the token, because it is written into the note.
- * The other surface is supposed to re-derive the binding from it through the
- * adopt rule. Nothing tested that, and it is the seam that decides whether a
- * card keeps its identity across devices.
+ * A token one surface stamps has to be usable by the other. Bindings live in
+ * each device's own database; only the token travels, so it carries the ids.
  */
 export function describeAnchorInterop(host: ConformanceHost): void {
   describe(`anchor interop (${host.label})`, () => {
@@ -50,7 +45,7 @@ export function describeAnchorInterop(host: ConformanceHost): void {
       await host.close(db);
     });
 
-    it("adopts a token another device stamped, once the card has history", async () => {
+    it("resolves a token another device stamped, with no binding of its own", async () => {
       // The other device's note, already carrying a token it minted.
       const files = { "Bio.md": NOTE };
       const stamper = new AnchorStamper(memoryNotes(files), db);
@@ -63,22 +58,16 @@ export function describeAnchorInterop(host: ConformanceHost): void {
       expect(stamped.ok).toBe(true);
       const token = files["Bio.md"].match(/%%dk:h:([a-z0-9]+)%%/);
       expect(token).not.toBeNull();
+      expect(cardIdForKey(`h:${token![1]}`)).toBe(cardId);
 
-      // This device: same note, same content-derived id, no binding of its own.
       const other = await host.open();
       try {
         const otherDeck = await other.createDeck(testDeck({ filepath: "Bio.md" }));
         await syncNote(other, otherDeck, files["Bio.md"]);
-        expect(await other.getAnchorBinding(headerBindingKey(token![1]))).toBeNull();
-
-        // Its review history arrives — a rate op replayed from the sync log —
-        // and only then may a binding be adopted.
-        await withHistory(other, cardId);
-        await syncNote(other, otherDeck, files["Bio.md"]);
-
-        expect(await other.getAnchorBinding(headerBindingKey(token![1]))).toBe(
-          cardId
-        );
+        const [card] = await other.getFlashcardsByDeck(otherDeck);
+        expect(card.id).toBe(cardId);
+        expect(card.anchor).toBe(`h:${token![1]}`);
+        expect(await other.getAnchorBinding(`h:${token![1]}`)).toBeNull();
       } finally {
         await host.close(other);
       }

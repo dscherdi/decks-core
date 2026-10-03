@@ -1,6 +1,7 @@
 import { LegacySrMigrator } from "../LegacySrMigrator";
 import type { MigratedCard } from "../LegacySrMigrator";
-import { stripAnchorTokens } from "../../../utils/anchors";
+import { decodeAnchorValue, stripAnchorTokens } from "../../../utils/anchors";
+import { generateFlashcardId } from "../../../utils/hash";
 
 // Layout assertions ignore anchor tokens (inline and own-line); emission has
 // dedicated tests below.
@@ -343,6 +344,15 @@ describe("pipe guardrail (smart routing)", () => {
     const cards = process("Cat :: Gato");
     const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "smart" });
     expect(clean(main.content)).toContain("| Front | Back | Notes |");
+  });
+});
+
+describe("anchor tokens", () => {
+  it("writes the id each migrated card already resolves to", () => {
+    const cards = process("Cat :: Gato");
+    const [main] = LegacySrMigrator.renderDecksFiles(cards, "#decks", 2, { format: "smart" });
+    const value = /%%dk:t:([a-z0-9]+)%%/.exec(main.content)?.[1];
+    expect(value && decodeAnchorValue(value)?.ids).toEqual([generateFlashcardId("Cat")]);
   });
 });
 

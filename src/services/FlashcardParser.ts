@@ -5,6 +5,7 @@ import {
   extractLineAnchors,
   headerBindingKey,
   isAnchorCommentBody,
+  isIdValue,
   occlusionBindingKey,
   questionBindingKey,
   stripAnchorTokens,
@@ -14,6 +15,7 @@ import {
   type LineAnchor,
 } from "../utils/anchors";
 import type { TemplateRow } from "../database/types";
+import { scanClozeDeletions } from "../utils/cloze-scanner";
 import { OcclusionV2Parser } from "./occlusion/OcclusionV2Parser";
 import { classifyExamBody } from "./ExamClassifier";
 
@@ -58,19 +60,6 @@ export class FlashcardParser {
   private static readonly TABLE_ROW_REGEX = /^\|.*\|$/;
   private static readonly TABLE_SEPARATOR_REGEX = /^\|[\s-]+\|[\s-]+\|(?:[\s-]+\|)?$/;
   private static readonly CLOZE_REGEX = /==((?:(?!==).)+)==/g;
-  /** Inline code runs, matched by their own backtick fence so `` ` `` nests. */
-  private static readonly INLINE_CODE_REGEX = /(`+)(?:(?!\1)[\s\S])*?\1/g;
-
-  /** Half-open [from, to) ranges of the inline code spans on one line. */
-  private static inlineCodeSpans(line: string): [number, number][] {
-    const spans: [number, number][] = [];
-    const regex = new RegExp(FlashcardParser.INLINE_CODE_REGEX.source, "g");
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(line)) !== null) {
-      spans.push([match.index, match.index + match[0].length]);
-    }
-    return spans;
-  }
   private static readonly IMAGE_EMBED_REGEX =
     /^!\[\[[^\]]+\.(png|jpe?g|gif|svg|bmp|webp|avif|heic|heif|tiff?)(\|[^\]]*)?\]\]$|^!\[[^\]]*\]\([^)]+\.(png|jpe?g|gif|svg|bmp|webp|avif|heic|heif|tiff?)(\s+[^)]+)?\)$/i;
   private static readonly NUMBERED_LIST_REGEX = /^\d+\.\s+(.+)$/;
@@ -252,34 +241,9 @@ export class FlashcardParser {
     templateRow?: TemplateRow,
     lineTokenIds?: ReadonlyMap<number, string>
   ): ParsedFlashcard[] {
-    // Line-by-line scan: cloze markers never span lines, so document order
-    // (and therefore clozeOrder) is identical to a global scan, while the
-    // line index enables line-scoped anchor keys.
-    const matches: {
-      text: string;
-      order: number;
-      lineIndex: number;
-      indexInLine: number;
-    }[] = [];
-    const sourceLines = clozeSource.split("\n");
-    let order = 0;
-    for (let lineIndex = 0; lineIndex < sourceLines.length; lineIndex++) {
-      const regex = new RegExp(FlashcardParser.CLOZE_REGEX.source, "g");
-      const spans = FlashcardParser.inlineCodeSpans(sourceLines[lineIndex]);
-      let match: RegExpExecArray | null;
-      let indexInLine = 0;
-      while ((match = regex.exec(sourceLines[lineIndex])) !== null) {
-        // A note explaining the syntax writes `==like this==` in code, and the
-        // renderer leaves code spans alone — so a cloze taken from one could
-        // never be masked, and the card could never be answered. Skipped
-        // before `indexInLine` counts it, so the real deletions stay in order.
-        const start = match.index;
-        if (spans.some(([from, to]) => start >= from && start < to)) continue;
-        matches.push({ text: match[1], order, lineIndex, indexInLine });
-        order++;
-        indexInLine++;
-      }
-    }
+    // Code-span highlights are skipped: the renderer never masks them, so a card
+    // made from one could never be answered.
+    const matches = scanClozeDeletions(clozeSource);
 
     if (matches.length === 0) {
       // No cloze markers → a regular card. For table rows, carry templateRow
@@ -343,20 +307,24 @@ export class FlashcardParser {
 
     if (levelSet.has(0)) {
       if (!fileTitle) return occlusionCards;
-      const back = stripAnchorTokens(
-        FlashcardParser.stripFrontmatter(content)
-      ).trim();
+      const view = FlashcardParser.titleBodyView(content);
+      const back = view.back;
       const titleId = FlashcardParser.extractDecksId(content);
+      // A body token carries its ids, so it wins over `decks-id`, whose ids live in bindings.
+      const headerKey = view.headerTokenId
+        ? headerBindingKey(view.headerTokenId)
+        : titleId
+        ? titleBindingKey(titleId)
+        : undefined;
       if (clozeEnabled) {
         const cards = FlashcardParser.expandClozes(
-          fileTitle, back, "", "header-paragraph", "", []
+          fileTitle, back, "", "header-paragraph", "", [], back, undefined, view.clozeLineTokens
         );
-        if (titleId) {
-          for (const card of cards) {
-            card.anchorKey =
-              card.type === "cloze" && card.clozeOrder !== undefined
-                ? titleClozeBindingKey(titleId, card.clozeOrder)
-                : titleBindingKey(titleId);
+        for (const card of cards) {
+          if (card.type !== "cloze") {
+            if (headerKey) card.anchorKey = headerKey;
+          } else if (!card.anchorKey && titleId && card.clozeOrder !== undefined) {
+            card.anchorKey = titleClozeBindingKey(titleId, card.clozeOrder);
           }
         }
         return [...occlusionCards, ...cards];
@@ -370,7 +338,7 @@ export class FlashcardParser {
           type: "header-paragraph",
           breadcrumb: "",
           tags: [],
-          ...(titleId ? { anchorKey: titleBindingKey(titleId) } : {}),
+          ...(headerKey ? { anchorKey: headerKey } : {}),
         },
       ];
     }
@@ -658,12 +626,50 @@ export class FlashcardParser {
     return flashcards;
   }
 
-  private static stripFrontmatter(content: string): string {
+  /**
+   * A title-mode note as the parser reads it: the back, plus the id-carrying tokens
+   * in its body (`h` for the note, `c` per cloze line, keyed by line of the back).
+   */
+  static titleBodyView(content: string): {
+    bodyStart: number;
+    leading: number;
+    back: string;
+    headerTokenId?: string;
+    clozeLineTokens: Map<number, string>;
+  } {
     const lines = content.split("\n");
-    if (lines[0]?.trim() !== "---") return content;
-    const end = lines.indexOf("---", 1);
-    if (end === -1) return content;
-    return lines.slice(end + 1).join("\n");
+    let bodyStart = 0;
+    if (lines[0]?.trim() === "---") {
+      const end = lines.indexOf("---", 1);
+      if (end !== -1) bodyStart = end + 1;
+    }
+    const { lines: stripped, anchors } = extractLineAnchors(lines.slice(bodyStart));
+    const back = stripped.join("\n").trim();
+    let leading = 0;
+    while (leading < stripped.length && stripped[leading].trim() === "") leading++;
+    const backLines = back.split("\n");
+    const clozeLineTokens = new Map<number, string>();
+    let headerTokenId: string | undefined;
+    // Minted values never meant anything in title mode, so only id-carrying ones count.
+    for (const anchor of anchors) {
+      if (!isIdValue(anchor.id)) continue;
+      if (anchor.role === "h" && headerTokenId === undefined) headerTokenId = anchor.id;
+      const backLine = anchor.lineIndex - leading;
+      if (anchor.role === "c" && stripped[anchor.lineIndex] === backLines[backLine]) {
+        clozeLineTokens.set(backLine, anchor.id);
+      }
+    }
+    return { bodyStart, leading, back, headerTokenId, clozeLineTokens };
+  }
+
+  /** Whether body line `index` reaches the cloze source unchanged, so a `c` token on it counts. */
+  static clozeLineSurvives(
+    strippedLines: string[],
+    cleanBackLines: string[],
+    index: number
+  ): boolean {
+    if (index >= cleanBackLines.length || index >= strippedLines.length) return false;
+    return strippedLines[index].replace(/%%(?:(?!%%).)*%%/g, "") === cleanBackLines[index];
   }
 
   /** Read the `decks-id` frontmatter property (title-mode card identity). */
@@ -927,14 +933,8 @@ export class FlashcardParser {
     const clozeAnchors = anchors.filter((a) => a.role === "c");
     if (clozeAnchors.length === 0) return map;
     const cleanLines = cleanBack.split("\n");
-    const withoutComments = (line: string): string =>
-      line.replace(/%%(?:(?!%%).)*%%/g, "");
     for (const anchor of clozeAnchors) {
-      if (anchor.lineIndex >= cleanLines.length) continue;
-      if (
-        withoutComments(strippedLines[anchor.lineIndex]) !==
-        cleanLines[anchor.lineIndex]
-      ) {
+      if (!FlashcardParser.clozeLineSurvives(strippedLines, cleanLines, anchor.lineIndex)) {
         continue;
       }
       map.set(anchor.lineIndex, anchor.id);

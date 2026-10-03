@@ -6,28 +6,29 @@ import type {
 import type { NoteAccess } from "./NoteAccess";
 import { FlashcardParser } from "./FlashcardParser";
 import {
-  clozeBindingKey,
+  cardIdForKey,
   edgeBindingKey,
+  encodeAnchorValue,
   extractAnchorTokens,
+  extractLineAnchors,
   formatAnchorToken,
-  headerBindingKey,
+  isIdKey,
+  isIdValue,
   nodeBindingKey,
-  occlusionBindingKey,
-  questionBindingKey,
-  reverseBindingKey,
   stripAnchorTokens,
-  tableBindingKey,
-  titleBindingKey,
-  titleClozeBindingKey,
+  type AnchorRole,
+  type AnchorValueKind,
 } from "../utils/anchors";
 import {
-  generateAnchorId,
   generateClozeFlashcardId,
   generateFlashcardId,
+  generateReverseFlashcardId,
 } from "../utils/hash";
+import { scanClozeDeletions } from "../utils/cloze-scanner";
 import { splitTableLine, unescapeTableCell } from "../utils/markdown-table";
 import { parseHeaderLevels } from "../database/types";
 import { findFlashcardSegment } from "../utils/source-navigator";
+import { wantsReverseCards } from "../utils/frontmatter";
 
 export type StampOutcome =
   | { ok: true; anchorKey: string; adopted: boolean }
@@ -49,22 +50,54 @@ interface BindingRow {
   flashcardId: string;
 }
 
-interface StampPlan {
-  tokenRole: "h" | "c" | "t" | "o" | "q";
-  tokenId: string;
+/** The token a host should carry, and the key each of its cards resolves through. */
+interface HostToken {
+  role: AnchorRole;
+  value: string;
+  cards: BindingRow[];
   cardKey: string;
-  bindings: BindingRow[];
 }
 
+interface StampResult {
+  content: string;
+  outcome: StampOutcome;
+  host?: HostToken;
+}
+
+/** Resolves a card's id from its key under the host's current token, or its content id. */
+type Resolver = (key: string | null, contentId: string) => string;
+
+/** A host whose token names another id for the reviewed card, not yet synced here. */
+const STALE = Symbol("stale");
+
 const HEADER_LINE_REGEX = /^(#{1,6})\s+(.*)$/;
-const CLOZE_REGEX = /==((?:(?!==).)+)==/g;
 const TABLE_ROW_REGEX = /^\|.*\|$/;
-const MAX_MINT_ATTEMPTS = 10;
+const CLOZE_SOURCE = "==((?:(?!==).)+)==";
+
+/** The frontmatter block's lines, without its fences; empty when there is none. */
+function frontmatterLines(lines: string[]): string[] {
+  if (lines[0]?.trim() !== "---") return [];
+  const end = lines.indexOf("---", 1);
+  return end === -1 ? [] : lines.slice(1, end);
+}
+
+/** The note's `decks-id`, read the way the parser reads it. */
+function frontmatterDecksId(lines: string[]): string | null {
+  for (const line of frontmatterLines(lines)) {
+    const match = /^decks-id:\s*("?)([A-Za-z0-9_-]+)\1\s*$/.exec(line);
+    if (match) return match[2];
+  }
+  return null;
+}
+
+/** Tokens of one role on a line, with the whitespace before each. */
+function roleTokenPattern(role: AnchorRole): RegExp {
+  return new RegExp(`[ \\t]*%%dk:${role}:[a-z0-9]+%%`, "g");
+}
 
 /**
- * Writes a card's anchor token into its source at review time and records the
- * durable anchor binding. Every failure is silent and non-blocking — the next
- * review retries.
+ * Writes the ids a card's host resolves to into its note at review time, as one
+ * token per host. Every failure is silent and non-blocking — the next review retries.
  */
 export class AnchorStamper {
   constructor(
@@ -89,16 +122,6 @@ export class AnchorStamper {
   }
 
   private async stamp(card: Flashcard): Promise<StampOutcome> {
-    // A card whose locator column is already set only needs its binding
-    // ensured (canvas cards and merge races land here).
-    if (card.anchor) {
-      return this.bindExistingKey(card, card.anchor);
-    }
-
-    if (card.type === "image-occlusion-v2") {
-      return { ok: false, reason: "not_stampable" };
-    }
-
     if (card.edgeId) {
       const key = edgeBindingKey(
         card.edgeId,
@@ -117,16 +140,23 @@ export class AnchorStamper {
       return this.bindExistingKey(card, nodeBindingKey(card.sourceNodeId));
     }
 
-    const deck = await this.db.getDeckWithProfile(card.deckId);
-    if (!deck) return { ok: false, reason: "not_stampable" };
-    if (parseHeaderLevels(deck.profile).includes(0)) {
-      return this.stampTitleMode(card);
+    if (card.type === "image-occlusion-v2") {
+      return { ok: false, reason: "not_stampable" };
     }
 
-    return this.stampMarkdown(card);
+    // The note already carries this card's id: nothing to write.
+    if (card.anchor && cardIdForKey(card.anchor) === card.id) {
+      return { ok: false, reason: "already_anchored" };
+    }
+
+    const deck = await this.db.getDeckWithProfile(card.deckId);
+    if (!deck) return { ok: false, reason: "not_stampable" };
+    const titleMode = parseHeaderLevels(deck.profile).includes(0);
+    const stamped = await this.stampFileBatch(card.sourceFile, [card], titleMode);
+    return stamped.outcomes[0] ?? { ok: false, reason: "write_failed" };
   }
 
-  /** DB-only path: adopt-or-insert a binding for a key the card already owns. */
+  /** Canvas cards: their key comes from the canvas itself, so only the binding is kept. */
   private async bindExistingKey(
     card: Flashcard,
     key: string
@@ -146,326 +176,130 @@ export class AnchorStamper {
     return { ok: true, anchorKey: key, adopted: true };
   }
 
-  /** Title-mode cards anchor via the frontmatter `decks-id` property. */
-  private async stampTitleMode(card: Flashcard): Promise<StampOutcome> {
-    const path = card.sourceFile;
-    if ((await this.notes.read(path)) === null) {
-      return { ok: false, reason: "file_missing" };
-    }
-
-    const baseFront = card.id.startsWith("rcard_") ? card.back : card.front;
-    let titleId = await this.mintId(baseFront, "");
-    if (titleId === null) return { ok: false, reason: "write_failed" };
-
-    const { preMtime, lastSynced } = await this.readMtimeState(path, card.deckId);
-    let adopted = false;
-    const existing = await this.notes.readProperty(path, "decks-id");
-    if (existing !== null && existing.length > 0) {
-      titleId = existing;
-      adopted = true;
-    } else {
-      await this.notes.writeProperty(path, "decks-id", titleId);
-    }
-    await this.suppressMtimeIfClean(path, card.deckId, preMtime, lastSynced);
-
-    const baseKey = titleBindingKey(titleId);
-    let cardKey: string;
-    if (card.id.startsWith("rcard_")) {
-      cardKey = reverseBindingKey(baseKey);
-    } else if (card.type === "cloze") {
-      cardKey = titleClozeBindingKey(titleId, card.clozeOrder ?? 0);
-    } else {
-      cardKey = baseKey;
-    }
-    const bound = await this.db.getAnchorBinding(cardKey);
-    if (bound !== null && bound !== card.id) {
-      return { ok: false, reason: "binding_conflict" };
-    }
-    await this.db.insertAnchorBindings([
-      { anchor: cardKey, flashcardId: card.id },
-    ]);
-    await this.db.setFlashcardAnchor(card.id, cardKey);
-    card.anchor = cardKey;
-    return { ok: true, anchorKey: cardKey, adopted };
-  }
-
-  /** Markdown cards (header, cloze, table, occlusion): token into the file. */
-  private async stampMarkdown(card: Flashcard): Promise<StampOutcome> {
-    const path = card.sourceFile;
-    const content = await this.notes.read(path);
-    if (content === null) return { ok: false, reason: "file_missing" };
-
-    const isReverse = card.id.startsWith("rcard_");
-    const hostFront = isReverse ? card.back : card.front;
-    const hostBack = isReverse ? card.front : card.back;
-
-    const lines = content.split("\n");
-
-    if (this.hasAmbiguousHost(card, lines, hostFront)) {
-      return { ok: false, reason: "ambiguous_front" };
-    }
-
-    const mintInput = this.mintInputFor(card, lines, hostFront);
-    const tokenId = await this.mintId(mintInput, content);
-    if (tokenId === null) return { ok: false, reason: "write_failed" };
-
-    const plan = await this.buildPlan(card, tokenId, hostFront);
-    if (!plan) return { ok: false, reason: "not_stampable" };
-
-    const { preMtime, lastSynced } = await this.readMtimeState(path, card.deckId);
-    const captured: { outcome: StampOutcome; bindings: BindingRow[] } = {
-      outcome: { ok: false, reason: "write_failed" },
-      bindings: [],
-    };
-    await this.notes.process(path, (current) => {
-      const result = this.applyStamp(current, card, hostFront, hostBack, plan);
-      captured.outcome = result.outcome;
-      captured.bindings = result.bindings;
-      return result.content;
-    });
-
-    const finalOutcome = captured.outcome;
-    const bindings = captured.bindings;
-    if (!finalOutcome.ok) return finalOutcome;
-
-    await this.suppressMtimeIfClean(path, card.deckId, preMtime, lastSynced);
-    await this.db.insertAnchorBindings(bindings);
-    for (const row of bindings) {
-      const existing = await this.db.getFlashcardById(row.flashcardId);
-      if (existing) {
-        await this.db.setFlashcardAnchor(row.flashcardId, row.anchor);
-      }
-    }
-    card.anchor = finalOutcome.anchorKey;
-    return finalOutcome;
-  }
-
-  private isTableCard(card: Flashcard): boolean {
-    return card.type === "table" || card.templateRow != null;
-  }
-
-  private hasAmbiguousHost(
-    card: Flashcard,
-    lines: string[],
-    hostFront: string
-  ): boolean {
-    if (this.isTableCard(card)) {
-      return this.countTableRowMatches(lines, hostFront) > 1;
-    }
-    if (card.type === "image-occlusion") {
-      // The item-level stale check (clozeText compare) self-guards mislocation.
-      return false;
-    }
-    return this.countHeaderMatches(lines, hostFront) > 1;
-  }
-
-  private mintInputFor(
-    card: Flashcard,
-    lines: string[],
-    hostFront: string
-  ): string {
-    if (card.type === "image-occlusion") return card.clozeText ?? hostFront;
-    if (card.type === "cloze" && !this.isTableCard(card)) {
-      return this.findClozeLineText(lines, card) ?? hostFront;
-    }
-    return hostFront;
-  }
-
   /**
-   * Stamp several markdown cards of one file in a single write (used by the
-   * one-time migrator). Cards must share `sourceFile` and be unanchored.
+   * Stamp several cards of one note in a single write. Cards must share
+   * `sourceFile`; each one's outcome is returned in order.
    */
   async stampFileBatch(
     path: string,
-    cards: Flashcard[]
-  ): Promise<{ stamped: number; skipped: number }> {
-    let skipped = 0;
+    cards: Flashcard[],
+    titleMode = false
+  ): Promise<{ stamped: number; skipped: number; outcomes: StampOutcome[] }> {
     const content = await this.notes.read(path);
-    if (content === null) return { stamped: 0, skipped: cards.length };
-    const lines = content.split("\n");
-
-    const jobs: {
-      card: Flashcard;
-      hostFront: string;
-      hostBack: string;
-      plan: StampPlan;
-    }[] = [];
-    for (const card of cards) {
-      const isReverse = card.id.startsWith("rcard_");
-      const hostFront = isReverse ? card.back : card.front;
-      if (this.hasAmbiguousHost(card, lines, hostFront)) {
-        skipped++;
-        continue;
-      }
-      const mintInput = this.mintInputFor(card, lines, hostFront);
-      const tokenId = await this.mintId(mintInput, content);
-      if (tokenId === null) {
-        skipped++;
-        continue;
-      }
-      const plan = await this.buildPlan(card, tokenId, hostFront);
-      if (!plan) {
-        skipped++;
-        continue;
-      }
-      jobs.push({
-        card,
-        hostFront,
-        hostBack: isReverse ? card.front : card.back,
-        plan,
-      });
+    if (content === null) {
+      const missing: StampOutcome = { ok: false, reason: "file_missing" };
+      return { stamped: 0, skipped: cards.length, outcomes: cards.map(() => missing) };
     }
-    if (jobs.length === 0) return { stamped: 0, skipped };
 
-    const deckId = cards[0].deckId;
-    const { preMtime, lastSynced } = await this.readMtimeState(path, deckId);
-    const allBindings: BindingRow[] = [];
-    const stampedCards: { card: Flashcard; key: string }[] = [];
-    await this.notes.process(path, (initial) => {
+    const run = (
+      initial: string,
+      resolve: Resolver
+    ): { content: string; results: StampResult[] } => {
       let current = initial;
-      for (const job of jobs) {
-        const result = this.applyStamp(
-          current,
-          job.card,
-          job.hostFront,
-          job.hostBack,
-          job.plan
-        );
-        if (result.outcome.ok) {
-          current = result.content;
-          allBindings.push(...result.bindings);
-          stampedCards.push({ card: job.card, key: result.outcome.anchorKey });
-        } else {
-          skipped++;
-          this.logger?.debug(
-            `Anchor migration skipped ${job.card.id}: ${result.outcome.reason}`
-          );
-        }
-      }
-      return current;
-    });
+      const results = cards.map((card) => {
+        const result = this.applyStamp(current, card, titleMode, resolve);
+        if (result.outcome.ok) current = result.content;
+        return result;
+      });
+      return { content: current, results };
+    };
 
-    await this.suppressMtimeIfClean(path, deckId, preMtime, lastSynced);
-    await this.db.insertAnchorBindings(allBindings);
-    for (const row of allBindings) {
-      const existing = await this.db.getFlashcardById(row.flashcardId);
-      if (existing) {
+    // Minted tokens resolve through bindings: a dry run names the keys to fetch.
+    const bindings = new Map<string, string | null>();
+    let requested = new Set<string>();
+    let pass = run(content, this.resolver(bindings, requested));
+    if (requested.size > 0) {
+      for (const key of requested) bindings.set(key, await this.db.getAnchorBinding(key));
+      requested = new Set();
+      pass = run(content, this.resolver(bindings, requested));
+    }
+
+    if (pass.content !== content) {
+      const deckId = cards[0].deckId;
+      const { preMtime, lastSynced } = await this.readMtimeState(path, deckId);
+      await this.notes.process(path, (current) => {
+        const missed = new Set<string>();
+        pass = run(current, this.resolver(bindings, missed));
+        if (missed.size > 0) {
+          // The note changed under us in a way the fetched bindings don't cover.
+          const stale: StampOutcome = { ok: false, reason: "stale" };
+          pass = { content: current, results: cards.map(() => ({ content: current, outcome: stale })) };
+        }
+        return pass.content;
+      });
+      await this.suppressMtimeIfClean(path, deckId, preMtime, lastSynced);
+    }
+
+    const recorded = new Set<string>();
+    let stamped = 0;
+    const outcomes: StampOutcome[] = [];
+    for (let i = 0; i < cards.length; i++) {
+      const { outcome, host } = pass.results[i];
+      outcomes.push(outcome);
+      if (!outcome.ok || !host) continue;
+      stamped++;
+      cards[i].anchor = outcome.anchorKey;
+      if (recorded.has(host.value)) continue;
+      recorded.add(host.value);
+      await this.recordHost(host);
+    }
+    return { stamped, skipped: cards.length - stamped, outcomes };
+  }
+
+  /** Mirrors the synchronizer: a carried id, else the binding of a minted key, else content. */
+  private resolver(
+    bindings: Map<string, string | null>,
+    requested: Set<string>
+  ): Resolver {
+    return (key, contentId) => {
+      if (key === null) return contentId;
+      if (isIdKey(key)) return cardIdForKey(key) ?? contentId;
+      if (!bindings.has(key)) {
+        requested.add(key);
+        return contentId;
+      }
+      return bindings.get(key) ?? contentId;
+    };
+  }
+
+  /** Keys onto the rows now, and compatibility bindings for versions that still read them. */
+  private async recordHost(host: HostToken): Promise<void> {
+    await this.db.insertAnchorBindings(host.cards);
+    for (const row of host.cards) {
+      if (await this.db.getFlashcardById(row.flashcardId)) {
         await this.db.setFlashcardAnchor(row.flashcardId, row.anchor);
       }
     }
-    for (const s of stampedCards) s.card.anchor = s.key;
-    return { stamped: stampedCards.length, skipped };
-  }
-
-  /** Deterministic mint with occurrence salting against file/binding collisions. */
-  private async mintId(
-    input: string,
-    fileContent: string
-  ): Promise<string | null> {
-    for (let occurrence = 0; occurrence < MAX_MINT_ATTEMPTS; occurrence++) {
-      const candidate = generateAnchorId(input, occurrence);
-      if (fileContent.includes(`:${candidate}%%`)) continue;
-      const conflicts = await Promise.all([
-        this.db.getAnchorBinding(headerBindingKey(candidate)),
-        this.db.getAnchorBinding(clozeBindingKey(candidate, 0)),
-        this.db.getAnchorBinding(tableBindingKey(candidate)),
-        this.db.getAnchorBinding(tableBindingKey(candidate, 0)),
-        this.db.getAnchorBinding(occlusionBindingKey(candidate)),
-        this.db.getAnchorBinding(questionBindingKey(candidate)),
-      ]);
-      if (conflicts.some((id) => id !== null)) continue;
-      return candidate;
-    }
-    return null;
-  }
-
-  private async buildPlan(
-    card: Flashcard,
-    tokenId: string,
-    hostFront: string
-  ): Promise<StampPlan | null> {
-    if (card.type === "image-occlusion") {
-      return {
-        tokenRole: "o",
-        tokenId,
-        cardKey: occlusionBindingKey(tokenId),
-        bindings: [],
-      };
-    }
-    if (this.isTableCard(card)) {
-      const tableKey = tableBindingKey(tokenId);
-      let cardKey: string;
-      if (card.id.startsWith("rcard_")) {
-        cardKey = reverseBindingKey(tableKey);
-      } else if (card.type === "cloze") {
-        cardKey = tableBindingKey(tokenId, card.clozeOrder ?? 0);
-      } else {
-        cardKey = tableKey;
-      }
-      // Bindings are computed at apply time from the located row's cells.
-      return { tokenRole: "t", tokenId, cardKey, bindings: [] };
-    }
-    if (card.type === "cloze") {
-      return {
-        tokenRole: "c",
-        tokenId,
-        cardKey: clozeBindingKey(tokenId, 0),
-        bindings: [],
-      };
-    }
-    if (card.type === "multiple-choice") {
-      const questionKey = questionBindingKey(tokenId);
-      return {
-        tokenRole: "q",
-        tokenId,
-        cardKey: questionKey,
-        bindings: [{ anchor: questionKey, flashcardId: card.id }],
-      };
-    }
-    const baseKey = headerBindingKey(tokenId);
-    if (card.id.startsWith("rcard_")) {
-      const bindings: BindingRow[] = [
-        { anchor: reverseBindingKey(baseKey), flashcardId: card.id },
-      ];
-      const baseId = generateFlashcardId(hostFront);
-      const baseCard = await this.db.getFlashcardById(baseId);
-      if (baseCard) bindings.push({ anchor: baseKey, flashcardId: baseId });
-      return {
-        tokenRole: "h",
-        tokenId,
-        cardKey: reverseBindingKey(baseKey),
-        bindings,
-      };
-    }
-    return {
-      tokenRole: "h",
-      tokenId,
-      cardKey: baseKey,
-      bindings: [{ anchor: baseKey, flashcardId: card.id }],
-    };
   }
 
   private applyStamp(
     content: string,
     card: Flashcard,
-    hostFront: string,
-    hostBack: string,
-    plan: StampPlan
-  ): { content: string; outcome: StampOutcome; bindings: BindingRow[] } {
-    if (plan.tokenRole === "t") {
-      return this.applyTableStamp(content, card, hostFront, hostBack, plan);
-    }
-    if (plan.tokenRole === "o") {
-      return this.applyOcclusionStamp(content, card, plan);
-    }
-
-    const unchanged = (reason: StampOutcome & { ok: false }): {
-      content: string;
-      outcome: StampOutcome;
-      bindings: BindingRow[];
-    } => ({ content, outcome: reason, bindings: [] });
-
+    titleMode: boolean,
+    resolve: Resolver
+  ): StampResult {
+    const unchanged = (reason: StampOutcome & { ok: false }): StampResult => ({
+      content,
+      outcome: reason,
+    });
+    const isReverse = card.id.startsWith("rcard_");
+    const hostFront = isReverse ? card.back : card.front;
+    const hostBack = isReverse ? card.front : card.back;
     const lines = content.split("\n");
+    const reverses = wantsReverseCards(content);
+
+    if (titleMode) return this.applyTitleStamp(content, card, hostBack, reverses, resolve);
+    if (card.type === "image-occlusion") return this.applyOcclusionStamp(content, card);
+    if (this.isTableCard(card)) {
+      if (this.countTableRowMatches(lines, hostFront) > 1) {
+        return unchanged({ ok: false, reason: "ambiguous_front" });
+      }
+      return this.applyTableStamp(content, card, hostFront, hostBack, reverses, resolve);
+    }
+    if (this.countHeaderMatches(lines, hostFront) > 1) {
+      return unchanged({ ok: false, reason: "ambiguous_front" });
+    }
+
     const segment = findFlashcardSegment(lines, {
       type: card.type === "cloze" ? "cloze" : "header-paragraph",
       front: hostFront,
@@ -474,177 +308,183 @@ export class AnchorStamper {
     });
     if (!segment) return unchanged({ ok: false, reason: "segment_not_found" });
 
-    // A cloze whose segment resolves to a table row belongs to the t path.
-    // Route rather than reject: templateRow may be missing on older rows, and
-    // the segment itself proves the host is a table.
+    // A cloze whose segment resolves to a table row belongs to the table path;
+    // templateRow may be missing on older rows.
     if (
       segment.end - segment.start === 1 &&
       TABLE_ROW_REGEX.test(lines[segment.start].trim())
     ) {
-      return this.applyTableStamp(content, card, hostFront, hostBack, {
-        tokenRole: "t",
-        tokenId: plan.tokenId,
-        cardKey: tableBindingKey(plan.tokenId, card.clozeOrder ?? 0),
-        bindings: [],
-      });
+      return this.applyTableStamp(content, card, hostFront, hostBack, reverses, resolve);
     }
 
-    const bodyStart = segment.start + 1;
+    // The parser skips blank lines before a body, so line k of its body is here.
+    let bodyStart = segment.start + 1;
+    while (bodyStart < segment.end && lines[bodyStart].trim() === "") bodyStart++;
     const bodyLines = lines.slice(bodyStart, segment.end);
-    const cleanBody = bodyLines.map((l) => stripAnchorTokens(l));
-    const parsedBody = FlashcardParser.extractHeaderParagraphNotes(
-      cleanBody.join("\n").trim()
+    const { lines: stripped, anchors } = extractLineAnchors(bodyLines);
+    const { back: cleanBack } = FlashcardParser.extractHeaderParagraphNotes(
+      stripped.join("\n").trim()
     );
-    if (parsedBody.back.trim() !== hostBack.trim()) {
+    if (cleanBack.trim() !== hostBack.trim()) {
       return unchanged({ ok: false, reason: "stale" });
     }
 
-    if (plan.tokenRole === "h") {
-      // Adopt semantics mirror the parser: the first h token anywhere in the
-      // body owns the card, wherever the user has moved it.
-      for (const bodyLine of bodyLines) {
-        const existing = extractAnchorTokens(bodyLine).tokens.find(
-          (t) => t.role === "h"
-        );
-        if (existing) {
-          const adoptedKey = card.id.startsWith("rcard_")
-            ? reverseBindingKey(headerBindingKey(existing.id))
-            : headerBindingKey(existing.id);
-          return {
-            content,
-            outcome: { ok: true, anchorKey: adoptedKey, adopted: true },
-            bindings: this.rekeyBindings(plan, existing.id),
-          };
-        }
+    if (card.type === "cloze") {
+      const deletions = scanClozeDeletions(cleanBack);
+      const target = deletions.find((d) => d.order === (card.clozeOrder ?? 0));
+      if (!target) return unchanged({ ok: false, reason: "stale" });
+      if (
+        !FlashcardParser.clozeLineSurvives(stripped, cleanBack.split("\n"), target.lineIndex)
+      ) {
+        return unchanged({ ok: false, reason: "not_stampable" });
       }
-      let target = -1;
-      for (let i = bodyLines.length - 1; i >= 0; i--) {
-        if (bodyLines[i].trim() !== "") {
-          target = i;
-          break;
-        }
-      }
-      if (target === -1) {
-        return unchanged({ ok: false, reason: "segment_not_found" });
-      }
-      // The token gets its own line directly after the body.
-      lines.splice(
-        bodyStart + target + 1,
-        0,
-        formatAnchorToken("h", plan.tokenId)
+      // The parser reads the last c token on a line.
+      const existing = anchors
+        .filter((a) => a.role === "c" && a.lineIndex === target.lineIndex)
+        .pop()?.id;
+      const onLine = deletions.filter((d) => d.lineIndex === target.lineIndex);
+      const host = this.packedHost(
+        "c",
+        onLine.map((d) => ({
+          contentId: generateClozeFlashcardId(hostFront, d.text, d.order),
+          suffix: `#${d.indexInLine}`,
+        })),
+        target.indexInLine,
+        card,
+        this.trustedValue(content, "c", existing, `#${target.indexInLine}`, card),
+        resolve
       );
-      return {
-        content: lines.join("\n"),
-        outcome: { ok: true, anchorKey: plan.cardKey, adopted: false },
-        bindings: plan.bindings,
-      };
+      if (!("value" in host)) return unchanged(host);
+      const lineIndex = bodyStart + target.lineIndex;
+      lines[lineIndex] = this.writeLineToken(lines[lineIndex], "c", host.value);
+      return this.done(content, lines, host);
     }
 
-    if (plan.tokenRole === "q") {
-      // Adopt semantics mirror the parser: the first q token anywhere in the
-      // body owns the question. A dormant h token stays inert here.
-      for (const bodyLine of bodyLines) {
-        const existing = extractAnchorTokens(bodyLine).tokens.find(
-          (t) => t.role === "q"
-        );
-        if (existing) {
-          return {
-            content,
-            outcome: {
-              ok: true,
-              anchorKey: questionBindingKey(existing.id),
-              adopted: true,
-            },
-            bindings: this.rekeyBindings(plan, existing.id),
-          };
-        }
+    if (card.type === "multiple-choice") {
+      const existing = anchors.find((a) => a.role === "q")?.id;
+      const trusted = this.trustedValue(content, "q", existing, "", card);
+      if (trusted === STALE) return unchanged({ ok: false, reason: "stale" });
+      const host = this.singleHost("q", "a", card.id);
+      if (!host) return unchanged({ ok: false, reason: "not_stampable" });
+      const placed = this.replaceFirstBodyToken(lines, bodyStart, segment.end, "q", host.value);
+      if (!placed) {
+        const last = this.lastNonBlank(lines, bodyStart, segment.end);
+        if (last === -1) return unchanged({ ok: false, reason: "segment_not_found" });
+        // Own paragraph: a line directly after a list item would continue that item.
+        lines.splice(last + 1, 0, "", formatAnchorToken("q", host.value));
       }
-      let target = -1;
-      for (let i = bodyLines.length - 1; i >= 0; i--) {
-        if (bodyLines[i].trim() !== "") {
-          target = i;
-          break;
-        }
-      }
-      if (target === -1) {
-        return unchanged({ ok: false, reason: "segment_not_found" });
-      }
-      // Own paragraph after the list, separated by a blank line: a non-blank
-      // line directly after a list item would lazily continue that item, so
-      // the token would land inside the last option and die with it.
-      lines.splice(
-        bodyStart + target + 1,
-        0,
-        "",
-        formatAnchorToken("q", plan.tokenId)
-      );
-      return {
-        content: lines.join("\n"),
-        outcome: { ok: true, anchorKey: plan.cardKey, adopted: false },
-        bindings: plan.bindings,
-      };
+      return this.done(content, lines, host);
     }
 
-    // Cloze: locate the body line holding match #clozeOrder and its
-    // within-line index, then token that line and bind every sibling on it.
-    const located = this.locateCloze(cleanBody, card.clozeOrder ?? 0);
-    if (!located) return unchanged({ ok: false, reason: "stale" });
-
-    const rawLine = bodyLines[located.lineIndex];
-    const existing = extractAnchorTokens(rawLine).tokens.find(
-      (t) => t.role === "c"
-    );
-    const tokenId = existing ? existing.id : plan.tokenId;
-    const bindings = this.clozeSiblingBindings(
+    const existing = anchors.find((a) => a.role === "h")?.id;
+    const host = this.pairHost(
+      "h",
+      card,
       hostFront,
-      cleanBody,
-      located.lineIndex,
-      tokenId
+      reverses && hostBack.trim() !== "",
+      this.trustedValue(content, "h", existing, isReverse ? ":rev" : "", card),
+      resolve
     );
-    const cardKey = clozeBindingKey(tokenId, located.indexInLine);
-    if (existing) {
-      return {
-        content,
-        outcome: { ok: true, anchorKey: cardKey, adopted: true },
-        bindings,
-      };
+    if (!("value" in host)) return unchanged(host);
+    const placed = this.replaceFirstBodyToken(lines, bodyStart, segment.end, "h", host.value);
+    if (!placed) {
+      const last = this.lastNonBlank(lines, bodyStart, segment.end);
+      if (last === -1) return unchanged({ ok: false, reason: "segment_not_found" });
+      lines.splice(last + 1, 0, formatAnchorToken("h", host.value));
     }
-    lines[bodyStart + located.lineIndex] =
-      rawLine + " " + formatAnchorToken("c", tokenId);
-    return {
-      content: lines.join("\n"),
-      outcome: { ok: true, anchorKey: cardKey, adopted: false },
-      bindings,
-    };
+    return this.done(content, lines, host);
   }
 
-  /** Re-point a plan's bindings at an adopted token id. */
-  private rekeyBindings(plan: StampPlan, adoptedId: string): BindingRow[] {
-    return plan.bindings.map((row) => ({
-      flashcardId: row.flashcardId,
-      anchor: this.rekeyCardKey(row.anchor, adoptedId),
-    }));
+  /** Title mode: the note is the card, so its token sits in the body. */
+  private applyTitleStamp(
+    content: string,
+    card: Flashcard,
+    hostBack: string,
+    reverses: boolean,
+    resolve: Resolver
+  ): StampResult {
+    const unchanged = (reason: StampOutcome & { ok: false }): StampResult => ({
+      content,
+      outcome: reason,
+    });
+    const view = FlashcardParser.titleBodyView(content);
+    if (view.back.trim() !== hostBack.trim()) {
+      return unchanged({ ok: false, reason: "stale" });
+    }
+    const lines = content.split("\n");
+    const bodyFirst = view.bodyStart + view.leading;
+    const isReverse = card.id.startsWith("rcard_");
+    const hostFront = isReverse ? card.back : card.front;
+    const decksId = frontmatterDecksId(lines);
+
+    if (card.type === "cloze") {
+      const deletions = scanClozeDeletions(view.back);
+      const target = deletions.find((d) => d.order === (card.clozeOrder ?? 0));
+      if (!target) return unchanged({ ok: false, reason: "stale" });
+      const lineIndex = bodyFirst + target.lineIndex;
+      const backLine = view.back.split("\n")[target.lineIndex];
+      if (stripAnchorTokens(lines[lineIndex] ?? "") !== backLine) {
+        return unchanged({ ok: false, reason: "not_stampable" });
+      }
+      const lineValue = view.clozeLineTokens.get(target.lineIndex);
+      const onLine = deletions.filter((d) => d.lineIndex === target.lineIndex);
+      const trusted = this.trustedValue(content, "c", lineValue, `#${target.indexInLine}`, card);
+      if (trusted === STALE) return unchanged({ ok: false, reason: "stale" });
+      // Without a line token the line's cards resolve through `decks-id`.
+      const keyFor = (d: { order: number; indexInLine: number }): string | null =>
+        trusted !== null
+          ? `${trusted.base}#${d.indexInLine}`
+          : lineValue === undefined && decksId
+          ? `p:${decksId}#${d.order}`
+          : null;
+      const ids = onLine.map((d) =>
+        d.indexInLine === target.indexInLine
+          ? card.id
+          : resolve(keyFor(d), generateClozeFlashcardId(hostFront, d.text, d.order))
+      );
+      const host = this.encodePacked("c", ids, onLine.map((d) => `#${d.indexInLine}`), target.indexInLine);
+      if (!host) return unchanged({ ok: false, reason: "not_stampable" });
+      lines[lineIndex] = this.writeLineToken(lines[lineIndex], "c", host.value);
+      return this.done(content, lines, host);
+    }
+
+    const headerValue = view.headerTokenId;
+    const trusted = this.trustedValue(content, "h", headerValue, isReverse ? ":rev" : "", card);
+    // Without a body token the note's cards resolve through `decks-id`.
+    const existing =
+      trusted === null && headerValue === undefined && decksId
+        ? { base: `p:${decksId}` }
+        : trusted;
+    const host = this.pairHost(
+      "h",
+      card,
+      hostFront,
+      reverses && hostBack.trim() !== "",
+      existing,
+      resolve
+    );
+    if (!("value" in host)) return unchanged(host);
+    if (!this.replaceFirstBodyToken(lines, view.bodyStart, lines.length, "h", host.value)) {
+      const last = this.lastNonBlank(lines, view.bodyStart, lines.length);
+      if (last === -1) return unchanged({ ok: false, reason: "segment_not_found" });
+      lines.splice(last + 1, 0, formatAnchorToken("h", host.value));
+    }
+    return this.done(content, lines, host);
   }
 
-  /** Swap the token id inside a binding key, keeping role and suffix. */
-  private rekeyCardKey(cardKey: string, adoptedId: string): string {
-    return cardKey.replace(/^([hctoq]):[a-z0-9]+/, `$1:${adoptedId}`);
-  }
-
-  /** Table rows: token written into the first data cell, located by row scan. */
+  /** Table rows: the token sits in the first data cell, unless one is already in the row. */
   private applyTableStamp(
     content: string,
     card: Flashcard,
     hostFront: string,
     hostBack: string,
-    plan: StampPlan
-  ): { content: string; outcome: StampOutcome; bindings: BindingRow[] } {
-    const unchanged = (reason: StampOutcome & { ok: false }): {
-      content: string;
-      outcome: StampOutcome;
-      bindings: BindingRow[];
-    } => ({ content, outcome: reason, bindings: [] });
-
+    reverses: boolean,
+    resolve: Resolver
+  ): StampResult {
+    const unchanged = (reason: StampOutcome & { ok: false }): StampResult => ({
+      content,
+      outcome: reason,
+    });
     const lines = content.split("\n");
     const segment = findFlashcardSegment(lines, {
       type: card.type === "cloze" ? "cloze" : "table",
@@ -673,88 +513,69 @@ export class AnchorStamper {
       }
     } else if (
       dataCells[0] !== hostFront ||
-      (dataCells[1] ?? "") !== hostBack
+      (card.type !== "cloze" && (dataCells[1] ?? "") !== hostBack)
     ) {
       return unchanged({ ok: false, reason: "stale" });
     }
 
+    // The parser reads the row's first t token.
     const existing = rawCells
       .flatMap((c) => extractAnchorTokens(c).tokens)
-      .find((t) => t.role === "t");
-    if (existing) {
-      return {
-        content,
-        outcome: {
-          ok: true,
-          anchorKey: this.rekeyCardKey(plan.cardKey, existing.id),
-          adopted: true,
-        },
-        bindings: this.tableBindings(card, hostFront, dataCells, existing.id),
-      };
+      .find((t) => t.role === "t")?.id;
+    let host: HostToken | { ok: false; reason: "stale" | "not_stampable" };
+    if (card.type === "cloze") {
+      // Mirrors the parser's cell choice: a cloze in the front cell wins.
+      const frontIsCloze = new RegExp(CLOZE_SOURCE).test(dataCells[0]);
+      const source = frontIsCloze ? dataCells[0] : dataCells[1] ?? "";
+      const deletions = scanClozeDeletions(source);
+      const slot = card.clozeOrder ?? 0;
+      if (slot >= deletions.length) return unchanged({ ok: false, reason: "stale" });
+      host = this.packedHost(
+        "t",
+        deletions.map((d) => ({
+          contentId: generateClozeFlashcardId(hostFront, d.text, d.order),
+          suffix: `#${d.order}`,
+        })),
+        slot,
+        card,
+        this.trustedValue(content, "t", existing, `#${slot}`, card),
+        resolve
+      );
+    } else {
+      host = this.pairHost(
+        "t",
+        card,
+        hostFront,
+        reverses && hostBack.trim() !== "",
+        this.trustedValue(content, "t", existing, card.id.startsWith("rcard_") ? ":rev" : "", card),
+        resolve
+      );
     }
+    if (!("value" in host)) return unchanged(host);
 
     const next = [...rawCells];
-    next[1] =
-      next[1].replace(/\s*$/, "") +
-      " " +
-      formatAnchorToken("t", plan.tokenId) +
-      " ";
+    const holder = next.findIndex((c) =>
+      extractAnchorTokens(c).tokens.some((t) => t.role === "t")
+    );
+    if (holder >= 0) {
+      next[holder] = next[holder].replace(
+        /%%dk:t:[a-z0-9]+%%/,
+        formatAnchorToken("t", host.value)
+      );
+    } else {
+      next[1] =
+        next[1].replace(/\s*$/, "") + " " + formatAnchorToken("t", host.value) + " ";
+    }
     lines[segment.start] = leading + next.join("|");
-    return {
-      content: lines.join("\n"),
-      outcome: { ok: true, anchorKey: plan.cardKey, adopted: false },
-      bindings: this.tableBindings(card, hostFront, dataCells, plan.tokenId),
-    };
+    return this.done(content, lines, host);
   }
 
-  /**
-   * Deterministic bindings for a table row: the plain/reverse pair, or every
-   * cloze in the row's cloze cell (mirrors the parser's cell choice).
-   */
-  private tableBindings(
-    card: Flashcard,
-    hostFront: string,
-    dataCells: string[],
-    tokenId: string
-  ): BindingRow[] {
-    if (card.type === "cloze") {
-      const frontIsCloze = new RegExp(CLOZE_REGEX.source).test(dataCells[0]);
-      const clozeSource = frontIsCloze ? dataCells[0] : dataCells[1] ?? "";
-      const rows: BindingRow[] = [];
-      const regex = new RegExp(CLOZE_REGEX.source, "g");
-      let match: RegExpExecArray | null;
-      let order = 0;
-      while ((match = regex.exec(clozeSource)) !== null) {
-        rows.push({
-          anchor: tableBindingKey(tokenId, order),
-          flashcardId: generateClozeFlashcardId(hostFront, match[1], order),
-        });
-        order++;
-      }
-      return rows;
-    }
-    const tableKey = tableBindingKey(tokenId);
-    if (card.id.startsWith("rcard_")) {
-      return [
-        { anchor: reverseBindingKey(tableKey), flashcardId: card.id },
-        { anchor: tableKey, flashcardId: generateFlashcardId(hostFront) },
-      ];
-    }
-    return [{ anchor: tableKey, flashcardId: card.id }];
-  }
-
-  /** Occlusion v1 items: token appended to the numbered list line. */
-  private applyOcclusionStamp(
-    content: string,
-    card: Flashcard,
-    plan: StampPlan
-  ): { content: string; outcome: StampOutcome; bindings: BindingRow[] } {
-    const unchanged = (reason: StampOutcome & { ok: false }): {
-      content: string;
-      outcome: StampOutcome;
-      bindings: BindingRow[];
-    } => ({ content, outcome: reason, bindings: [] });
-
+  /** Occlusion v1 items: the token goes at the end of the numbered list line. */
+  private applyOcclusionStamp(content: string, card: Flashcard): StampResult {
+    const unchanged = (reason: StampOutcome & { ok: false }): StampResult => ({
+      content,
+      outcome: reason,
+    });
     const lines = content.split("\n");
     const segment = findFlashcardSegment(lines, {
       type: "image-occlusion",
@@ -773,33 +594,155 @@ export class AnchorStamper {
     if (currentCloze !== (card.clozeText ?? "")) {
       return unchanged({ ok: false, reason: "stale" });
     }
-
-    const existing = extractAnchorTokens(rawLine).tokens.find(
-      (t) => t.role === "o"
-    );
-    if (existing) {
-      return {
-        content,
-        outcome: {
-          ok: true,
-          anchorKey: occlusionBindingKey(existing.id),
-          adopted: true,
-        },
-        bindings: [
-          { anchor: occlusionBindingKey(existing.id), flashcardId: card.id },
-        ],
-      };
+    const existing = extractAnchorTokens(rawLine).tokens.filter((t) => t.role === "o").pop()?.id;
+    if (this.trustedValue(content, "o", existing, "", card) === STALE) {
+      return unchanged({ ok: false, reason: "stale" });
     }
+    const host = this.singleHost("o", "c", card.id);
+    if (!host) return unchanged({ ok: false, reason: "not_stampable" });
+    lines[segment.start] = this.writeLineToken(rawLine, "o", host.value);
+    return this.done(content, lines, host);
+  }
 
-    lines[segment.start] =
-      rawLine + " " + formatAnchorToken("o", plan.tokenId);
+  private done(content: string, lines: string[], host: HostToken): StampResult {
+    const next = lines.join("\n");
     return {
-      content: lines.join("\n"),
-      outcome: { ok: true, anchorKey: plan.cardKey, adopted: false },
-      bindings: [
-        { anchor: occlusionBindingKey(plan.tokenId), flashcardId: card.id },
-      ],
+      content: next,
+      outcome: { ok: true, anchorKey: host.cardKey, adopted: next === content },
+      host,
     };
+  }
+
+  /**
+   * Whether a host's token speaks for its cards: one naming another id for this card is a
+   * copy (its value recurs in the note; null, so content ids) or not synced here yet (STALE).
+   */
+  private trustedValue(
+    content: string,
+    role: AnchorRole,
+    value: string | undefined,
+    cardSuffix: string,
+    card: Flashcard
+  ): { base: string } | null | typeof STALE {
+    if (value === undefined) return null;
+    const carried = cardIdForKey(`${role}:${value}${cardSuffix}`);
+    if (!isIdValue(value) || carried === null || carried === card.id) {
+      return { base: `${role}:${value}` };
+    }
+    const token = formatAnchorToken(role, value);
+    return content.split(token).length > 2 ? null : STALE;
+  }
+
+  /** A host with exactly one card. */
+  private singleHost(
+    role: AnchorRole,
+    kind: AnchorValueKind,
+    id: string
+  ): HostToken | null {
+    const value = encodeAnchorValue(kind, [id]);
+    if (value === null) return null;
+    const key = `${role}:${value}`;
+    return { role, value, cards: [{ anchor: key, flashcardId: id }], cardKey: key };
+  }
+
+  /** A host with a card and, when the note makes reverses, its reverse. */
+  private pairHost(
+    role: AnchorRole,
+    card: Flashcard,
+    hostFront: string,
+    reverses: boolean,
+    existing: { base: string } | null | typeof STALE,
+    resolve: Resolver
+  ): HostToken | { ok: false; reason: "stale" | "not_stampable" } {
+    if (existing === STALE) return { ok: false, reason: "stale" };
+    const isReverse = card.id.startsWith("rcard_");
+    const base = existing?.base ?? null;
+    const forwardId = isReverse
+      ? resolve(base, generateFlashcardId(hostFront))
+      : card.id;
+    const reverseId = isReverse
+      ? card.id
+      : reverses
+      ? resolve(base === null ? null : `${base}:rev`, generateReverseFlashcardId(hostFront))
+      : null;
+    const value =
+      reverseId === null
+        ? encodeAnchorValue("a", [forwardId])
+        : encodeAnchorValue("b", [forwardId, reverseId]);
+    if (value === null) return { ok: false, reason: "not_stampable" };
+    const key = `${role}:${value}`;
+    const cards: BindingRow[] = [{ anchor: key, flashcardId: forwardId }];
+    if (reverseId !== null) cards.push({ anchor: `${key}:rev`, flashcardId: reverseId });
+    return { role, value, cards, cardKey: isReverse ? `${key}:rev` : key };
+  }
+
+  /** A host with one cloze card per deletion; the reviewed card keeps its own id. */
+  private packedHost(
+    role: AnchorRole,
+    slots: Array<{ contentId: string; suffix: string }>,
+    cardSlot: number,
+    card: Flashcard,
+    existing: { base: string } | null | typeof STALE,
+    resolve: Resolver
+  ): HostToken | { ok: false; reason: "stale" | "not_stampable" } {
+    if (existing === STALE) return { ok: false, reason: "stale" };
+    const ids = slots.map((slot, k) =>
+      k === cardSlot
+        ? card.id
+        : resolve(existing === null ? null : `${existing.base}${slot.suffix}`, slot.contentId)
+    );
+    const host = this.encodePacked(role, ids, slots.map((s) => s.suffix), cardSlot);
+    return host ?? { ok: false, reason: "not_stampable" };
+  }
+
+  private encodePacked(
+    role: AnchorRole,
+    ids: string[],
+    suffixes: string[],
+    cardSlot: number
+  ): HostToken | null {
+    const value = encodeAnchorValue("p", ids);
+    if (value === null) return null;
+    const cards = ids.map((id, k) => ({
+      anchor: `${role}:${value}${suffixes[k]}`,
+      flashcardId: id,
+    }));
+    return { role, value, cards, cardKey: cards[cardSlot].anchor };
+  }
+
+  /** Replace every token of `role` on a line with one carrying `value`, at the end. */
+  private writeLineToken(line: string, role: AnchorRole, value: string): string {
+    const bare = line.replace(roleTokenPattern(role), "");
+    return bare.replace(/\s*$/, "") + " " + formatAnchorToken(role, value);
+  }
+
+  /** Swap the first `role` token in lines [from, to) in place; false when there is none. */
+  private replaceFirstBodyToken(
+    lines: string[],
+    from: number,
+    to: number,
+    role: AnchorRole,
+    value: string
+  ): boolean {
+    const pattern = new RegExp(`%%dk:${role}:[a-z0-9]+%%`);
+    for (let i = from; i < to; i++) {
+      if (pattern.test(lines[i])) {
+        lines[i] = lines[i].replace(pattern, formatAnchorToken(role, value));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private lastNonBlank(lines: string[], from: number, to: number): number {
+    for (let i = to - 1; i >= from; i--) {
+      if (lines[i].trim() !== "") return i;
+    }
+    return -1;
+  }
+
+  private isTableCard(card: Flashcard): boolean {
+    return card.type === "table" || card.templateRow != null;
   }
 
   /** Whole-file count of table rows whose cleaned first cell equals `front`. */
@@ -814,69 +757,6 @@ export class AnchorStamper {
       if (first === front) count++;
     }
     return count;
-  }
-
-  /** Map a body-scoped cloze order to its line and within-line index. */
-  private locateCloze(
-    cleanBody: string[],
-    clozeOrder: number
-  ): { lineIndex: number; indexInLine: number } | null {
-    let order = 0;
-    for (let lineIndex = 0; lineIndex < cleanBody.length; lineIndex++) {
-      const regex = new RegExp(CLOZE_REGEX.source, "g");
-      let indexInLine = 0;
-      while (regex.exec(cleanBody[lineIndex]) !== null) {
-        if (order === clozeOrder) return { lineIndex, indexInLine };
-        order++;
-        indexInLine++;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Deterministic bindings for every cloze on the tokened line: both devices
-   * derive identical rows, so concurrent stamping stays merge-safe.
-   */
-  private clozeSiblingBindings(
-    hostFront: string,
-    cleanBody: string[],
-    targetLine: number,
-    tokenId: string
-  ): BindingRow[] {
-    const rows: BindingRow[] = [];
-    let order = 0;
-    for (let lineIndex = 0; lineIndex < cleanBody.length; lineIndex++) {
-      const regex = new RegExp(CLOZE_REGEX.source, "g");
-      let match: RegExpExecArray | null;
-      let indexInLine = 0;
-      while ((match = regex.exec(cleanBody[lineIndex])) !== null) {
-        if (lineIndex === targetLine) {
-          rows.push({
-            anchor: clozeBindingKey(tokenId, indexInLine),
-            flashcardId: generateClozeFlashcardId(hostFront, match[1], order),
-          });
-        }
-        order++;
-        indexInLine++;
-      }
-    }
-    return rows;
-  }
-
-  private findClozeLineText(lines: string[], card: Flashcard): string | null {
-    const segment = findFlashcardSegment(lines, {
-      type: "cloze",
-      front: card.front,
-      breadcrumb: card.breadcrumb,
-      clozeOrder: card.clozeOrder ?? null,
-    });
-    if (!segment) return null;
-    const cleanBody = lines
-      .slice(segment.start + 1, segment.end)
-      .map((l) => stripAnchorTokens(l));
-    const located = this.locateCloze(cleanBody, card.clozeOrder ?? 0);
-    return located ? cleanBody[located.lineIndex].trim() : null;
   }
 
   private countHeaderMatches(lines: string[], front: string): number {

@@ -6,8 +6,11 @@ import {
   COVERED_MARKER,
   GenerationStreamParser,
   parseGeneratedCards,
+  serializeCards,
   CARD_DELIMITER,
 } from "../generation-prompt";
+import { GENERATION_FORMAT } from "../prompts";
+import { pageMarker } from "../../pdf/pdf";
 import type { GeneratedCard } from "../generation-prompt";
 import type { AiProviderConfig } from "../types";
 
@@ -44,6 +47,57 @@ describe("parseGeneratedCards", () => {
     const text = block("Q1", "A1") + "Here are your cards!\n";
     expect(parseGeneratedCards(text)).toEqual([card("Q1", "A1")]);
   });
+
+  it("reads PAGE alongside SECTION", () => {
+    const text = `FRONT: Q\nBACK: A\nSECTION: 2\nPAGE: 70\n${CARD_DELIMITER}\n`;
+    expect(parseGeneratedCards(text)).toEqual([
+      { front: "Q", back: "A", notes: "", section: 2, page: 70 },
+    ]);
+  });
+
+  it("leaves the page unset when the label is absent or not a positive number", () => {
+    const absent = parseGeneratedCards(block("Q", "A"));
+    expect(absent[0].page).toBeUndefined();
+
+    for (const bad of ["0", "-3", "n/a", "unknown", ""]) {
+      const text = `FRONT: Q\nBACK: A\nPAGE: ${bad}\n${CARD_DELIMITER}\n`;
+      expect(parseGeneratedCards(text)[0].page).toBeUndefined();
+    }
+  });
+
+  it("reads a PAGE value that echoes the source's page label", () => {
+    const text = `FRONT: Q\nBACK: A\nPAGE: [p. 70]\n${CARD_DELIMITER}\n`;
+    expect(parseGeneratedCards(text)[0].page).toBe(70);
+  });
+
+  it("writes a prior card's page back, so a rewrite keeps it", () => {
+    const out = serializeCards([{ ...card("Q1", "A1"), page: 4 }, card("Q2", "A2")]);
+    expect(parseGeneratedCards(out).map((c) => c.page)).toEqual([4, undefined]);
+  });
+
+  it("does not mistake a page label inside a field for the PAGE field", () => {
+    // Source text carries "[p. 70]" markers, so a card quoting the source must not
+    // have that read back as provenance — only a line-leading PAGE: label counts.
+    const text = `FRONT: What does [p. 70] show?\nBACK: A figure\n${CARD_DELIMITER}\n`;
+    const [c] = parseGeneratedCards(text);
+    expect(c.front).toBe("What does [p. 70] show?");
+    expect(c.page).toBeUndefined();
+  });
+});
+
+describe("the page-provenance contract", () => {
+  it("describes the exact label the source builder writes", () => {
+    // The prompt teaches the model a label shape; pageMarker() is what actually
+    // gets written into the source. If these drift the model is told to look for
+    // something that is not there, and every card comes back without a page.
+    expect(GENERATION_FORMAT).toContain(pageMarker(70));
+    expect(GENERATION_FORMAT).toContain("PAGE: 70");
+  });
+
+  it("asks for the number alone, and forbids guessing", () => {
+    expect(GENERATION_FORMAT).toContain("Use the number only");
+    expect(GENERATION_FORMAT).toContain("Never guess a page.");
+  });
 });
 
 describe("GenerationStreamParser", () => {
@@ -79,6 +133,17 @@ describe("GenerationStreamParser", () => {
 });
 
 describe("buildGenerationMessages", () => {
+  it("sends the round being refined and asks for its replacement, with or without a source", () => {
+    const refining = [{ front: "What is the mean?", back: "The sum divided by the count, a measure of centre.", notes: "" }];
+    for (const sourceContext of ["Mean and median.", undefined]) {
+      const m = buildGenerationMessages({ prompt: "Shorter answers", sourceContext, refining });
+      expect(m.priorAssistant).toContain("What is the mean?");
+      expect(m.followupUser).toContain("Shorter answers");
+      expect(m.followupUser).toContain("Rewrite the cards above");
+      expect(m.followupUser).not.toContain("Continue generating");
+    }
+  });
+
   it("puts source notes in the static user message and the instruction in the trigger", () => {
     const { system, user, followupUser, priorAssistant } =
       buildGenerationMessages({
@@ -256,6 +321,17 @@ describe("Decks Pro server-side prompt", () => {
     expect(body.generatedSoFar).toEqual([{ front: "Q1", back: "A1", notes: "" }]);
     expect(body.category).toBe("stem");
     expect(body.stream).toBe(true);
+  });
+
+  it("forwards the round being refined", async () => {
+    const http = new StreamHttp([]);
+    await new AiGenerationService(http).generateStream(
+      { provider: "decks-pro", model: "decks-tier-fast", apiKey: "k" },
+      { prompt: "Shorter", refining: [card("Q1", "A long answer")] },
+      { onCard: () => {} },
+    );
+    const body = JSON.parse(http.requests[0].body ?? "{}");
+    expect(body.refining).toEqual([{ front: "Q1", back: "A long answer", notes: "" }]);
   });
 
   it("BYO providers still send an assembled messages array", async () => {

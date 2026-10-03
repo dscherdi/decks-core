@@ -110,9 +110,13 @@ export function normalizeProfile(value: string | null | undefined): FSRSProfile 
   return value === "TRAINED" ? "TRAINED" : "STANDARD";
 }
 
+/** The retention targets a profile may ask for, both ends included. */
+export const REQUEST_RETENTION_MIN = 0.5;
+export const REQUEST_RETENTION_MAX = 0.995;
+
 /**
  * Validate request retention range
  */
 export function validateRequestRetention(retention: number): boolean {
-  return retention > 0.5 && retention < 0.995;
+  return retention >= REQUEST_RETENTION_MIN && retention <= REQUEST_RETENTION_MAX;
 }

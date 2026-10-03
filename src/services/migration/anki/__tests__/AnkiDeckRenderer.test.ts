@@ -1,6 +1,8 @@
 import { AnkiDeckRenderer } from "../AnkiDeckRenderer";
 import type { AnkiParsedCard, AnkiScheduling } from "../AnkiTypes";
-import { stripAnchorTokens } from "../../../../utils/anchors";
+import { encodeAnchorValue, stripAnchorTokens } from "../../../../utils/anchors";
+import type { AnkiEarlierRow } from "../AnkiDeckRenderer";
+import { hash64 } from "../../../../utils/hash";
 
 // Layout assertions ignore anchor tokens (inline and own-line); emission has
 // dedicated tests below.
@@ -513,26 +515,22 @@ describe("AnkiDeckRenderer", () => {
   });
 
   describe("front disambiguation", () => {
-    it("appends a marker to identical basic fronts across sub-decks", () => {
+    it("leaves the same front in different decks alone: the tokens keep the ids apart", () => {
       const cards = [
         basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "object", back: "a thing" }),
         basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "object", back: "to protest" }),
       ];
       const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
-      const d1 = decks.find((d) => d.relativePath === "Book/1")!;
-      const d2 = decks.find((d) => d.relativePath === "Book/2")!;
-      expect(clean(d1.content)).toContain("## object\n");
-      expect(clean(d2.content)).toContain("## object (2)\n");
-      // Lowest (noteId, ord, cardId) keeps the clean front; mutation is in place.
-      expect(cards.find((c) => c.noteId === 1)!.front).toBe("object");
-      expect(cards.find((c) => c.noteId === 2)!.front).toBe("object (2)");
+      expect(clean(decks.find((d) => d.relativePath === "Book/1")!.content)).toContain("## object\n");
+      expect(clean(decks.find((d) => d.relativePath === "Book/2")!.content)).toContain("## object\n");
+      expect(AnkiDeckRenderer.decksCardId(cards[0])).not.toBe(AnkiDeckRenderer.decksCardId(cards[1]));
     });
 
-    it("assigns markers deterministically regardless of input order", () => {
+    it("numbers the same front within one deck, deterministically regardless of input order", () => {
       const make = (): AnkiParsedCard[] => [
-        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "found", back: "past of find" }),
-        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "found", back: "to establish" }),
-        basic({ noteId: 3, cardId: 30, deckName: "Book::3", front: "found", back: "molten metal" }),
+        basic({ noteId: 1, cardId: 10, front: "found", back: "past of find" }),
+        basic({ noteId: 2, cardId: 20, front: "found", back: "to establish" }),
+        basic({ noteId: 3, cardId: 30, front: "found", back: "molten metal" }),
       ];
       const forward = AnkiDeckRenderer.render(make(), "decks/anki", 2).map((d) => clean(d.content));
       const reversed = AnkiDeckRenderer.render(make().reverse(), "decks/anki", 2).map((d) => clean(d.content));
@@ -540,94 +538,48 @@ describe("AnkiDeckRenderer", () => {
 
       const cards = make();
       AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      // Lowest (noteId, ord, cardId) keeps the clean front; mutation is in place.
       expect(cards.find((c) => c.noteId === 1)!.front).toBe("found");
       expect(cards.find((c) => c.noteId === 2)!.front).toBe("found (2)");
       expect(cards.find((c) => c.noteId === 3)!.front).toBe("found (3)");
     });
 
-    it("skips a synthetic marker that would collide with a real '(2)' note", () => {
+    it("skips a marker that would collide with a real '(2)' note in the same deck", () => {
       const cards = [
-        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "run", back: "a" }),
-        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "run", back: "b" }),
-        basic({ noteId: 3, cardId: 30, deckName: "Book::3", front: "run (2)", back: "c" }),
+        basic({ noteId: 1, cardId: 10, front: "run", back: "a" }),
+        basic({ noteId: 2, cardId: 20, front: "run", back: "b" }),
+        basic({ noteId: 3, cardId: 30, front: "run (2)", back: "c" }),
       ];
       AnkiDeckRenderer.render(cards, "decks/anki", 2);
-      // noteId 2's "run" would become "run (2)", but that front already exists →
-      // it skips to "run (3)". The real "run (2)" is left as-is.
       expect(cards.find((c) => c.noteId === 2)!.front).toBe("run (3)");
       expect(cards.find((c) => c.noteId === 3)!.front).toBe("run (2)");
     });
 
-    it("suffixes every occurrence of a RESERVED front (taken by another vault deck)", () => {
-      const cards = [
-        basic({ noteId: 1, cardId: 10, front: "tie", back: "necktie" }),
-        basic({ noteId: 2, cardId: 20, front: "sphere", back: "a ball" }),
-      ];
-      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, new Set(["tie"]));
-      // "tie" already lives in another deck → the imported one becomes its own
-      // card instead of being silently merged; unrelated fronts untouched.
-      expect(cards.find((c) => c.noteId === 1)!.front).toBe("tie (2)");
-      expect(cards.find((c) => c.noteId === 2)!.front).toBe("sphere");
-    });
-
-    it("numbers reserved + within-batch duplicates consecutively", () => {
-      const cards = [
-        basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "tie", back: "necktie" }),
-        basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "tie", back: "draw result" }),
-      ];
-      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, new Set(["tie"]));
-      expect(cards.find((c) => c.noteId === 1)!.front).toBe("tie (2)");
-      expect(cards.find((c) => c.noteId === 2)!.front).toBe("tie (3)");
-    });
-
-    it("keeps a reserved template card's front and cells[0] in lockstep", () => {
-      const card = basic({
-        noteId: 1,
-        cardId: 10,
-        kind: "template",
-        front: "cube",
-        back: "a solid",
-        templateRow: { headers: ["Word", "Meaning"], cells: ["cube", "a solid"] },
-        templateTag: "anki-tmpl-x",
-      });
-      AnkiDeckRenderer.render([card], "decks/anki", 2, true, 1000, new Set(["cube"]));
-      expect(card.front).toBe("cube (2)");
-      expect(card.templateRow!.cells[0]).toBe("cube (2)");
-    });
-
-    it("a reserved '(2)' variant pushes the synthetic marker to '(3)'", () => {
-      const cards = [basic({ noteId: 1, cardId: 10, front: "run", back: "a" })];
-      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, new Set(["run", "run (2)"]));
-      expect(cards[0].front).toBe("run (3)");
-    });
-
-    it("disambiguates template cards on cells[0] and front together", () => {
-      const tmpl = (noteId: number, cardId: number, deckName: string): AnkiParsedCard =>
+    it("numbers template cards on cells[0] and front together", () => {
+      const tmpl = (noteId: number, cardId: number): AnkiParsedCard =>
         basic({
           noteId,
           cardId,
-          deckName,
           kind: "template",
           front: "cube",
           back: "a solid",
           templateRow: { headers: ["Word", "Def"], cells: ["cube", "a solid"] },
           templateTag: "model-0",
         });
-      const cards = [tmpl(1, 10, "Book::1"), tmpl(2, 20, "Book::2")];
-      const decks = AnkiDeckRenderer.render(cards, "decks/anki", 2);
+      const cards = [tmpl(1, 10), tmpl(2, 20)];
+      const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
       const second = cards.find((c) => c.noteId === 2)!;
       expect(second.front).toBe("cube (2)");
       expect(second.templateRow!.cells[0]).toBe("cube (2)");
       expect(cards.find((c) => c.noteId === 1)!.templateRow!.cells[0]).toBe("cube");
-      expect(clean(decks.find((d) => d.relativePath === "Book/2")!.content)).toContain("| cube (2) |");
+      expect(clean(deck.content)).toContain("| cube (2) |");
     });
 
     it("leaves cloze fronts untouched", () => {
-      const cloze = (noteId: number, cardId: number, deckName: string): AnkiParsedCard =>
+      const cloze = (noteId: number, cardId: number): AnkiParsedCard =>
         basic({
           noteId,
           cardId,
-          deckName,
           isCloze: true,
           front: "The ==sun== is a star.",
           back: "The ==sun== is a star.",
@@ -635,23 +587,123 @@ describe("AnkiDeckRenderer", () => {
           clozeText: "sun",
           clozeOrder: 0,
         });
-      const cards = [cloze(1, 10, "Book::1"), cloze(2, 20, "Book::2")];
+      const cards = [cloze(1, 10), cloze(2, 20)];
       AnkiDeckRenderer.render(cards, "decks/anki", 2);
       expect(cards.every((c) => c.front === "The ==sun== is a star.")).toBe(true);
+    });
+
+    describe("on a re-import", () => {
+      /** The id a render gives this card, from a copy so the card itself stays unrendered. */
+      const idOf = (card: AnkiParsedCard): string => {
+        const probe = { ...card };
+        AnkiDeckRenderer.render([probe], "decks/anki", 2);
+        return probe.decksId!;
+      };
+      const reimport = (cards: AnkiParsedCard[], earlierRows: AnkiEarlierRow[]): void => {
+        AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, { earlierRows });
+      };
+
+      it("keeps a suffix an earlier import wrote for the card's id", () => {
+        const card = basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "tie", back: "necktie" });
+        const id = idOf(card);
+        // The answer changed in Anki, so only the id ties this row to the card.
+        const [deck] = AnkiDeckRenderer.render([card], "decks/anki", 2, true, 1000, {
+          earlierRows: [{ id, front: "tie (2)", back: "a tie", path: "Book/2" }],
+        });
+        expect(card.front).toBe("tie (2)");
+        expect(clean(deck.content)).toContain("## tie (2)\n");
+      });
+
+      it("drops a suffix whose card changed its front in Anki", () => {
+        const card = basic({ noteId: 2, cardId: 20, front: "bow tie", back: "necktie" });
+        reimport([card], [{ id: idOf(card), front: "tie (2)", back: "necktie", path: "Deck" }]);
+        expect(card.front).toBe("bow tie");
+      });
+
+      it("never hands a card's own row to another card", () => {
+        const renamed = basic({ noteId: 2, cardId: 20, front: "bow tie", back: "necktie" });
+        const added = basic({ noteId: 3, cardId: 30, front: "tie", back: "necktie" });
+        reimport([renamed, added], [{ id: idOf(renamed), front: "tie (2)", back: "necktie", path: "Deck" }]);
+        expect(renamed.front).toBe("bow tie");
+        expect(added.front).toBe("tie");
+      });
+
+      it("numbers a new duplicate past a suffix it kept", () => {
+        const kept = basic({ noteId: 2, cardId: 20, front: "tie", back: "necktie" });
+        const plain = basic({ noteId: 1, cardId: 10, front: "tie", back: "draw" });
+        const added = basic({ noteId: 3, cardId: 30, front: "tie", back: "to fasten" });
+        reimport([kept, plain, added], [{ id: idOf(kept), front: "tie (2)", back: "necktie", path: "Deck" }]);
+        expect(kept.front).toBe("tie (2)");
+        expect(plain.front).toBe("tie");
+        expect(added.front).toBe("tie (3)");
+      });
+
+      it("numbers afresh when two cards of one deck would keep the same front", () => {
+        // Note 4 was moved into this deck in Anki, where note 2 already has "w (2)".
+        const a = basic({ noteId: 1, cardId: 10, front: "w", back: "a" });
+        const b = basic({ noteId: 2, cardId: 20, front: "w", back: "b" });
+        const d = basic({ noteId: 4, cardId: 40, front: "w", back: "d" });
+        reimport([a, b, d], [
+          { id: idOf(b), front: "w (2)", back: "b", path: "Deck" },
+          { id: idOf(d), front: "w (2)", back: "d", path: "Other" },
+        ]);
+        expect([a.front, b.front, d.front]).toEqual(["w", "w (2)", "w (3)"]);
+      });
+
+      describe("over an import from before tokens (content ids, no bindings)", () => {
+        it("gives each card the number it was written with, in the order numbers were given", () => {
+          const tmpl = (ord: number): AnkiParsedCard =>
+            basic({
+              noteId: 1, cardId: 10 + ord, ord, kind: "template", front: "cube", back: "a solid",
+              templateRow: { headers: ["Word", "Def"], cells: ["cube", "a solid"] }, templateTag: "m",
+            });
+          const cards = [tmpl(1), tmpl(0)];
+          // Rows come back in id order, which says nothing about which card had which number.
+          reimport(cards, [
+            { id: "card_zzz", front: "cube", back: "a solid", path: "Deck" },
+            { id: "card_aaa", front: "cube (2)", back: "a solid", path: "Deck" },
+          ]);
+          expect(cards.find((c) => c.ord === 0)!.front).toBe("cube");
+          expect(cards.find((c) => c.ord === 1)!.front).toBe("cube (2)");
+        });
+
+        it("keeps the number each deck's file had", () => {
+          const one = basic({ noteId: 1, cardId: 10, deckName: "Book::1", front: "tie", back: "necktie" });
+          const two = basic({ noteId: 2, cardId: 20, deckName: "Book::2", front: "tie", back: "necktie" });
+          reimport([one, two], [
+            { id: "card_b", front: "tie (2)", back: "necktie", path: "Book/2" },
+            { id: "card_a", front: "tie", back: "necktie", path: "Book/1" },
+          ]);
+          expect(one.front).toBe("tie");
+          expect(two.front).toBe("tie (2)");
+        });
+
+        it("finds a card with an empty answer by the notes written as its answer", () => {
+          const card = basic({ noteId: 2, cardId: 20, front: "w", back: "", notes: "some notes" });
+          reimport([card], [{ id: "card_old", front: "w (2)", back: "some notes", path: "Deck" }]);
+          expect(card.front).toBe("w (2)");
+        });
+
+        it("finds a row in one of the deck's part-files", () => {
+          const card = basic({ noteId: 2, cardId: 20, deckName: "Book", front: "tie", back: "necktie" });
+          reimport([card], [{ id: "card_old", front: "tie (2)", back: "necktie", path: "Book/Book 02" }]);
+          expect(card.front).toBe("tie (2)");
+        });
+      });
     });
   });
 
   describe("anchor token emission", () => {
-    it("emits an own-line h token for header cards, bound to the history id", () => {
+    it("writes a 64-bit id from the Anki note into an own-line h token", () => {
       const cards = [basic({ front: "Hallo", back: "Hello", deckName: "Deck" })];
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
 
-      const anchorId = AnkiDeckRenderer.cardAnchorId(cards[0]);
-      expect(deck.content).toContain(`Hello\n%%dk:h:${anchorId}%%`);
-      expect(deck.bindings).toContainEqual({
-        anchor: `h:${anchorId}`,
-        flashcardId: AnkiDeckRenderer.decksCardId(cards[0]),
-      });
+      const id = AnkiDeckRenderer.decksCardId(cards[0]);
+      expect(id).toBe(`card_${hash64(`anki:${cards[0].noteId}:${cards[0].ord}`)}`);
+      const value = encodeAnchorValue("a", [id])!;
+      expect(value.startsWith("0ad")).toBe(true);
+      expect(deck.content).toContain(`Hello\n%%dk:h:${value}%%`);
+      expect(deck.bindings).toContainEqual({ anchor: `h:${value}`, flashcardId: id });
     });
 
     it("emits a t token in the first cell for table cards", () => {
@@ -660,15 +712,11 @@ describe("AnkiDeckRenderer", () => {
       ];
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
 
-      const anchorId = AnkiDeckRenderer.cardAnchorId(cards[0]);
-      expect(deck.content).toContain(`| Hallo %%dk:t:${anchorId}%% | Hello |`);
-      expect(deck.bindings).toContainEqual({
-        anchor: `t:${anchorId}`,
-        flashcardId: AnkiDeckRenderer.decksCardId(cards[0]),
-      });
+      const value = encodeAnchorValue("a", [AnkiDeckRenderer.decksCardId(cards[0])])!;
+      expect(deck.content).toContain(`| Hallo %%dk:t:${value}%% | Hello |`);
     });
 
-    it("binds every cloze ord of a 1-col cloze table row", () => {
+    it("packs every deletion of a 1-col cloze table row, each Anki card keyed to its own", () => {
       const sentence = "Du trinkst ==jeden Tag== ==Bier==.";
       const cards = [0, 1].map((ord) =>
         basic({
@@ -685,13 +733,38 @@ describe("AnkiDeckRenderer", () => {
       );
       const [deck] = AnkiDeckRenderer.render(cards, "decks/anki", 2);
 
-      // One deduped row for the note; bindings cover both ords keyed exactly
-      // like the history importer.
-      const tokenBindings = deck.bindings.filter((b) => b.anchor.startsWith("t:"));
-      expect(tokenBindings).toHaveLength(2);
-      expect(tokenBindings.map((b) => b.flashcardId).sort()).toEqual(
-        cards.map((c) => AnkiDeckRenderer.decksCardId(c)).sort()
-      );
+      const ids = cards.map((c) => AnkiDeckRenderer.decksCardId(c));
+      expect(ids[0]).toBe(`ccard_${hash64("anki:7:c0")}`);
+      expect(deck.content).toContain(`| ${sentence} %%dk:t:${encodeAnchorValue("p", ids)}%% |`);
+    });
+
+    it("keeps the ids an earlier import's bindings pinned", () => {
+      const sentence = "Du trinkst ==jeden Tag== ==Bier==.";
+      const cards = [
+        basic({ noteId: 3, ord: 0, front: "Hallo", back: "Hello", deckName: "Deck" }),
+        ...[0, 1].map((ord) =>
+          basic({
+            noteId: 7,
+            cardId: 70 + ord,
+            ord,
+            isCloze: true,
+            clozeBody: sentence,
+            back: sentence,
+            clozeText: ord === 0 ? "jeden Tag" : "Bier",
+            clozeOrder: ord,
+            deckName: "Deck",
+          })
+        ),
+      ];
+      const pins = new Map([
+        [`h:${AnkiDeckRenderer.legacyAnchorValue(3, 0)}`, "card_old1"],
+        [`t:${AnkiDeckRenderer.legacyAnchorValue(7, 0)}#1`, "ccard_old2"],
+      ]);
+      AnkiDeckRenderer.render(cards, "decks/anki", 2, true, 1000, { pins });
+
+      expect(AnkiDeckRenderer.decksCardId(cards[0])).toBe("card_old1");
+      expect(AnkiDeckRenderer.decksCardId(cards[1])).toBe(`ccard_${hash64("anki:7:c0")}`);
+      expect(AnkiDeckRenderer.decksCardId(cards[2])).toBe("ccard_old2");
     });
 
     it("re-renders byte-identically (tokens and bindings are deterministic)", () => {

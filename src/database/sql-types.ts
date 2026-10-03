@@ -145,12 +145,6 @@ export interface SingleValueRow {
   value: SqlJsValue;
 }
 
-// Date count pairs for charts
-export interface DateCountRow {
-  date: string;
-  count: number;
-}
-
 // Backup database queries
 export interface BackupInfoRow {
   id: string;

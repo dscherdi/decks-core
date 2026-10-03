@@ -1,3 +1,5 @@
+import type { RubricCode, RubricVerdict } from "../services/ai/critique-prompt";
+import type { CardOrigin } from "../services/ai/fixes";
 import { DEFAULT_FSRS_PARAMETERS } from "../algorithm/fsrs-weights";
 import type { FSRSProfile } from "../algorithm/fsrs-weights";
 export type { FSRSProfile };
@@ -5,7 +7,8 @@ export type { FSRSProfile };
 export type ReviewOrder = "due-date" | "random";
 export type ClozeShowContext = "open" | "hidden";
 
-export type TypedGradingMode = "exact" | "tolerant" | "self";
+/** "meaning" asks the backend whether a typed answer means the same; unsure answers fall back to self-grading. */
+export type TypedGradingMode = "exact" | "tolerant" | "self" | "meaning";
 export type ExamFeedbackTiming = "end" | "immediate";
 export type ExamSelectionMode = "random" | "sequential";
 export type ExamOptionLabels = "letters" | "numbers";
@@ -61,7 +64,7 @@ export function parseExamSettings(json: string | null | undefined): ExamSettings
       shuffleOptions: examBoolean(raw.shuffleOptions, d.shuffleOptions),
       feedbackTiming: examChoice(raw.feedbackTiming, ["end", "immediate"], d.feedbackTiming),
       selectionMode: examChoice(raw.selectionMode, ["random", "sequential"], d.selectionMode),
-      typedGrading: examChoice(raw.typedGrading, ["exact", "tolerant", "self"], d.typedGrading),
+      typedGrading: examChoice(raw.typedGrading, ["exact", "tolerant", "self", "meaning"], d.typedGrading),
       optionLabels: examChoice(raw.optionLabels, ["letters", "numbers"], d.optionLabels),
     };
   } catch {
@@ -402,7 +405,7 @@ export type CramRating = "again" | "good";
 export type CramDeckKind = "file" | "group" | "custom";
 export type ExamDeckKind = CramDeckKind;
 export type ExamQuestionType = "multiple-choice" | "type-in";
-export type ExamGradingMethod = "options" | "exact" | "tolerant" | "self";
+export type ExamGradingMethod = "options" | "exact" | "tolerant" | "self" | "meaning" | "numeric";
 
 /**
  * A completed exam attempt. Append-only and immutable: only ended attempts
@@ -709,4 +712,104 @@ export function isCardAvailable(
   now: Date
 ): boolean {
   return !isCardSuspended(card) && !isCardBuried(card, now);
+}
+
+/* --- AI workbench -------------------------------------------------------- */
+
+export type AiSourceKind = "pdf" | "note" | "selection";
+
+/** proposed → kept → saved, or discarded. `saved` is terminal. */
+/** `superseded`: in a round a later refinement replaced. Not a decision, so it
+ *  counts as neither staged nor discarded. */
+export type AiStagedStatus = "proposed" | "kept" | "saved" | "discarded" | "superseded";
+
+export type AiStagedCardType =
+  | "basic"
+  | "cloze"
+  | "reversed"
+  | "occlusion"
+  | "mcq";
+
+/** One generation session: a source, a selection, and everything that came out
+ *  of it. Persisted so the pile survives closing the workspace. */
+export interface AiSession {
+  id: string;
+  sourceKind: AiSourceKind;
+  /** Vault path for a note or PDF; a short description for a selection. */
+  sourceRef: string;
+  /** The PDF hash already used for the OCR cache, when the source is a PDF. */
+  sourceHash: string | null;
+  /** Chapter ids, so Resume restores the tree as it was left. */
+  selectedIds: string[];
+  deckId: string | null;
+  profileId: string | null;
+  model: string | null;
+  spendCents: number;
+  /** Append-only prompt/answer log: refinement adds a turn, never rewrites one. */
+  turns: AiSessionTurn[];
+  archived: boolean;
+  touchedAt: string;
+  created: string;
+  modified: string;
+}
+
+export interface AiSessionTurn {
+  role: "user" | "assistant";
+  text: string;
+  at: string;
+  /** Answers only: the pages cited, and what the answer said had no card. The
+   *  turn log is a JSON blob, so these cost no migration. */
+  pages?: number[];
+  gaps?: Array<{ term: string; page: number | null }>;
+  /** The rounds that followed this turn, so a reopened thread keeps its shape. */
+  rounds?: AiTurnRound[];
+}
+
+/** One round of cards: the rows it produced, and the round it replaced (by its
+ *  position among the session's rounds). */
+export interface AiTurnRound {
+  rows: string[];
+  replaces?: number;
+}
+
+/** A proposed card. Not a flashcard, which is why nothing here has a foreign
+ *  key into `flashcards`. */
+export interface AiStagedCard {
+  id: string;
+  sessionId: string;
+  front: string;
+  back: string;
+  notes: string;
+  cardType: AiStagedCardType;
+  /** MCQ only: the option texts in file order. */
+  options: string[] | null;
+  /** MCQ only: indices of the correct options — several means multi-select. */
+  correct: number[] | null;
+  explanation: string | null;
+  /** Cached local parse check; null when it has not been run. */
+  valid: boolean | null;
+  sourcePage: number | null;
+  sectionIdx: number | null;
+  conceptId: string | null;
+  status: AiStagedStatus;
+  /** null means unjudged — which is not the same as passing. */
+  rubricVerdict: RubricVerdict | null;
+  rubricCodes: RubricCode[];
+  fixProposal: string | null;
+  parentId: string | null;
+  origin: CardOrigin;
+  dedupHash: string | null;
+  created: string;
+  modified: string;
+}
+
+/** One examinable concept from a source, cached by that source's hash. */
+export interface AiSourceConcept {
+  id: string;
+  sourceHash: string;
+  page: number;
+  term: string;
+  blurb: string;
+  created: string;
+  modified: string;
 }

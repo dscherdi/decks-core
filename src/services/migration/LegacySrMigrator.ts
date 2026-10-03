@@ -7,12 +7,7 @@ import {
   generateReverseFlashcardId,
 } from "../../utils/hash";
 import { escapeTableCell } from "../../utils/markdown-table";
-import {
-  formatAnchorToken,
-  headerBindingKey,
-  reverseBindingKey,
-  tableBindingKey,
-} from "../../utils/anchors";
+import { encodeAnchorValue, formatAnchorToken } from "../../utils/anchors";
 
 export interface SrAnchorBinding {
   anchor: string;
@@ -1374,22 +1369,11 @@ export class LegacySrMigrator {
       card.blockId = blockId;
       back = `${back} ^${blockId}`;
     }
-    // Cloze header blocks anchor lazily at review time (line-scoped keys
-    // would need per-line tokens); plain cards get an own-line h token.
+    // Cloze header blocks stamp at review time (they'd need per-line tokens);
+    // plain cards get an own-line h token carrying the ids they already have.
     if (bindings && !card.clozes) {
-      const anchorId = generateAnchorId(`sr:${ordinal}:${card.front}`);
-      const baseKey = headerBindingKey(anchorId);
-      bindings.push({
-        anchor: baseKey,
-        flashcardId: generateFlashcardId(card.front),
-      });
-      if (reverse) {
-        bindings.push({
-          anchor: reverseBindingKey(baseKey),
-          flashcardId: generateReverseFlashcardId(card.front),
-        });
-      }
-      back = `${back}\n${formatAnchorToken("h", anchorId)}`;
+      const token = LegacySrMigrator.pairToken("h", card.front, !!reverse, bindings);
+      if (token) back = `${back}\n${token}`;
     }
     return `${hashes} ${card.front}${tagSuffix}\n\n${back}`;
   }
@@ -1408,35 +1392,20 @@ export class LegacySrMigrator {
     reverse?: boolean
   ): string[] {
     if (cards.length === 0) return [];
-    let rowOrdinal = 0;
     const rowToken = (c: MigratedCard): string => {
       if (!bindings) return "";
-      const anchorId = generateAnchorId(`sr:t:${rowOrdinal++}:${c.front}`);
-      const baseKey = tableBindingKey(anchorId);
-      if (c.clozes) {
-        for (const entry of c.clozes) {
-          bindings.push({
-            anchor: tableBindingKey(anchorId, entry.clozeOrder),
-            flashcardId: generateClozeFlashcardId(
-              c.front,
-              entry.clozeText,
-              entry.clozeOrder
-            ),
-          });
-        }
-      } else {
-        bindings.push({
-          anchor: baseKey,
-          flashcardId: generateFlashcardId(c.front),
-        });
-        if (reverse) {
-          bindings.push({
-            anchor: reverseBindingKey(baseKey),
-            flashcardId: generateReverseFlashcardId(c.front),
-          });
-        }
+      if (!c.clozes) {
+        const token = LegacySrMigrator.pairToken("t", c.front, !!reverse, bindings);
+        return token ? ` ${token}` : "";
       }
-      return ` ${formatAnchorToken("t", anchorId)}`;
+      const ids: string[] = [];
+      for (const entry of c.clozes) {
+        ids[entry.clozeOrder] = generateClozeFlashcardId(c.front, entry.clozeText, entry.clozeOrder);
+      }
+      const value = encodeAnchorValue("p", ids);
+      if (value === null || ids.some((id) => id === undefined)) return "";
+      ids.forEach((id, order) => bindings.push({ anchor: `t:${value}#${order}`, flashcardId: id }));
+      return ` ${formatAnchorToken("t", value)}`;
     };
     const hashes = "#".repeat(level);
     // Group by context AND tag-set: a table's container header supplies one
@@ -1501,6 +1470,25 @@ export class LegacySrMigrator {
    * the back. Frontmatter carries exactly the one `reviewTag` (e.g.
    * `decks/review`). The original note is never modified — this is a duplicate.
    */
+  /** A token carrying a plain card's id (and its reverse's), with binding rows for older versions. */
+  private static pairToken(
+    role: "h" | "t",
+    front: string,
+    reverse: boolean,
+    bindings: SrAnchorBinding[]
+  ): string | null {
+    const forward = generateFlashcardId(front);
+    const value = reverse
+      ? encodeAnchorValue("b", [forward, generateReverseFlashcardId(front)])
+      : encodeAnchorValue("a", [forward]);
+    if (value === null) return null;
+    bindings.push({ anchor: `${role}:${value}`, flashcardId: forward });
+    if (reverse) {
+      bindings.push({ anchor: `${role}:${value}:rev`, flashcardId: generateReverseFlashcardId(front) });
+    }
+    return formatAnchorToken(role, value);
+  }
+
   /** Deterministic `decks-id` value for a migrated title-mode note. */
   static titleAnchorId(originalFront: string): string {
     return generateAnchorId(`sr:title:${originalFront}`);

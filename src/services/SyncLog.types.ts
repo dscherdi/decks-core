@@ -9,7 +9,13 @@
 // which materially affects how fast iCloud uploads small log files.
 
 import type { HLCValue } from "./HLC";
-import type { ExamAnswer, ExamSession, ExamSettings } from "../database/types";
+import type {
+  AiSession,
+  AiStagedCard,
+  ExamAnswer,
+  ExamSession,
+  ExamSettings,
+} from "../database/types";
 
 export interface SyncLogEntryHeader {
   hlc: HLCValue;
@@ -39,7 +45,11 @@ export type SyncOpV1 =
   | CardUnburyOp
   | CardResetOp
   | WeightSetUpsertOp
-  | ExamSessionCompleteOp;
+  | ExamSessionCompleteOp
+  | AiSessionUpsertOp
+  | AiStagedCardsUpsertOp
+  | AiConceptsSaveOp
+  | ClientHelloOp;
 
 export type SyncLogEntry = SyncLogEntryHeader & SyncOpV1;
 
@@ -363,6 +373,39 @@ export interface CardResetOp {
   p: { c: string; at: string };
 }
 
+// ---------- AI workbench ----------------------------------------------------
+
+// Whole rows, sent only when they changed. Newer `modified` wins; a saved staged card stays saved.
+export interface AiSessionUpsertOp {
+  o: "ai_session_upsert";
+  p: AiSession;
+}
+
+export interface AiStagedCardsUpsertOp {
+  o: "ai_staged_cards_upsert";
+  p: { rows: AiStagedCard[] };
+}
+
+// One extraction pass over some pages of a source; per page, the later pass wins.
+export interface AiConceptsSaveOp {
+  o: "ai_concepts_save";
+  p: {
+    sourceHash: string;
+    pages: number[];
+    concepts: Array<{ page: number; term: string; blurb: string }>;
+    at: string;
+  };
+}
+
+// ---------- Devices ---------------------------------------------------------
+
+// Written at start and daily, so other devices can tell this one reads
+// id-carrying anchor tokens (`identity` 2). Changes nothing when applied.
+export interface ClientHelloOp {
+  o: "client_hello";
+  p: { identity: number };
+}
+
 // ---------- Type-guard for parsed-but-unvalidated entries -------------------
 
 // All op type names recognized at v=1. Used by the parser to skip unknown
@@ -390,4 +433,8 @@ export const KNOWN_OP_TYPES_V1: ReadonlySet<SyncOpV1["o"]> = new Set([
   "card_reset",
   "weight_set_upsert",
   "exam_session_complete",
+  "ai_session_upsert",
+  "ai_staged_cards_upsert",
+  "ai_concepts_save",
+  "client_hello",
 ]);

@@ -16,8 +16,14 @@ import type {
   CustomDeckType,
   FsrsWeightSet,
   DeckTemplate,
+  AiSession,
+  AiSessionTurn,
+  AiSourceConcept,
+  AiStagedCard,
 } from "./types";
 import type { SqlJsValue, SqlRecord, SqlRow } from "./sql-types";
+import type { ConceptCard } from "../services/ai/concepts";
+import type { SessionCounts } from "../services/ai/hub";
 import type { SyncData, SyncResult } from "../services/FlashcardSynchronizer";
 import type { FilterCompileOptions } from "../services/FilterEngine";
 import type { SyncOpV1 } from "../services/SyncLog.types";
@@ -181,9 +187,6 @@ export interface IDatabaseService {
   // Delete cards whose deck_id has no matching deck row (dangling orphans). Run on
   // a full sync after adoption; returns the number removed.
   pruneOrphanedFlashcards(): Promise<number>;
-  // Distinct fronts of cards in live decks outside the given path prefix (used to
-  // reserve already-taken fronts during an import; orphans excluded on purpose).
-  getFrontsOutsidePath(pathPrefix: string): Promise<string[]>;
 
   createReviewLog(log: Omit<ReviewLog, "id">): Promise<void>;
   insertReviewLog(reviewLog: ReviewLog): Promise<void>;
@@ -258,6 +261,77 @@ export interface IDatabaseService {
   getExamSessionsForDeckKey(deckKey: string, limit?: number): Promise<ExamSession[]>;
   getExamAnswersForSession(sessionId: string): Promise<ExamAnswer[]>;
 
+  // AI workbench
+  createAiSession(
+    session: Omit<AiSession, "id" | "created" | "modified" | "touchedAt">
+  ): Promise<string>;
+  getAiSession(id: string): Promise<AiSession | null>;
+  getAiSessions(includeArchived?: boolean): Promise<AiSession[]>;
+  updateAiSession(
+    id: string,
+    patch: Partial<
+      Pick<
+        AiSession,
+        | "sourceKind"
+        | "sourceRef"
+        | "sourceHash"
+        | "selectedIds"
+        | "deckId"
+        | "profileId"
+        | "model"
+        | "spendCents"
+        | "turns"
+        | "archived"
+      >
+    >,
+    options?: { touch?: boolean }
+  ): Promise<void>;
+  appendAiSessionTurn(id: string, turn: AiSessionTurn): Promise<void>;
+  deleteAiSession(id: string): Promise<void>;
+  createAiStagedCards(
+    cards: Array<Omit<AiStagedCard, "created" | "modified">>
+  ): Promise<void>;
+  getAiStagedCards(sessionId: string): Promise<AiStagedCard[]>;
+  getFlaggedAiStagedCards(): Promise<AiStagedCard[]>;
+  updateAiStagedCard(
+    id: string,
+    patch: Partial<
+      Pick<
+        AiStagedCard,
+        | "front"
+        | "back"
+        | "notes"
+        | "status"
+        | "valid"
+        | "rubricVerdict"
+        | "rubricCodes"
+        | "fixProposal"
+        | "conceptId"
+      >
+    >
+  ): Promise<void>;
+  getAiSessionCounts(): Promise<Record<string, SessionCounts>>;
+  getAiOutcome(sinceIso: string): Promise<{ saved: number; discarded: number }>;
+  saveAiConcepts(
+    sourceHash: string,
+    pages: number[],
+    concepts: Array<{ page: number; term: string; blurb: string }>
+  ): Promise<void>;
+  getAiConcepts(sourceHash: string): Promise<AiSourceConcept[]>;
+  getAiExtractedPages(sourceHash: string): Promise<number[]>;
+  clearAiConcepts(sourceHash: string): Promise<void>;
+  getAiCardOrigins(
+    cardIds: readonly string[],
+  ): Promise<
+    Map<string, { page: number | null; sourceHash: string | null; sourceRef: string }>
+  >;
+  /** `studyOnly` leaves out questions, which are exam material rather than cards. */
+  getAiCardsForSource(
+    sourceHash: string,
+    excludeSessionId?: string,
+    studyOnly?: boolean,
+  ): Promise<ConceptCard[]>;
+
   createCustomDeck(
     name: string,
     deckType?: CustomDeckType,
@@ -305,19 +379,13 @@ export interface IDatabaseService {
     nextDayStartsAt?: number
   ): Promise<{ deckId: string; newCount: number; reviewCount: number }[]>;
 
-  getScheduledDueByDay(
+  // Review-state cards studied in [startDate, endDate), each counted once a study day.
+  countReviewCardDays(
     deckId: string,
     startDate: string,
-    endDate: string
-  ): Promise<{ day: string; count: number }[]>;
-  getScheduledDueByDayMulti(
-    deckIds: string[],
-    startDate: string,
-    endDate: string
-  ): Promise<{ day: string; count: number }[]>;
-  getCurrentBacklog(deckId: string, currentDate: string): Promise<number>;
-  getCurrentBacklogMulti(deckIds: string[], currentDate: string): Promise<number>;
-  getDeckReviewCountRange(deckId: string, startDate: string, endDate: string): Promise<number>;
+    endDate: string,
+    nextDayStartsAt: number
+  ): Promise<number>;
   countNewCardsToday(deckId: string, nextDayStartsAt?: number): Promise<number>;
   countReviewCardsToday(deckId: string, nextDayStartsAt?: number): Promise<number>;
   // Distinct cards (new + review) studied today across ALL decks (global daily cap).

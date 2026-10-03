@@ -35,6 +35,20 @@ function normalizeImageRef(raw: string): { embed: string; path: string } | null 
   return { embed, path };
 }
 
+/**
+ * Whether a raw mask carries a numeric x, y, w and h. Out-of-range numbers are
+ * clamped later; a missing or non-numeric one leaves the mask with no position.
+ */
+function hasGeometry(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const obj = raw as Record<string, unknown>;
+  return ["x", "y", "w", "h"].every((key) => {
+    const value = obj[key];
+    if (typeof value === "number") return Number.isFinite(value);
+    return typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value));
+  });
+}
+
 /** Coerce one raw YAML mask entry into a validated {@link OcclusionMask}. */
 function normalizeMask(raw: unknown, index: number, usedIds: Set<string>): OcclusionMask {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -100,6 +114,10 @@ export class OcclusionV2Parser {
     }
 
     const rawMasks = Array.isArray(obj.masks) ? obj.masks : [];
+    const broken = rawMasks.findIndex((mask) => !hasGeometry(mask));
+    if (broken !== -1) {
+      return { ok: false, error: `Mask ${broken + 1} has no numeric x, y, w and h` };
+    }
     const usedIds = new Set<string>();
     const masks = rawMasks.map((m, i) => normalizeMask(m, i, usedIds));
 

@@ -5,6 +5,8 @@ import {
   getMinMinutesForProfile,
   getMaxIntervalDaysForProfile,
   normalizeProfile,
+  REQUEST_RETENTION_MAX,
+  REQUEST_RETENTION_MIN,
   validateFSRSWeights,
   validateProfile,
   validateRequestRetention,
@@ -13,7 +15,7 @@ import {
 export type RatingLabel = "again" | "hard" | "good" | "easy";
 
 export interface FSRSParameters {
-  requestRetention: number; // target retention rate (0,1)
+  requestRetention: number; // target retention, REQUEST_RETENTION_MIN to REQUEST_RETENTION_MAX inclusive
   profile: FSRSProfile; // "STANDARD" | "TRAINED"
   nextDayStartsAt?: number; // Hour (0-23) when study day rolls over (default 4)
   weights?: number[]; // Per-profile trained weights — overrides defaults when set
@@ -52,9 +54,26 @@ export interface FutureDueData {
   dueCount: number;
 }
 
+/** A review card's memory state, as one review step reads and returns it. */
+export interface ReviewState {
+  stability: number;
+  difficulty: number;
+}
+
 // Constants for exact calculations
 const MILLISECONDS_PER_DAY = 86400000;
 const MINUTES_PER_DAY = 1440;
+
+/** A card's stability and difficulty as scheduling reads them: missing stability is 0, unreadable difficulty 5. */
+export function reviewStateOf(card: Pick<Flashcard, "stability" | "difficulty">): ReviewState {
+  const difficulty = isFinite(card.difficulty) ? card.difficulty : 5.0;
+  return { stability: card.stability || 0, difficulty: difficulty || 0 };
+}
+
+/** Study days a day-scale interval moves the due date on, from the review's study day; null below a day. */
+export function intervalStudyDays(intervalMinutes: number): number | null {
+  return intervalMinutes < MINUTES_PER_DAY ? null : Math.ceil(intervalMinutes / MINUTES_PER_DAY);
+}
 
 /**
  * Helper function for UI-only formatting - never use in calculations
@@ -135,7 +154,7 @@ export class FSRS {
 
     if (!validateRequestRetention(this.params.requestRetention)) {
       throw new Error(
-        `requestRetention must be in range (0.5, 0.995), got ${String(this.params.requestRetention)}`
+        `requestRetention must be in range [${REQUEST_RETENTION_MIN}, ${REQUEST_RETENTION_MAX}], got ${String(this.params.requestRetention)}`
       );
     }
 
@@ -181,18 +200,9 @@ export class FSRS {
       nowTime
     );
 
-    let intervalMinutes: number;
-
-    // For "Again" rating (1), always use minimum interval regardless of stability
-    if (ratingNum === 1) {
-      intervalMinutes = this.getMinMinutes();
-    } else {
-      intervalMinutes = this.nextIntervalMinutes(updatedFsrsCard.stability);
-    }
-
     const schedule = this.createSchedulingCard(
       updatedFsrsCard,
-      intervalMinutes,
+      this.reviewIntervalMinutes(updatedFsrsCard.stability, ratingNum),
       nowTime
     );
 
@@ -232,73 +242,78 @@ export class FSRS {
       const newCard = { ...card };
       newCard.elapsedDays = this.getElapsedDays(card.lastReview, now);
       newCard.reps += 1;
+      if (rating === 1) newCard.lapses += 1;
 
-      if (rating === 1) {
-        // "Again" rating: Use Forgetting Stability formula (NOT w[0] reset)
-        newCard.lapses += 1;
-
-        // Validate current difficulty before using it
-        if (!isFinite(newCard.difficulty) || newCard.difficulty <= 0) {
-          newCard.difficulty = this.initDifficulty(3); // Default to "good" rating difficulty
-        }
-
-        // Calculate difficulty normally (this will increase it for "Again")
-        newCard.difficulty = this.nextDifficulty(newCard.difficulty, rating);
-
-        // Calculate retrievability for forgetting stability formula
-        const retrievability = this.forgettingCurve(
-          newCard.elapsedDays,
-          newCard.stability
-        );
-
-        // Apply Forgetting Stability formula: S_new = w[11] * D^(-w[12]) * ((S + 1)^w[13] - 1) * e^(w[14] * (1 - R))
-        newCard.stability = this.forgettingStability(
-          newCard.difficulty,
-          newCard.stability,
-          retrievability
-        );
-      } else {
-        // For other ratings, calculate normally
-
-        // Validate current stability before using it
-        if (!isFinite(newCard.stability) || newCard.stability <= 0) {
-          newCard.stability = this.initStability(3);
-        }
-
-        newCard.difficulty = this.nextDifficulty(newCard.difficulty, rating);
-
-        if (this.isSameStudyDay(card.lastReview, now)) {
-          // Short-term scheduling: same study day (FSRS-6)
-          newCard.stability = this.shortTermStability(newCard.stability, rating);
-        } else {
-          // Long-term scheduling
-          const retrievability = this.forgettingCurve(
-            newCard.elapsedDays,
-            newCard.stability
-          );
-          newCard.stability = this.nextStability(
-            newCard.difficulty,
-            newCard.stability,
-            retrievability,
-            rating
-          );
-          if (!isFinite(newCard.stability) || newCard.stability <= 0) {
-            newCard.stability = this.initStability(rating);
-          }
-        }
-      }
-
-      // Clamp difficulty to valid range
-      newCard.difficulty = Math.max(1, Math.min(10, newCard.difficulty));
-
-      // Ensure stability remains positive
-      if (!isFinite(newCard.stability) || newCard.stability <= 0) {
-        newCard.stability = 0.01;
-      }
-
+      const next = this.reviewStep(
+        card,
+        rating,
+        newCard.elapsedDays,
+        rating !== 1 && this.isSameStudyDay(card.lastReview, now)
+      );
+      newCard.stability = next.stability;
+      newCard.difficulty = next.difficulty;
       newCard.lastReview = now;
       return newCard;
     }
+  }
+
+  /**
+   * A review card's state after `rating`, `elapsedDays` after its last review: every review's step.
+   * `sameStudyDay` selects FSRS-6's short-term formula.
+   */
+  reviewStep(
+    state: ReviewState,
+    rating: number,
+    elapsedDays: number,
+    sameStudyDay: boolean
+  ): ReviewState {
+    let stability = state.stability;
+    let difficulty = state.difficulty;
+
+    if (rating === 1) {
+      // "Again" rating: Use Forgetting Stability formula (NOT w[0] reset)
+      if (!isFinite(difficulty) || difficulty <= 0) {
+        difficulty = this.initDifficulty(3); // Default to "good" rating difficulty
+      }
+      difficulty = this.nextDifficulty(difficulty, rating);
+      stability = this.forgettingStability(
+        difficulty,
+        stability,
+        this.forgettingCurve(elapsedDays, stability)
+      );
+    } else {
+      if (!isFinite(stability) || stability <= 0) {
+        stability = this.initStability(3);
+      }
+      difficulty = this.nextDifficulty(difficulty, rating);
+
+      if (sameStudyDay) {
+        // Short-term scheduling: same study day (FSRS-6)
+        stability = this.shortTermStability(stability, rating);
+      } else {
+        stability = this.nextStability(
+          difficulty,
+          stability,
+          this.forgettingCurve(elapsedDays, stability),
+          rating
+        );
+        if (!isFinite(stability) || stability <= 0) {
+          stability = this.initStability(rating);
+        }
+      }
+    }
+
+    // Clamp difficulty to valid range, and keep stability positive
+    difficulty = Math.max(1, Math.min(10, difficulty));
+    if (!isFinite(stability) || stability <= 0) {
+      stability = 0.01;
+    }
+    return { stability, difficulty };
+  }
+
+  /** The interval a review gives a card of `stability`, in minutes: "Again" always gets the minimum. */
+  reviewIntervalMinutes(stability: number, rating: number): number {
+    return rating === 1 ? this.getMinMinutes() : this.nextIntervalMinutes(stability);
   }
 
   private calculateScheduleForRating(
@@ -313,16 +328,11 @@ export class FSRS {
       updatedCard.stability = this.initStability(rating);
     }
 
-    let intervalMinutes: number;
-
-    // For "Again" rating (1), always use minimum interval regardless of stability
-    if (rating === 1) {
-      intervalMinutes = this.getMinMinutes();
-    } else {
-      intervalMinutes = this.nextIntervalMinutes(updatedCard.stability);
-    }
-
-    return this.createSchedulingCard(updatedCard, intervalMinutes, now);
+    return this.createSchedulingCard(
+      updatedCard,
+      this.reviewIntervalMinutes(updatedCard.stability, rating),
+      now
+    );
   }
 
   private createSchedulingCard(
@@ -341,27 +351,24 @@ export class FSRS {
       intervalMinutes = minMinutes;
     }
 
-    let dueDate: string;
-
-    if (intervalMinutes < MINUTES_PER_DAY) {
-      // Sub-day intervals: set due date as exact offset from now
-      const dueDateMs = now.getTime() + intervalMinutes * 60 * 1000;
-      dueDate = new Date(dueDateMs).toISOString();
-    } else {
-      // Day-based intervals: align to study day boundaries
-      const nextDayStartsAt = this.params.nextDayStartsAt ?? 4;
-      const intervalDays = Math.ceil(intervalMinutes / MINUTES_PER_DAY);
-      dueDate = this.getStudyDayStartAfterDays(now, intervalDays, nextDayStartsAt);
-    }
-
     return {
-      dueDate: dueDate,
+      dueDate: this.dueAfter(now, intervalMinutes).toISOString(),
       interval: intervalMinutes,
       repetitions: card.reps,
       stability: card.stability,
       difficulty: card.difficulty,
       state: "review",
     };
+  }
+
+  /** When a review at `now` is next due: a sub-day interval exactly, a day-scale one at a study day's start. */
+  dueAfter(now: Date, intervalMinutes: number): Date {
+    const intervalDays = intervalStudyDays(intervalMinutes);
+    if (intervalDays === null) {
+      return new Date(now.getTime() + intervalMinutes * 60 * 1000);
+    }
+    const nextDayStartsAt = this.params.nextDayStartsAt ?? 4;
+    return new Date(this.getStudyDayStartAfterDays(now, intervalDays, nextDayStartsAt));
   }
 
   /**
@@ -395,7 +402,8 @@ export class FSRS {
     return currentStart.toISOString();
   }
 
-  private isSameStudyDay(lastReview: Date, now: Date): boolean {
+  /** Whether two times fall in the same study day, as the scheduler's same-day step decides it. */
+  isSameStudyDay(lastReview: Date, now: Date): boolean {
     const nextDayStartsAt = this.params.nextDayStartsAt ?? 4;
     return (
       this.getStudyDayStart(lastReview, nextDayStartsAt) ===
@@ -684,11 +692,11 @@ export class FSRS {
       : new Date();
 
     // Validate numeric values with fallbacks
-    const difficulty = isFinite(card.difficulty) ? card.difficulty : 5.0;
+    const { stability, difficulty } = reviewStateOf(card);
 
     return {
-      stability: card.stability || 0,
-      difficulty: difficulty || 0,
+      stability,
+      difficulty,
       elapsedDays: 0, // Will be calculated in scheduling
       reps: card.repetitions,
       lapses: card.lapses || 0,

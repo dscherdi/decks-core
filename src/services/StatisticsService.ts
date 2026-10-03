@@ -1,6 +1,7 @@
 import type { IDatabaseService, ILogger } from "../database/DatabaseService.interface";
 import {
   type Statistics,
+  type DailyStats,
   type ReviewLog,
   type Flashcard,
   type DeckProfile,
@@ -11,12 +12,21 @@ import {
   type MaturityProgressionResult,
 } from "../database/types";
 import type { DecksSettings } from "../settings";
-import { FSRS, type RatingLabel } from "../algorithm/fsrs";
-import { MinHeap } from "../utils/min-heap";
+import { FSRS, intervalStudyDays, reviewStateOf, type RatingLabel } from "../algorithm/fsrs";
 import {
-  toLocalDateString,
+  DEFAULT_FSRS_PARAMETERS,
+  validateFSRSWeights,
+  validateRequestRetention,
+} from "../algorithm/fsrs-weights";
+import {
+  addCalendarDays,
   getLocalDateSQL,
   getLocalHourSQL,
+  getStudyDaySQL,
+  studyDayKey,
+  studyDayStart,
+  studyDayStartAfter,
+  toLocalDateString,
 } from "../utils/date-utils";
 import { yieldToUI } from "../utils/ui";
 import type {
@@ -48,6 +58,116 @@ export interface BacklogForecastData {
   projectedBacklog: number;
 }
 
+// A card the forecast counts: a review card neither suspended nor still buried.
+function isSchedulable(card: Flashcard, now: Date): boolean {
+  if (card.state !== "review" || card.suspendedAt) return false;
+  return !card.buriedUntil || new Date(card.buriedUntil) <= now;
+}
+
+// A review card as the backlog simulation steps it.
+interface SimCard {
+  stability: number;
+  difficulty: number;
+  lastReview: number;
+  nextDue: number;
+}
+
+const byDue = (a: SimCard, b: SimCard) => a.nextDue - b.nextDue;
+
+// The day `ms` falls in, for `bounds[0] <= ms < bounds[bounds.length - 1]`.
+function dayIndex(bounds: number[], ms: number): number {
+  let lo = 0;
+  let hi = bounds.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (bounds[mid] <= ms) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+// Whether two times show the same hour and minute on the clock.
+function sameWallClock(a: number, b: number): boolean {
+  const x = new Date(a);
+  const y = new Date(b);
+  return x.getHours() === y.getHours() && x.getMinutes() === y.getMinutes();
+}
+
+// The forecast assumes every review is answered "Good".
+const GOOD = 3;
+
+/**
+ * One deck over the study days starting at each of `bounds` (its last entry is the window's end). Each day the
+ * cards due so far queue oldest first; up to the day's capacity is reviewed by the deck's FSRS, and the rest wait.
+ */
+function simulateDeckBacklog(
+  cards: Flashcard[],
+  bounds: number[],
+  fsrs: FSRS,
+  capacity: number,
+  todayCapacity: number
+): { due: number; backlog: number }[] {
+  const days = bounds.length - 1;
+  // A day the clocks moved its start or end on is left to the scheduler's own day rules.
+  const regular = bounds.slice(0, days).map((ms, day) => sameWallClock(ms, bounds[day + 1]));
+  const arriving: SimCard[][] = Array.from({ length: days }, () => []);
+  let waiting: SimCard[] = [];
+  for (const card of cards) {
+    const nextDue = new Date(card.dueDate).getTime();
+    if (!Number.isFinite(nextDue) || nextDue >= bounds[days]) continue;
+    const reviewed = card.lastReviewed ? new Date(card.lastReviewed).getTime() : NaN;
+    const sim: SimCard = { ...reviewStateOf(card), lastReview: reviewed, nextDue };
+    // Already studied today and due again within it: like a simulated return, it waits for tomorrow.
+    if (reviewed >= bounds[0] && nextDue < bounds[1]) sim.nextDue = bounds[1];
+    if (sim.nextDue >= bounds[days]) continue;
+    if (sim.nextDue < bounds[0]) waiting.push(sim);
+    else arriving[dayIndex(bounds, sim.nextDue)].push(sim);
+  }
+  waiting.sort(byDue);
+
+  // Reviews allowed by the end of each day, from the exact running total so an average's fractions never drift.
+  const allowedBy = (day: number) =>
+    day < 0 ? 0 : Math.floor(Math.round((todayCapacity + day * capacity) * 1e6) / 1e6);
+  const out: { due: number; backlog: number }[] = [];
+  for (let day = 0; day < days; day++) {
+    const dayStart = bounds[day];
+    const dayEnd = bounds[day + 1];
+    const today = arriving[day];
+    arriving[day] = [];
+    const reviews = Math.min(allowedBy(day) - allowedBy(day - 1), waiting.length + today.length);
+    // Oldest first: the cards already waiting, then today's by due time, which only matters when some wait.
+    if (reviews < waiting.length + today.length) today.sort(byDue);
+    const queue = waiting.length > 0 ? waiting.concat(today) : today;
+
+    for (let i = 0; i < reviews; i++) {
+      const card = queue[i];
+      const at = Math.max(card.nextDue, dayStart);
+      // Without a last review the scheduler steps a card as if reviewed just now.
+      const last = Number.isFinite(card.lastReview) ? card.lastReview : at;
+      const sameStudyDay = regular[day]
+        ? last >= dayStart && last < dayEnd
+        : fsrs.isSameStudyDay(new Date(last), new Date(at));
+      const next = fsrs.reviewStep(card, GOOD, Math.max(0, (at - last) / 86400000), sameStudyDay);
+      card.stability = next.stability;
+      card.difficulty = next.difficulty;
+      card.lastReview = at;
+      const minutes = fsrs.reviewIntervalMinutes(next.stability, GOOD);
+      const studyDays = intervalStudyDays(minutes);
+      // Day-scale intervals land on a study day's start, as the scheduler sets them.
+      let due: number;
+      if (studyDays === null) due = at + minutes * 60000;
+      else if (regular[day]) due = bounds[Math.min(day + studyDays, days)];
+      else due = fsrs.dueAfter(new Date(at), minutes).getTime();
+      // The review limit counts a card once a study day, so a return within it waits for the next.
+      card.nextDue = Math.max(due, dayEnd);
+      if (card.nextDue < bounds[days]) arriving[dayIndex(bounds, card.nextDue)].push(card);
+    }
+    waiting = reviews > 0 ? queue.slice(reviews) : queue;
+    out.push({ due: today.length, backlog: waiting.length });
+  }
+  return out;
+}
+
 export class StatisticsService {
   private db: IDatabaseService;
   private settings: DecksSettings;
@@ -66,27 +186,26 @@ export class StatisticsService {
    */
   async getOverallStatistics(
     deckIds: string[] = [],
-    timeframe = "12months"
+    timeframe = "12months",
+    now: Date = new Date()
   ): Promise<Statistics> {
     try {
-      // Calculate timeframe dates
-      const now = new Date();
+      // "all" has no lower bound; anything unrecognised falls back to 30 days.
       const daysAgo =
-        timeframe === "12months" ? 365 : timeframe === "3months" ? 90 : 30;
+        timeframe === "all"
+          ? null
+          : timeframe === "12months" ? 365 : timeframe === "3months" ? 90 : 30;
       const startDate = new Date(
-        now.getTime() - daysAgo * 24 * 60 * 60 * 1000
+        daysAgo === null ? 0 : now.getTime() - daysAgo * 24 * 60 * 60 * 1000
       ).toISOString();
       const endDate = now.toISOString();
 
       this.logger.debug(
-        `[StatisticsService] Querying stats for timeframe: ${timeframe} (${daysAgo} days), deckIds: ${deckIds.length > 0 ? deckIds.join(",") : "all"}`
+        `[StatisticsService] Querying stats for timeframe: ${timeframe} (${daysAgo ?? "all"} days), deckIds: ${deckIds.length > 0 ? deckIds.join(",") : "all"}`
       );
 
-      // Get daily review stats with detailed breakdown
-      const dailyStatsData = await this.getReviewsByDateDetailed(
-        daysAgo,
-        deckIds
-      );
+      // A year whatever the period: the activity summary's longest window is this year.
+      const dailyStatsData = await this.getReviewsByDateDetailed(365, deckIds, now);
 
       // Get card stats (new, review, mature counts)
       const cardCounts = await this.getCardCountsByMaturity(deckIds);
@@ -109,7 +228,7 @@ export class StatisticsService {
       );
 
       // Get forecast data (next 30 days)
-      const forecastData = await this.getForecastDueCards(30, deckIds);
+      const forecastData = await this.getForecastDueCards(30, deckIds, now);
 
       // Calculate retention rate from answer buttons
       const totalReviewsInPeriod =
@@ -193,7 +312,8 @@ export class StatisticsService {
    */
   private async getReviewsByDateDetailed(
     days: number,
-    deckIds: string[] = []
+    deckIds: string[] = [],
+    now: Date = new Date()
   ): Promise<
     Map<
       string,
@@ -207,7 +327,7 @@ export class StatisticsService {
       }
     >
   > {
-    const startDate = new Date();
+    const startDate = new Date(now);
     startDate.setDate(startDate.getDate() - days);
 
     let sql: string;
@@ -367,49 +487,49 @@ export class StatisticsService {
    */
   private async getForecastDueCards(
     days: number,
-    deckIds: string[] = []
+    deckIds: string[] = [],
+    now: Date = new Date()
   ): Promise<Array<{ date: string; dueCount: number; count: number }>> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const forecastEnd = new Date(
-      todayStart.getTime() + days * 24 * 60 * 60 * 1000
-    );
+    // Days are study days: before the rollover hour a card is due "yesterday".
+    const rollover = this.settings.review.nextDayStartsAt;
+    const todayStart = studyDayStart(now, rollover);
+    // The study day `days` on, not days x 24h, which ends an hour off when the clocks change.
+    const forecastEnd = addCalendarDays(todayStart, days);
+    const dayOf = getStudyDaySQL("due_date", rollover);
 
-    // A forecast counts what will actually be served: cards in review state,
-    // neither suspended nor buried. Without these the same day reads higher here
-    // than in the deck list, which does apply them — and a paused card appearing
-    // in a forecast is simply wrong.
+    // A forecast counts only what will be served: review cards neither suspended
+    // nor buried, the same cards the deck list counts.
     const SCHEDULABLE = `state = 'review'
         AND suspended_at IS NULL
         AND (buried_until IS NULL OR buried_until <= ?)`;
 
     let sql: string;
     let params: (string | number | null)[];
-    const now = new Date().toISOString();
+    const nowIso = now.toISOString();
 
     if (deckIds.length === 0) {
       sql = `
-        SELECT ${getLocalDateSQL("due_date")} as date, COUNT(*) as due_count
+        SELECT ${dayOf} as date, COUNT(*) as due_count
         FROM flashcards
         WHERE due_date >= ? AND due_date <= ? AND ${SCHEDULABLE}
-        GROUP BY ${getLocalDateSQL("due_date")}
-        ORDER BY ${getLocalDateSQL("due_date")}
+        GROUP BY ${dayOf}
+        ORDER BY ${dayOf}
       `;
-      params = [todayStart.toISOString(), forecastEnd.toISOString(), now];
+      params = [todayStart.toISOString(), forecastEnd.toISOString(), nowIso];
     } else {
       const placeholders = deckIds.map(() => "?").join(",");
       sql = `
-        SELECT ${getLocalDateSQL("due_date")} as date, COUNT(*) as due_count
+        SELECT ${dayOf} as date, COUNT(*) as due_count
         FROM flashcards
         WHERE due_date >= ? AND due_date <= ? AND ${SCHEDULABLE}
           AND deck_id IN (${placeholders})
-        GROUP BY ${getLocalDateSQL("due_date")}
-        ORDER BY ${getLocalDateSQL("due_date")}
+        GROUP BY ${dayOf}
+        ORDER BY ${dayOf}
       `;
       params = [
         todayStart.toISOString(),
         forecastEnd.toISOString(),
-        now,
+        nowIso,
         ...deckIds,
       ];
     }
@@ -420,11 +540,11 @@ export class StatisticsService {
 
     if (deckIds.length === 0) {
       overdueSql = `SELECT COUNT(*) as count FROM flashcards WHERE due_date < ? AND ${SCHEDULABLE}`;
-      overdueParams = [todayStart.toISOString(), now];
+      overdueParams = [todayStart.toISOString(), nowIso];
     } else {
       const placeholders = deckIds.map(() => "?").join(",");
       overdueSql = `SELECT COUNT(*) as count FROM flashcards WHERE due_date < ? AND ${SCHEDULABLE} AND deck_id IN (${placeholders})`;
-      overdueParams = [todayStart.toISOString(), now, ...deckIds];
+      overdueParams = [todayStart.toISOString(), nowIso, ...deckIds];
     }
 
     const [results, overdueResults] = await Promise.all([
@@ -505,6 +625,8 @@ export class StatisticsService {
   ): Promise<Map<string, number>> {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+    // days <= 0 means all time, so the heatmap can reach older (e.g. migrated) reviews.
+    const allTime = days <= 0;
 
     let sql: string;
     let params: (string | number | null)[];
@@ -513,20 +635,20 @@ export class StatisticsService {
       sql = `
         SELECT ${getLocalDateSQL("reviewed_at")} as date, COUNT(*) as count
         FROM review_logs
-        WHERE reviewed_at >= ?
+        ${allTime ? "" : "WHERE reviewed_at >= ?"}
         GROUP BY ${getLocalDateSQL("reviewed_at")}
       `;
-      params = [startDate.toISOString()];
+      params = allTime ? [] : [startDate.toISOString()];
     } else {
       const placeholders = deckIds.map(() => "?").join(",");
       sql = `
         SELECT ${getLocalDateSQL("rl.reviewed_at")} as date, COUNT(*) as count
         FROM review_logs rl
         JOIN flashcards f ON rl.flashcard_id = f.id
-        WHERE f.deck_id IN (${placeholders}) AND rl.reviewed_at >= ?
+        WHERE f.deck_id IN (${placeholders})${allTime ? "" : " AND rl.reviewed_at >= ?"}
         GROUP BY ${getLocalDateSQL("rl.reviewed_at")}
       `;
-      params = [...deckIds, startDate.toISOString()];
+      params = allTime ? [...deckIds] : [...deckIds, startDate.toISOString()];
     }
 
     const results = await this.db.querySql(sql, params);
@@ -1207,23 +1329,20 @@ export class StatisticsService {
   /**
    * Get today's statistics from daily stats
    */
-  getTodayStats(statistics: Statistics | null): {
-    date: string;
-    reviews: number;
-    timeSpent: number;
-    newCards: number;
-    learningCards: number;
-    reviewCards: number;
-    correctRate: number;
-  } | null {
-    if (!statistics?.dailyStats || statistics.dailyStats.length === 0) {
-      return null;
-    }
-    const today = toLocalDateString(new Date());
+  getTodayStats(statistics: Statistics | null, now: Date = new Date()): DailyStats | null {
+    if (!statistics) return null;
+    // Keyed like the rows, by local calendar day; a day without reviews is all zeros.
+    const today = toLocalDateString(now);
     return (
-      statistics.dailyStats.find((day) => day.date === today) ||
-      statistics.dailyStats[0] ||
-      null
+      statistics.dailyStats?.find((day) => day.date === today) ?? {
+        date: today,
+        reviews: 0,
+        timeSpent: 0,
+        newCards: 0,
+        learningCards: 0,
+        reviewCards: 0,
+        correctRate: 0,
+      }
     );
   }
 
@@ -1232,7 +1351,8 @@ export class StatisticsService {
    */
   getTimeframeStats(
     statistics: Statistics | null,
-    days: number
+    days: number,
+    now: Date = new Date()
   ): TimeframeStats {
     if (!statistics?.dailyStats) {
       return {
@@ -1245,9 +1365,8 @@ export class StatisticsService {
       };
     }
 
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-    const cutoffStr = toLocalDateString(cutoffDate);
+    // `days` calendar days ending today, today included.
+    const cutoffStr = toLocalDateString(addCalendarDays(now, -(days - 1)));
 
     const filteredStats = statistics.dailyStats.filter(
       (day) => day.date >= cutoffStr
@@ -1369,28 +1488,29 @@ export class StatisticsService {
     return Math.round(avgMinutes / 1440); // Convert back to days
   }
 
-  /**
-   * Get cards due today from forecast
-   */
-  getDueToday(statistics: Statistics | null): number {
+  /** Cards due in today's study day, overdue ones included: the forecast's buckets are study days. */
+  getDueToday(statistics: Statistics | null, now: Date = new Date()): number {
     if (!statistics?.forecast || statistics.forecast.length === 0) return 0;
-    const today = toLocalDateString(new Date());
-    const todayForecast = statistics.forecast.find((day) => day.date === today);
-    return todayForecast ? todayForecast.dueCount : 0;
+    const today = studyDayKey(now, this.settings.review.nextDayStartsAt);
+    return statistics.forecast.find((day) => day.date === today)?.dueCount ?? 0;
   }
 
-  /**
-   * Get cards due tomorrow from forecast
-   */
-  getDueTomorrow(statistics: Statistics | null): number {
+  /** How many study days after today's a forecast day is: 0 for today, 1 for tomorrow. */
+  forecastDayOffset(date: string, now: Date = new Date()): number {
+    const today = studyDayStart(now, this.settings.review.nextDayStartsAt);
+    const [year, month, day] = date.split("-").map(Number);
+    // Local calendar dates, not a UTC parse; rounding absorbs 23- and 25-hour days.
+    const from = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return Math.round((new Date(year, month - 1, day).getTime() - from.getTime()) / 86400000);
+  }
+
+  /** Cards due in the study day after today's. */
+  getDueTomorrow(statistics: Statistics | null, now: Date = new Date()): number {
     if (!statistics?.forecast || statistics.forecast.length === 0) return 0;
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = toLocalDateString(tomorrow);
-    const tomorrowForecast = statistics.forecast.find(
-      (day) => day.date === tomorrowStr
-    );
-    return tomorrowForecast ? tomorrowForecast.dueCount : 0;
+    const next = studyDayStart(now, this.settings.review.nextDayStartsAt);
+    next.setDate(next.getDate() + 1);
+    const tomorrow = toLocalDateString(next);
+    return statistics.forecast.find((day) => day.date === tomorrow)?.dueCount ?? 0;
   }
 
   /**
@@ -1411,84 +1531,6 @@ export class StatisticsService {
     if (!statistics?.cardStats) return 0;
     const { new: newCards, review, mature } = statistics.cardStats;
     return newCards + (review || 0) + mature;
-  }
-
-  /**
-   * Forecast future review load and backlog growth with FSRS simulation extension
-   */
-  async simulateFutureDueLoadForDeck(
-    deckId: string,
-    totalDays: number
-  ): Promise<BacklogForecastData[]> {
-    const now = new Date();
-
-    // UTC day boundaries
-    const start = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-    );
-    const end = new Date(start.getTime() + totalDays * 86400000);
-    const startMs = start.getTime();
-    const endMs = end.getTime();
-
-    // Precompute date keys
-    const keys = this.buildDateKeys(startMs, totalDays);
-
-    // Build DB schedule with index-friendly SQL
-    const rows = await this.db.getScheduledDueByDay(
-      deckId,
-      start.toISOString(),
-      end.toISOString()
-    );
-    const sched = new Map<string, number>();
-    for (const r of rows) sched.set(r.day, r.count | 0);
-
-    // Get deck cards for FSRS extension
-    const cards = await this.db.getFlashcardsByDeck(deckId);
-    const reviewCards = cards.filter((card) => card.state === "review");
-
-    // Get deck config for FSRS params
-    const deck = await this.db.getDeckWithProfile(deckId);
-    const deckConfig = deck?.profile ?? DEFAULT_DECK_PROFILE;
-
-    // FSRS extension to simulate future demand
-    const ext = this.simulateFsrsDemand(
-      reviewCards,
-      startMs,
-      endMs,
-      deckConfig
-    );
-    for (const [dayKey, c] of ext) {
-      sched.set(dayKey, (sched.get(dayKey) || 0) + c);
-    }
-
-    // Compute capacity
-    const dailyCap = await this.computeCapacity(
-      deckId,
-      start.toISOString(),
-      30
-    );
-
-    // Get initial backlog (overdue at start)
-    let backlog = await this.db.getCurrentBacklog(deckId, start.toISOString());
-
-    // Generate forecast
-    const out: BacklogForecastData[] = [];
-    for (let i = 0; i < totalDays; i++) {
-      const due = sched.get(keys[i]) || 0;
-
-      // Day-0 semantics: don't modify backlog on day 0
-      if (i > 0) {
-        backlog = Math.max(0, backlog + due - dailyCap);
-      }
-
-      out.push({
-        date: keys[i],
-        scheduledDue: due,
-        projectedBacklog: backlog, // Keep as float, no rounding
-      });
-    }
-
-    return out;
   }
 
   /**
@@ -1670,7 +1712,8 @@ export class StatisticsService {
    */
   async simulateMaturityProgression(
     deckIds: string[],
-    maxDays = 365
+    maxDays = 365,
+    now: Date = new Date()
   ): Promise<MaturityProgressionResult> {
     // Reset rating counter for deterministic results
     this.ratingCounter = 0;
@@ -1858,9 +1901,6 @@ export class StatisticsService {
     // Get nextDayStartsAt from settings
     const nextDayStartsAt = this.settings.review.nextDayStartsAt || 4;
 
-    const now = new Date();
-    const nowMs = now.getTime();
-
     const cardStates: SimulatedCardState[] = allCards.map((card) => {
       const dueMs = new Date(card.dueDate).getTime();
       const lastReviewedMs = card.lastReviewed
@@ -1915,8 +1955,9 @@ export class StatisticsService {
 
     // For each day in the future, simulate reviews
     for (let day = 0; day < maxDays; day++) {
-      const currentDayMs = nowMs + day * 86400000;
-      const currentDate = new Date(currentDayMs);
+      // Calendar days, not 24h steps: across a clock change two steps can share a day.
+      const currentDate = addCalendarDays(now, day);
+      const currentDayMs = currentDate.getTime();
       const dateKey = toLocalDateString(currentDate);
 
       // Separate new cards from review cards
@@ -2292,267 +2333,103 @@ export class StatisticsService {
   }
 
   /**
-   * Forecast future review load for multiple decks with optimized SQL aggregation
+   * Review load and backlog on each of `totalDays` study days from today's. Each deck is simulated on its own:
+   * up to its daily capacity of due cards is reviewed, and the rest wait as backlog.
    */
   async simulateFutureDueLoad(
     deckIds: string[],
-    totalDays: number
+    totalDays: number,
+    now: Date = new Date()
   ): Promise<BacklogForecastData[]> {
-    if (!deckIds || deckIds.length === 0) {
-      return [];
-    }
+    if (!deckIds || deckIds.length === 0 || totalDays <= 0) return [];
+    // Study days, as the forecast keys them: each day's start, then the window's end.
+    const rollover = this.settings.review.nextDayStartsAt;
+    const bounds = Array.from({ length: totalDays + 1 }, (_, i) => studyDayStartAfter(now, rollover, i).getTime());
+    const start = new Date(bounds[0]);
+    const out: BacklogForecastData[] = bounds.slice(0, -1).map((ms) => ({
+      date: toLocalDateString(new Date(ms)),
+      scheduledDue: 0,
+      projectedBacklog: 0,
+    }));
 
-    // For single deck, delegate directly
-    if (deckIds.length === 1) {
-      return this.simulateFutureDueLoadForDeck(deckIds[0], totalDays);
-    }
-
-    const now = new Date();
-
-    // UTC day boundaries
-    const start = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-    );
-    const end = new Date(start.getTime() + totalDays * 86400000);
-    const startMs = start.getTime();
-    const endMs = end.getTime();
-
-    // Precompute date keys
-    const keys = this.buildDateKeys(startMs, totalDays);
-
-    // Multi-deck SQL aggregation in one query
-    const rows = await this.db.getScheduledDueByDayMulti(
-      deckIds,
-      start.toISOString(),
-      end.toISOString()
-    );
-    const sched = new Map<string, number>();
-    for (const r of rows) sched.set(r.day, r.count | 0);
-
-    // Get all cards from all decks for FSRS extension
-    const allCards = [];
-    const deckConfigs = new Map();
-    for (const deckId of deckIds) {
-      const cards = await this.db.getFlashcardsByDeck(deckId);
-      const reviewCards = cards.filter((card) => card.state === "review");
-      allCards.push(...reviewCards);
-
-      const deck = await this.db.getDeckWithProfile(deckId);
-      deckConfigs.set(deckId, deck?.profile);
-    }
-
-    // FSRS extension using aggregated cards (use first deck's config for global params)
-    const firstConfig = deckConfigs.values().next().value;
-    const ext = this.simulateFsrsDemand(
-      allCards,
-      startMs,
-      endMs,
-      firstConfig
-    );
-    for (const [dayKey, c] of ext) {
-      sched.set(dayKey, (sched.get(dayKey) || 0) + c);
-    }
-
-    // Compute total capacity across all decks
-    let totalDailyCapacity = 0;
-    for (const deckId of deckIds) {
-      const capacity = await this.computeCapacity(
+    let trained: Promise<number[] | undefined> | undefined;
+    const trainedWeights = () => (trained ??= this.activeTrainedWeights());
+    for (const deckId of new Set(deckIds)) {
+      const cards = (await this.db.getFlashcardsByDeck(deckId)).filter((card) => isSchedulable(card, now));
+      if (cards.length === 0) continue;
+      const profile = (await this.db.getDeckWithProfile(deckId))?.profile ?? DEFAULT_DECK_PROFILE;
+      const capacity = await this.computeCapacity(deckId, profile, start, 30);
+      // Today's capacity is what is left after the review cards already studied today.
+      const reviewedToday = await this.db.countReviewCardDays(
         deckId,
         start.toISOString(),
-        30
+        now.toISOString(),
+        rollover
       );
-      totalDailyCapacity += capacity;
-    }
-
-    // Get initial backlog across all decks in one query
-    let backlog = await this.db.getCurrentBacklogMulti(
-      deckIds,
-      start.toISOString()
-    );
-
-    // Generate forecast with global aggregation
-    const out: BacklogForecastData[] = [];
-    for (let i = 0; i < totalDays; i++) {
-      const due = sched.get(keys[i]) || 0;
-
-      // Day-0 semantics: don't modify backlog on day 0
-      if (i > 0) {
-        backlog = Math.max(0, backlog + due - totalDailyCapacity);
-      }
-
-      out.push({
-        date: keys[i],
-        scheduledDue: due,
-        projectedBacklog: backlog, // Keep as float
+      const days = simulateDeckBacklog(
+        cards,
+        bounds,
+        await this.schedulerFsrs(profile, rollover, trainedWeights),
+        capacity,
+        Math.max(0, capacity - reviewedToday)
+      );
+      days.forEach((day, i) => {
+        out[i].scheduledDue += day.due;
+        out[i].projectedBacklog += day.backlog;
       });
     }
-
     return out;
   }
 
-  /**
-   * Build precomputed date keys for performance
-   */
-  private buildDateKeys(startMs: number, totalDays: number): string[] {
-    const keys: string[] = [];
-    for (let i = 0; i < totalDays; i++) {
-      const date = new Date(startMs + i * 86400000);
-      keys.push(date.toISOString().slice(0, 10));
-    }
-    return keys;
+  /** The projected backlog on each of `days`, matched by date; null where the simulation has no such day. */
+  backlogOnDays(
+    days: readonly { date: string }[],
+    backlog: readonly BacklogForecastData[]
+  ): (number | null)[] {
+    const byDate = new Map(backlog.map((day) => [day.date, day.projectedBacklog]));
+    return days.map((day) => byDate.get(day.date) ?? null);
   }
 
-  /**
-   * Compute daily capacity for a deck
-   */
+  /** The FSRS the scheduler reviews a deck's cards with; unusable stored settings fall back to the defaults. */
+  private async schedulerFsrs(
+    profile: Pick<DeckProfile, "fsrs">,
+    nextDayStartsAt: number,
+    trainedWeights: () => Promise<number[] | undefined>
+  ): Promise<FSRS> {
+    const config = profile.fsrs ?? DEFAULT_DECK_PROFILE.fsrs;
+    return new FSRS({
+      requestRetention: validateRequestRetention(config.requestRetention)
+        ? config.requestRetention
+        : DEFAULT_FSRS_PARAMETERS.requestRetention,
+      profile: config.profile,
+      weights: config.profile === "TRAINED" ? await trainedWeights() : undefined,
+      nextDayStartsAt,
+    });
+  }
+
+  /** The trained weight set the TRAINED profile uses, if there is a usable one. */
+  private async activeTrainedWeights(): Promise<number[] | undefined> {
+    const set = await this.db.getActiveTrainedWeightSet();
+    return set && validateFSRSWeights(set.weights) ? set.weights : undefined;
+  }
+
+  /** A deck's daily review capacity: its review limit, else its average over the `windowDays` before `start`. */
   private async computeCapacity(
     deckId: string,
-    startStr: string,
+    profile: Pick<DeckProfile, "hasReviewCardsLimitEnabled" | "reviewCardsPerDay">,
+    start: Date,
     windowDays: number
   ): Promise<number> {
-    const deck = await this.db.getDeckWithProfile(deckId);
-    if (!deck) return 0;
-
-    const deckConfig = deck.profile;
-
-    if (
-      deckConfig.hasReviewCardsLimitEnabled &&
-      deckConfig.reviewCardsPerDay > 0
-    ) {
-      return deckConfig.reviewCardsPerDay;
+    if (profile.hasReviewCardsLimitEnabled && profile.reviewCardsPerDay > 0) {
+      return profile.reviewCardsPerDay;
     }
-
-    // Fixed 30-day window ending at start
-    const start = new Date(startStr);
-    const windowStart = new Date(start.getTime() - windowDays * 86400000);
-    const totalReviews = await this.db.getDeckReviewCountRange(
+    const reviewed = await this.db.countReviewCardDays(
       deckId,
-      windowStart.toISOString(),
-      startStr
+      studyDayStartAfter(start, this.settings.review.nextDayStartsAt, -windowDays).toISOString(),
+      start.toISOString(),
+      this.settings.review.nextDayStartsAt
     );
-
-    return Math.max(0, totalReviews / windowDays);
-  }
-
-  /**
-   * FSRS-driven simulation to extend daily due counts beyond stored due dates
-   */
-  private simulateFsrsDemand(
-    cards: Flashcard[],
-    startMs: number,
-    endMs: number,
-    deckConfig: Omit<DeckProfile, 'id' | 'created' | 'modified' | 'name' | 'isDefault'>
-  ): Map<string, number> {
-    const result = new Map<string, number>();
-
-    if (!cards || cards.length === 0) {
-      return result;
-    }
-
-    // Get FSRS parameters from deck config or defaults
-    const requestRetention = deckConfig?.fsrs?.requestRetention || 0.9;
-    const minMinutes = 1;
-    const maxDays = 36500;
-
-    // Performance caps. Sub-day intervals are allowed for every profile now, so a
-    // low-stability card can come due many times a day — cap same-day events so the
-    // forecast simulation stays bounded.
-    const maxEventsPerCard = 200;
-    const maxEventsPerDay = 6;
-
-    // SimNode interface for heap elements
-    interface SimNode {
-      cardId: string;
-      stability: number;
-      difficulty: number;
-      lastReview: number;
-      nextDue: number;
-      events: number;
-    }
-
-    // Use min-heap for O(log n) operations instead of sorting
-    const heap = new MinHeap<SimNode>((a, b) => a.nextDue - b.nextDue);
-
-    // Seed heap with cards
-    for (const card of cards) {
-      if (!card.dueDate || !card.stability || !card.difficulty) continue;
-
-      const dueAt = new Date(card.dueDate).getTime();
-      const lastReviewAt = card.lastReviewed
-        ? new Date(card.lastReviewed).getTime()
-        : dueAt - 86400000; // Default to 1 day before due
-
-      heap.push({
-        cardId: card.id,
-        stability: card.stability,
-        difficulty: Math.max(1, Math.min(10, card.difficulty)),
-        lastReview: lastReviewAt,
-        nextDue: Math.max(dueAt, startMs),
-        events: 0,
-      });
-    }
-
-    // Simulation loop
-    const dailyEventCounts = new Map<string, number>();
-
-    while (heap.size() > 0) {
-      const node = heap.pop();
-      if (!node) break;
-      if (node.nextDue >= endMs || node.events >= maxEventsPerCard) {
-        continue;
-      }
-
-      // Same-day event cap (sub-day intervals can recur many times per day)
-      {
-        const dayKey = new Date(node.nextDue).toISOString().slice(0, 10);
-        const todayEvents = dailyEventCounts.get(dayKey) || 0;
-        if (todayEvents >= maxEventsPerDay) {
-          continue;
-        }
-        dailyEventCounts.set(dayKey, todayEvents + 1);
-      }
-
-      // Bucket the review
-      const dayKey = new Date(node.nextDue).toISOString().slice(0, 10);
-      result.set(dayKey, (result.get(dayKey) || 0) + 1);
-
-      // Calculate next review (assume "Good" rating = 3)
-      const elapsedDays = (node.nextDue - node.lastReview) / 86400000;
-      const R = Math.pow(1 + elapsedDays / (9 * node.stability), -1);
-
-      // Update difficulty (simplified FSRS formula for rating=3)
-      const newDifficulty = Math.max(
-        1,
-        Math.min(10, node.difficulty - 0 * (3 - 3)) // w6 * (rating - 3), w6≈0 for good
-      );
-
-      // Update stability (simplified FSRS formula)
-      const growthFactor =
-        Math.exp(1) *
-        (11 - newDifficulty) *
-        Math.pow(node.stability, -0.1) *
-        (Math.exp(0.2 * (1 - R)) - 1);
-      const newStability = Math.max(0.1, node.stability * (1 + growthFactor));
-
-      // Calculate next interval
-      const k = Math.log(requestRetention) / Math.log(0.9);
-      const intervalMinutes = Math.max(
-        minMinutes,
-        Math.min(maxDays * 1440, newStability * k * 1440)
-      );
-
-      // Push back to heap with updated values
-      heap.push({
-        cardId: node.cardId,
-        stability: newStability,
-        difficulty: newDifficulty,
-        lastReview: node.nextDue,
-        nextDue: node.nextDue + intervalMinutes * 60000,
-        events: node.events + 1,
-      });
-    }
-
-    return result;
+    return Math.max(0, reviewed / windowDays);
   }
 
   /**
@@ -2585,7 +2462,8 @@ export class StatisticsService {
   calculateForecastStats(
     statistics: Statistics | null,
     flashcards: Flashcard[],
-    timeframeDays: number
+    timeframeDays: number,
+    now: Date = new Date()
   ) {
     if (!statistics?.forecast || statistics.forecast.length === 0) {
       return {
@@ -2602,7 +2480,7 @@ export class StatisticsService {
       0
     );
     const averagePerDay = totalReviews / Math.max(1, actualForecast.length);
-    const dueTomorrow = this.getDueTomorrow(statistics);
+    const dueTomorrow = this.getDueTomorrow(statistics, now);
 
     // Calculate average daily load over the period
     const nonZeroDays = actualForecast.filter((day) => day.dueCount > 0);
@@ -2625,7 +2503,8 @@ export class StatisticsService {
    */
   async getDeckStats(
     deckId: string,
-    respectDailyLimits = true
+    respectDailyLimits = true,
+    globalDailyRemaining = Infinity
   ): Promise<DeckStats> {
     // Get basic deck stats
     const totalCards = await this.db.countTotalCards(deckId);
@@ -2678,6 +2557,10 @@ export class StatisticsService {
         }
       }
     }
+
+    // The global daily cap is shared across decks: reviews take it first, new cards the rest.
+    finalDueCount = Math.min(finalDueCount, globalDailyRemaining);
+    finalNewCount = Math.min(finalNewCount, Math.max(0, globalDailyRemaining - finalDueCount));
 
     return {
       deckId,
@@ -2738,33 +2621,32 @@ export class StatisticsService {
     pastMonthHours: number;
     pastWeekHours: number;
   }> {
-    const allLogs = await this.db.getAllReviewLogs();
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    let totalMs = 0;
-    let monthMs = 0;
-    let weekMs = 0;
-
-    allLogs.forEach((log) => {
-      const timeElapsed = log.timeElapsedMs || 0;
-      totalMs += timeElapsed;
-
-      const reviewDate = new Date(log.reviewedAt);
-      if (reviewDate >= oneMonthAgo) {
-        monthMs += timeElapsed;
-      }
-      if (reviewDate >= oneWeekAgo) {
-        weekMs += timeElapsed;
-      }
+    // Summed in SQL rather than loading every review log; reviewed_at is ISO text.
+    const sql = `
+      SELECT
+        COALESCE(SUM(time_elapsed_ms), 0) AS total_ms,
+        COALESCE(SUM(CASE WHEN reviewed_at >= ? THEN time_elapsed_ms ELSE 0 END), 0) AS month_ms,
+        COALESCE(SUM(CASE WHEN reviewed_at >= ? THEN time_elapsed_ms ELSE 0 END), 0) AS week_ms
+      FROM review_logs
+    `;
+    const rows = await this.db.querySql<{
+      total_ms: number;
+      month_ms: number;
+      week_ms: number;
+    }>(sql, [oneMonthAgo.toISOString(), oneWeekAgo.toISOString()], {
+      asObject: true,
     });
-
+    const r = rows[0] ?? { total_ms: 0, month_ms: 0, week_ms: 0 };
+    const HOUR_MS = 1000 * 60 * 60;
     return {
-      totalHours: totalMs / (1000 * 60 * 60),
-      pastMonthHours: monthMs / (1000 * 60 * 60),
-      pastWeekHours: weekMs / (1000 * 60 * 60),
+      totalHours: (r.total_ms || 0) / HOUR_MS,
+      pastMonthHours: (r.month_ms || 0) / HOUR_MS,
+      pastWeekHours: (r.week_ms || 0) / HOUR_MS,
     };
   }
 }

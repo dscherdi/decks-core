@@ -377,6 +377,55 @@ describe("filterDeckTree", () => {
     const tree = filterDeckTree(build({ deckGroups: [group("#deutsch/verben", ["v"])], getStats: () => undefined }), "deutsch");
     expect(findNode(tree, "tag:deutsch/verben")).toBeDefined();
   });
+
+  it("totals a branch kept for its matches from those matches alone", () => {
+    const decks = [
+      fileDeck("es", "Spanish", "Languages/Spanish.md"),
+      fileDeck("fr", "French", "Languages/French.md"),
+      fileDeck("bio", "Biology", "Science/Biology.md"),
+    ];
+    const counts = statsGetter({
+      es: { newCount: 2, dueCount: 4, totalCount: 6 },
+      fr: { newCount: 2, dueCount: 3, totalCount: 5 },
+      bio: { newCount: 1, dueCount: 3, totalCount: 4 },
+    });
+    const tree = filterDeckTree(build({ fileDecks: decks, getStats: counts }), "span");
+    const files = tree.sections[0];
+    expect([files.newCount, files.dueCount]).toEqual([2, 4]);
+    expect(files.deckIds).toEqual(["es"]);
+    const languages = findNode(tree, "dir:Languages")!;
+    expect([languages.newCount, languages.dueCount]).toEqual([2, 4]);
+    expect(tree.sections[1].newCount + tree.sections[1].dueCount).toBe(0);
+  });
+
+  it("counts a deck once when overlapping tag groups both match", () => {
+    const decks = [fileDeck("de", "German", "German.md")];
+    const counts = statsGetter({
+      de: { newCount: 3, dueCount: 1, totalCount: 4 },
+      [generateDeckGroupId("#lang/german")]: { newCount: 3, dueCount: 1, totalCount: 4 },
+      [generateDeckGroupId("#german")]: { newCount: 3, dueCount: 1, totalCount: 4 },
+    });
+    const tree = filterDeckTree(
+      build({
+        fileDecks: decks,
+        deckGroups: [group("#lang/german", ["de"]), group("#german", ["de"])],
+        getStats: counts,
+        flat: true,
+      }),
+      "german"
+    );
+    expect([tree.sections[1].newCount, tree.sections[1].dueCount]).toEqual([3, 1]);
+  });
+
+  it("keeps a branch's own totals when its own name matches", () => {
+    const decks = [fileDeck("es", "Spanish", "Languages/Spanish.md"), fileDeck("fr", "French", "Languages/French.md")];
+    const counts = statsGetter({
+      es: { newCount: 2, dueCount: 4, totalCount: 6 },
+      fr: { newCount: 2, dueCount: 3, totalCount: 5 },
+    });
+    const languages = findNode(filterDeckTree(build({ fileDecks: decks, getStats: counts }), "languages"), "dir:Languages")!;
+    expect([languages.newCount, languages.dueCount]).toEqual([4, 7]);
+  });
 });
 
 describe("sortDeckTree", () => {

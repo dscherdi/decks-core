@@ -8,13 +8,16 @@ import {
   generateClozeFlashcardId,
   generateFlashcardId,
   generateOcclusionV2FlashcardId,
+  hash64,
 } from "../../../utils/hash";
 import {
-  clozeBindingKey,
+  encodeAnchorValue,
   formatAnchorToken,
-  headerBindingKey,
-  tableBindingKey,
+  isIdKey,
+  type AnchorRole,
 } from "../../../utils/anchors";
+import { scanClozeDeletions } from "../../../utils/cloze-scanner";
+import type { IDatabaseService } from "../../../database/DatabaseService.interface";
 import { occlusionImageName } from "../../occlusion/OcclusionV2";
 
 export interface AnkiAnchorBinding {
@@ -28,13 +31,69 @@ export interface AnkiRenderedDeck {
   tag: string; // deck tag for the file's frontmatter (no leading #)
   content: string; // full markdown file content
   cards: AnkiParsedCard[]; // every card for this deck (each cloze ord kept, for history)
-  // Anchor bindings for the tokens emitted into `content`, keyed to the same
-  // card ids the history importer uses — re-imports reproduce identical
-  // tokens/bindings, so recipients keep their progress across deck updates.
+  // Binding rows for the emitted tokens, for versions that still resolve through them.
   bindings: AnkiAnchorBinding[];
 }
 
-const ANKI_CLOZE_MARK_REGEX = /==((?:(?!==).)+)==/g;
+/** What one render pass threads through its sections. */
+interface RenderContext {
+  bindings: AnkiAnchorBinding[];
+  // Binding key -> id for tokens an earlier import wrote; those cards keep their ids.
+  pins: ReadonlyMap<string, string>;
+  // Every parsed card of a note, so all of a cloze note's cards learn their ids.
+  noteCards: ReadonlyMap<number, AnkiParsedCard[]>;
+}
+
+/** A card row an earlier import left in the target folder. */
+export interface AnkiEarlierRow {
+  id: string;
+  front: string;
+  back: string;
+  // The deck file it is in, relative to the folder and without ".md".
+  path: string;
+}
+
+export interface AnkiRenderOptions {
+  // Binding key -> id for tokens an earlier import wrote; those cards keep their ids.
+  pins?: ReadonlyMap<string, string>;
+  // Rows already in the target folder; a re-imported card keeps a " (n)" front it had.
+  earlierRows?: readonly AnkiEarlierRow[];
+}
+
+const SUFFIXED_FRONT = /^([\s\S]*) \((\d+)\)$/;
+
+/** Card rows in `folder` (a vault path ending in "/"), for `render`'s `earlierRows`. */
+export async function readAnkiEarlierRows(
+  db: Pick<IDatabaseService, "querySql">,
+  folder: string
+): Promise<AnkiEarlierRow[]> {
+  const rows = await db.querySql<{ id: string; front: string; back: string; filepath: string }>(
+    `SELECT f.id AS id, f.front AS front, f.back AS back, d.filepath AS filepath FROM flashcards f
+     JOIN decks d ON f.deck_id = d.id
+     WHERE substr(d.filepath, 1, length(?)) = ?
+     ORDER BY f.id`,
+    [folder, folder],
+    { asObject: true }
+  );
+  return rows.map(({ filepath, ...row }) => ({
+    ...row,
+    path: filepath.slice(folder.length).replace(/\.md$/i, ""),
+  }));
+}
+
+/** Binding rows an earlier import may have written, for `render`'s `pins`. */
+export async function readAnkiPins(
+  db: Pick<IDatabaseService, "querySql">
+): Promise<Map<string, string>> {
+  const rows = await db.querySql<{ anchor: string; flashcard_id: string }>(
+    "SELECT anchor, flashcard_id FROM anchor_bindings",
+    [],
+    { asObject: true }
+  );
+  return new Map(
+    rows.filter((row) => !isIdKey(row.anchor)).map((row) => [row.anchor, row.flashcard_id])
+  );
+}
 
 // A rendered section plus the keys it's ordered by within a deck file.
 interface RenderedSection {
@@ -89,12 +148,25 @@ export class AnkiDeckRenderer {
     split = true,
     // Max cards per part-file when splitting (media cap stays fixed).
     cardsPerFile = DEFAULT_ANKI_CARDS_PER_FILE,
-    // Fronts already taken elsewhere in the vault (other live decks). An imported
-    // card whose front is reserved gets a " (n)" suffix so it lands as its own
-    // card instead of silently merging into the other deck's card.
-    reservedFronts?: ReadonlySet<string>
+    options: AnkiRenderOptions = {}
   ): AnkiRenderedDeck[] {
-    AnkiDeckRenderer.disambiguateFronts(cards, reservedFronts);
+    const pins = options.pins ?? new Map<string, string>();
+    const noteCards = new Map<number, AnkiParsedCard[]>();
+    for (const card of cards) {
+      const group = noteCards.get(card.noteId);
+      if (group) group.push(card);
+      else noteCards.set(card.noteId, [card]);
+    }
+    const context = (): RenderContext => ({ bindings: [], pins, noteCards });
+
+    // Ids first: a basic or template card's id never depends on its front.
+    const fronted = cards
+      .filter((card) => card.kind === "basic" || card.kind === "template")
+      .sort((a, b) => a.noteId - b.noteId || a.ord - b.ord || a.cardId - b.cardId);
+    const idContext = context();
+    for (const card of fronted) AnkiDeckRenderer.basicId(idContext, card);
+    AnkiDeckRenderer.keepEarlierFronts(fronted, options.earlierRows ?? []);
+    AnkiDeckRenderer.disambiguateFronts(fronted);
 
     const byDeck = new Map<string, AnkiParsedCard[]>();
     for (const card of cards) {
@@ -115,14 +187,14 @@ export class AnkiDeckRenderer {
         ? AnkiDeckRenderer.chunkByNote(deckCards, cardsPerFile, MEDIA_PER_FILE)
         : [deckCards];
       if (chunks.length === 1) {
-        const bindings: AnkiAnchorBinding[] = [];
+        const ctx = context();
         decks.push({
           deckName,
           relativePath: AnkiDeckRenderer.deckPath(deckName),
           tag,
-          content: AnkiDeckRenderer.renderFile(deckCards, baseTag, deckName, headerLevel, bindings),
+          content: AnkiDeckRenderer.renderFile(deckCards, baseTag, deckName, headerLevel, ctx),
           cards: deckCards,
-          bindings,
+          bindings: ctx.bindings,
         });
         continue;
       }
@@ -131,59 +203,104 @@ export class AnkiDeckRenderer {
       const leaf = AnkiDeckRenderer.leafLabel(deckName);
       chunks.forEach((chunkCards, i) => {
         const nn = String(i + 1).padStart(width, "0");
-        const bindings: AnkiAnchorBinding[] = [];
+        const ctx = context();
         decks.push({
           deckName,
           relativePath: `${path}/${leaf} ${nn}`,
           tag,
-          content: AnkiDeckRenderer.renderFile(chunkCards, baseTag, deckName, headerLevel, bindings),
+          content: AnkiDeckRenderer.renderFile(chunkCards, baseTag, deckName, headerLevel, ctx),
           cards: chunkCards,
-          bindings,
+          bindings: ctx.bindings,
         });
       });
     }
     return decks.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   }
 
-  // Card ids are derived from the front text and are deck-independent, so two
-  // notes that render the same front (e.g. the same head-word in several
-  // sub-decks) would collapse to a single card on sync. Append a stable " (n)"
-  // marker to every occurrence after the first so each keeps a distinct front —
-  // and therefore a distinct id. When a front is RESERVED (already taken by a
-  // card in another live deck of the vault), every occurrence is suffixed, so the
-  // imported card lands as its own card instead of being silently dropped in
-  // favour of the other deck's. Only basic/template cards key their id on the
-  // front (cloze/occlusion key on cloze text/order or mask id, so they're left
-  // untouched). Ordering is by (noteId, ord, cardId) — never the parser's row
-  // order, which is unsorted — so re-imports are byte-stable.
-  private static disambiguateFronts(
-    cards: AnkiParsedCard[],
-    reservedFronts?: ReadonlySet<string>
-  ): void {
-    const groups = new Map<string, AnkiParsedCard[]>();
+  /**
+   * Keep a " (n)" front an earlier import wrote: by the card's id, else (an unpinned row) the
+   * next row of its deck file with that base front and back, in the order numbers were given.
+   */
+  private static keepEarlierFronts(cards: AnkiParsedCard[], earlier: readonly AnkiEarlierRow[]): void {
+    const norm = (text: string): string => text.replace(/\s+/g, " ").trim();
+    const numbered = (front: string): { base: string; n: number } => {
+      const match = SUFFIXED_FRONT.exec(front);
+      return match && Number(match[2]) >= 2
+        ? { base: norm(match[1]), n: Number(match[2]) }
+        : { base: norm(front), n: 1 };
+    };
+    // The back the note shows: an empty answer is written as its notes.
+    const answer = (card: AnkiParsedCard): string =>
+      card.kind === "basic" && !card.back.trim() ? card.notes : card.back;
+    const keptByDeck = new Map<string, Set<string>>();
+    const keep = (card: AnkiParsedCard, front: string): void => {
+      const kept = keptByDeck.get(card.deckName) ?? new Set<string>();
+      keptByDeck.set(card.deckName, kept);
+      // Two cards can't both keep one front in a deck; the later one is numbered afresh.
+      if (kept.has(front)) return;
+      kept.add(front);
+      AnkiDeckRenderer.applyFront(card, front);
+    };
+
+    const byId = new Map(earlier.map((row) => [row.id, row]));
+    const cardIds = new Set(cards.map((card) => card.decksId));
+    const unmatched: AnkiParsedCard[] = [];
     for (const card of cards) {
-      if (card.kind !== "basic" && card.kind !== "template") continue;
-      const key = card.front.trim();
+      const row = card.decksId ? byId.get(card.decksId) : undefined;
+      if (!row) unmatched.push(card);
+      else if (numbered(row.front).n >= 2 && numbered(row.front).base === norm(card.front)) keep(card, row.front);
+    }
+
+    // Rows no card owns, by base front and back; bare ones count as number 1.
+    const spare = new Map<string, Array<{ row: AnkiEarlierRow; n: number }>>();
+    for (const row of earlier) {
+      if (cardIds.has(row.id)) continue;
+      const { base, n } = numbered(row.front);
+      const key = `${base}\u0000${norm(row.back)}`;
+      const queue = spare.get(key) ?? [];
+      queue.push({ row, n });
+      spare.set(key, queue);
+    }
+    for (const queue of spare.values()) queue.sort((a, b) => a.n - b.n);
+    for (const card of unmatched) {
+      const queue = spare.get(`${norm(card.front)}\u0000${norm(answer(card))}`);
+      const at = queue?.findIndex(({ row }) => AnkiDeckRenderer.inDeckFile(row.path, card.deckName)) ?? -1;
+      if (!queue || at < 0) continue;
+      const [{ row, n }] = queue.splice(at, 1);
+      if (n >= 2) keep(card, row.front);
+    }
+  }
+
+  // Whether a deck file (relative, no ".md") is this deck's note or one of its part-files.
+  private static inDeckFile(path: string, deckName: string): boolean {
+    const deck = AnkiDeckRenderer.deckPath(deckName);
+    const part = `${deck}/${AnkiDeckRenderer.leafLabel(deckName)} `;
+    return path === deck || (path.startsWith(part) && /^\d+$/.test(path.slice(part.length)));
+  }
+
+  // Same-front cards within one Anki deck get " (n)": editors and open-in-note still find a
+  // card by its front. Across decks the ids in the tokens keep them apart.
+  private static disambiguateFronts(cards: AnkiParsedCard[]): void {
+    const groups = new Map<string, AnkiParsedCard[]>();
+    const usedByDeck = new Map<string, Set<string>>();
+    for (const card of cards) {
+      const front = card.front.trim();
+      const key = `${card.deckName}\u0000${front}`;
       const group = groups.get(key);
       if (group) group.push(card);
       else groups.set(key, [card]);
+      const used = usedByDeck.get(card.deckName);
+      if (used) used.add(front);
+      else usedByDeck.set(card.deckName, new Set([front]));
     }
-
-    const reservedTrimmed = new Set<string>();
-    if (reservedFronts) for (const front of reservedFronts) reservedTrimmed.add(front.trim());
-
-    // Seed with every real front (batch + reserved) so a synthesized "word (2)"
-    // never collides with a note or vault card whose front already is "word (2)".
-    const used = new Set(groups.keys());
-    for (const front of reservedTrimmed) used.add(front);
-    for (const [key, group] of groups) {
-      const reserved = reservedTrimmed.has(key);
-      if (group.length < 2 && !reserved) continue;
-      group.sort((a, b) => a.noteId - b.noteId || a.ord - b.ord || a.cardId - b.cardId);
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const base = group[0].front.trim();
+      const used = usedByDeck.get(group[0].deckName)!;
       let n = 2;
-      for (let i = reserved ? 0 : 1; i < group.length; i++) {
-        let candidate = `${key} (${n})`;
-        while (used.has(candidate)) candidate = `${key} (${++n})`;
+      for (let i = 1; i < group.length; i++) {
+        let candidate = `${base} (${n})`;
+        while (used.has(candidate)) candidate = `${base} (${++n})`;
         used.add(candidate);
         n++;
         AnkiDeckRenderer.applyFront(group[i], candidate);
@@ -244,19 +361,77 @@ export class AnkiDeckRenderer {
     return chunks;
   }
 
-  /**
-   * Deterministic anchor-token id for an imported card: keyed on the Anki
-   * noteId/ord, so a re-import reproduces byte-identical tokens.
-   */
-  static cardAnchorId(card: AnkiParsedCard): string {
-    return generateAnchorId(`anki:${card.noteId}:${card.ord}`);
+  /** The value earlier imports minted for a card's token, which their bindings are keyed on. */
+  static legacyAnchorValue(noteId: number, ord: number): string {
+    return generateAnchorId(`anki:${noteId}:${ord}`);
+  }
+
+  /** A card's id: the one an earlier import pinned, else a 64-bit id from its Anki note and slot. */
+  private static importedId(
+    ctx: RenderContext,
+    prefix: "card_" | "ccard_",
+    noteId: number,
+    slot: string,
+    legacyKeys: string[]
+  ): string {
+    for (const key of legacyKeys) {
+      const pinned = ctx.pins.get(key);
+      if (pinned) return pinned;
+    }
+    return `${prefix}${hash64(`anki:${noteId}:${slot}`)}`;
+  }
+
+  /** The token for a host carrying `ids`, recording a binding row per card. */
+  private static token(
+    ctx: RenderContext,
+    role: AnchorRole,
+    kind: "a" | "p",
+    ids: string[]
+  ): string {
+    const value = encodeAnchorValue(kind, ids);
+    if (value === null) return "";
+    ids.forEach((id, k) => {
+      ctx.bindings.push({ anchor: kind === "p" ? `${role}:${value}#${k}` : `${role}:${value}`, flashcardId: id });
+    });
+    return formatAnchorToken(role, value);
+  }
+
+  /** The id a basic or template card is written with. */
+  private static basicId(ctx: RenderContext, card: AnkiParsedCard): string {
+    const legacy = AnkiDeckRenderer.legacyAnchorValue(card.noteId, card.ord);
+    card.decksId = AnkiDeckRenderer.importedId(ctx, "card_", card.noteId, String(card.ord), [
+      `h:${legacy}`,
+      `t:${legacy}`,
+    ]);
+    return card.decksId;
+  }
+
+  /** One id per deletion of a cloze note, handed to each of the note's parsed cards. */
+  private static clozeIds(ctx: RenderContext, card: AnkiParsedCard, source: string): string[] {
+    const siblings = ctx.noteCards.get(card.noteId) ?? [card];
+    const legacyValues = siblings.map((c) => AnkiDeckRenderer.legacyAnchorValue(c.noteId, c.ord));
+    const ids = scanClozeDeletions(source).map((_, order) =>
+      AnkiDeckRenderer.importedId(
+        ctx,
+        "ccard_",
+        card.noteId,
+        `c${order}`,
+        legacyValues.flatMap((v) => [`t:${v}#${order}`, `c:${v}#${order}`])
+      )
+    );
+    for (const sibling of siblings) {
+      const order = sibling.clozeOrder ?? sibling.ord;
+      if (order < ids.length) sibling.decksId = ids[order];
+    }
+    return ids;
   }
 
   /**
    * The Decks card id an imported card resolves to on sync — the single
-   * source both the emitted anchor bindings and the history importer key to.
+   * source both the emitted tokens and the history importer key to.
    */
   static decksCardId(card: AnkiParsedCard): string {
+    if (card.decksId) return card.decksId;
     if (card.kind === "occlusion" && card.maskId) {
       return generateOcclusionV2FlashcardId(
         AnkiDeckRenderer.leafLabel(card.deckName),
@@ -282,7 +457,7 @@ export class AnkiDeckRenderer {
     baseTag: string,
     deckName: string,
     headerLevel: number,
-    bindings: AnkiAnchorBinding[]
+    ctx: RenderContext
   ): string {
     const level = Math.min(6, Math.max(1, headerLevel || 2));
     const tag = AnkiDeckRenderer.deckTag(baseTag, deckName);
@@ -308,10 +483,10 @@ export class AnkiDeckRenderer {
     }
 
     const sections = [
-      ...AnkiDeckRenderer.renderTableSections(tableBasic, deckName, level, bindings),
-      ...AnkiDeckRenderer.renderHeaderParagraphSections(hpBasic, level, bindings),
-      ...AnkiDeckRenderer.renderClozeSections(clozeCards, deckName, level, bindings),
-      ...AnkiDeckRenderer.renderTemplateSections(templateCards, deckName, level, bindings),
+      ...AnkiDeckRenderer.renderTableSections(tableBasic, deckName, level, ctx),
+      ...AnkiDeckRenderer.renderHeaderParagraphSections(hpBasic, level, ctx),
+      ...AnkiDeckRenderer.renderClozeSections(clozeCards, deckName, level, ctx),
+      ...AnkiDeckRenderer.renderTemplateSections(templateCards, deckName, level, ctx),
       ...AnkiDeckRenderer.renderOcclusionSections(occlusionCards, deckName, level),
     ];
 
@@ -334,7 +509,7 @@ export class AnkiDeckRenderer {
     cards: AnkiParsedCard[],
     deckName: string,
     level: number,
-    bindings: AnkiAnchorBinding[]
+    ctx: RenderContext
   ): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
@@ -377,12 +552,7 @@ export class AnkiDeckRenderer {
     for (const card of plain) {
       const split = splitClozeHeader(card.clozeBody ?? card.back);
       if (split) {
-        const body = AnkiDeckRenderer.tokenizeClozeBody(
-          card,
-          split.header,
-          split.body,
-          bindings
-        );
+        const body = AnkiDeckRenderer.tokenizeClozeBody(card, split.body, ctx);
         sections.push(
           AnkiDeckRenderer.section(
             card.tags,
@@ -396,10 +566,10 @@ export class AnkiDeckRenderer {
     }
     for (const { tags, cards: sub } of AnkiDeckRenderer.partitionByTags(tablePlain)) {
       const rows = sub.map((c) => {
-        const sentence = (c.clozeBody ?? c.back).trim();
-        const anchorId = AnkiDeckRenderer.cardAnchorId(c);
-        AnkiDeckRenderer.bindClozeMarks(sentence, sentence, anchorId, "t", bindings);
-        return `| ${escapeTableCell(cleanCell(c.clozeBody ?? c.back))} ${formatAnchorToken("t", anchorId)} |`;
+        // The parser reads the deletions from the cell as written.
+        const cell = cleanCell(c.clozeBody ?? c.back);
+        const token = AnkiDeckRenderer.token(ctx, "t", "p", AnkiDeckRenderer.clozeIds(ctx, c, cell));
+        return `| ${escapeTableCell(cell)} ${token} |`;
       });
       sections.push(
         AnkiDeckRenderer.section(
@@ -413,50 +583,20 @@ export class AnkiDeckRenderer {
   }
 
   /**
-   * Header-hosted cloze: token the line carrying the cloze marks — only when a
-   * single body line holds them all, so line-scoped keys stay unambiguous.
-   * Multi-line cloze bodies emit no token and anchor lazily at review time.
+   * Header-hosted cloze: token the line carrying the deletions, only when one body
+   * line holds them all. Multi-line cloze bodies keep content ids and stamp at review.
    */
-  private static tokenizeClozeBody(
-    card: AnkiParsedCard,
-    front: string,
-    body: string,
-    bindings: AnkiAnchorBinding[]
-  ): string {
+  private static tokenizeClozeBody(card: AnkiParsedCard, body: string, ctx: RenderContext): string {
     const lines = body.split("\n");
     const markLines = lines
       .map((line, index) => ({ line, index }))
-      .filter(({ line }) => new RegExp(ANKI_CLOZE_MARK_REGEX.source).test(line));
+      .filter(({ line }) => scanClozeDeletions(line).length > 0);
     if (markLines.length !== 1) return body;
 
-    const anchorId = AnkiDeckRenderer.cardAnchorId(card);
     const target = markLines[0];
-    AnkiDeckRenderer.bindClozeMarks(target.line, front, anchorId, "c", bindings);
-    lines[target.index] = `${target.line} ${formatAnchorToken("c", anchorId)}`;
+    const token = AnkiDeckRenderer.token(ctx, "c", "p", AnkiDeckRenderer.clozeIds(ctx, card, target.line));
+    lines[target.index] = `${target.line} ${token}`;
     return lines.join("\n");
-  }
-
-  /** One binding per cloze mark, keyed exactly as the parser will derive. */
-  private static bindClozeMarks(
-    source: string,
-    front: string,
-    anchorId: string,
-    role: "c" | "t",
-    bindings: AnkiAnchorBinding[]
-  ): void {
-    const regex = new RegExp(ANKI_CLOZE_MARK_REGEX.source, "g");
-    let match: RegExpExecArray | null;
-    let order = 0;
-    while ((match = regex.exec(source)) !== null) {
-      bindings.push({
-        anchor:
-          role === "c"
-            ? clozeBindingKey(anchorId, order)
-            : tableBindingKey(anchorId, order),
-        flashcardId: generateClozeFlashcardId(front, match[1], order),
-      });
-      order++;
-    }
   }
 
   // Multi-field cards: one markdown table per binding tag, header row = field
@@ -466,7 +606,7 @@ export class AnkiDeckRenderer {
     cards: AnkiParsedCard[],
     deckName: string,
     level: number,
-    bindings: AnkiAnchorBinding[]
+    ctx: RenderContext
   ): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
@@ -489,12 +629,8 @@ export class AnkiDeckRenderer {
             escapeTableCell(cleanCell(cell))
           );
           if (cellsOut.length > 0) {
-            const anchorId = AnkiDeckRenderer.cardAnchorId(c);
-            bindings.push({
-              anchor: tableBindingKey(anchorId),
-              flashcardId: AnkiDeckRenderer.decksCardId(c),
-            });
-            cellsOut[0] = `${cellsOut[0]} ${formatAnchorToken("t", anchorId)}`;
+            const token = AnkiDeckRenderer.token(ctx, "t", "a", [AnkiDeckRenderer.basicId(ctx, c)]);
+            cellsOut[0] = `${cellsOut[0]} ${token}`;
           }
           return `| ${cellsOut.join(" | ")} |`;
         });
@@ -541,7 +677,7 @@ export class AnkiDeckRenderer {
   private static renderHeaderParagraphSections(
     cards: AnkiParsedCard[],
     level: number,
-    bindings: AnkiAnchorBinding[]
+    ctx: RenderContext
   ): RenderedSection[] {
     const hashes = "#".repeat(level);
     const sections: RenderedSection[] = [];
@@ -554,12 +690,7 @@ export class AnkiDeckRenderer {
         back = notes;
         notes = "";
       }
-      const anchorId = AnkiDeckRenderer.cardAnchorId(card);
-      const token = formatAnchorToken("h", anchorId);
-      bindings.push({
-        anchor: headerBindingKey(anchorId),
-        flashcardId: AnkiDeckRenderer.decksCardId(card),
-      });
+      const token = AnkiDeckRenderer.token(ctx, "h", "a", [AnkiDeckRenderer.basicId(ctx, card)]);
       const body = notes
         ? `${back}\n${token}\n\n---\n\n${notes}`
         : `${back}\n${token}`;
@@ -577,19 +708,13 @@ export class AnkiDeckRenderer {
     cards: AnkiParsedCard[],
     deckName: string,
     level: number,
-    bindings: AnkiAnchorBinding[]
+    ctx: RenderContext
   ): RenderedSection[] {
     const hashes = "#".repeat(level);
     const label = AnkiDeckRenderer.leafLabel(deckName);
 
-    const tableToken = (c: AnkiParsedCard): string => {
-      const anchorId = AnkiDeckRenderer.cardAnchorId(c);
-      bindings.push({
-        anchor: tableBindingKey(anchorId),
-        flashcardId: AnkiDeckRenderer.decksCardId(c),
-      });
-      return ` ${formatAnchorToken("t", anchorId)}`;
-    };
+    const tableToken = (c: AnkiParsedCard): string =>
+      ` ${AnkiDeckRenderer.token(ctx, "t", "a", [AnkiDeckRenderer.basicId(ctx, c)])}`;
 
     const sections: RenderedSection[] = [];
     for (const { tags, cards: group } of AnkiDeckRenderer.partitionByTags(cards)) {

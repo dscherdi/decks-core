@@ -5,6 +5,7 @@ import {
   type LanguagePreference,
   type Translations,
 } from "./locales";
+import { formatMessage } from "./message";
 
 export class I18n {
   private static current: Translations = LOCALES.en;
@@ -44,13 +45,11 @@ export class I18n {
     return this.currentCode;
   }
 
+  /** Fills `{placeholders}` and plural blocks for the current language. */
   static format(
     template: string,
     params: Record<string, string | number>
   ): string {
-    return template.replace(/\{(\w+)\}/g, (_, key: string) => {
-      const value = params[key];
-      return value !== undefined ? String(value) : `{${key}}`;
-    });
+    return formatMessage(template, params, this.currentCode);
   }
 }

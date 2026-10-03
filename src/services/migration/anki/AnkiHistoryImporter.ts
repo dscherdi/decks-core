@@ -1,4 +1,5 @@
 import type { Flashcard, ReviewLog } from "../../../database/types";
+import type { IDatabaseService } from "../../../database/DatabaseService.interface";
 import {
   getMaxIntervalDaysForProfile,
   getMinMinutesForProfile,
@@ -23,6 +24,34 @@ export interface AnkiRevlogRow {
   lastIvl: number; // previous interval
   factor: number; // ease, per-mille
 }
+
+/** The history writers, plus one read of each deck's rows. */
+export type AnkiHistoryDb = HistoryDb & Pick<IDatabaseService, "querySql">;
+
+/** A deck row's scheduling, and its newest review made in Decks rather than imported. */
+interface ImportedRow {
+  id: string;
+  state: string;
+  due_date: string;
+  interval: number;
+  repetitions: number;
+  difficulty: number;
+  stability: number;
+  lapses: number;
+  last_reviewed: string | null;
+  own_reviewed_at: string | null;
+}
+
+// Importers write log_anki_* and log_migrate_*; every other log is a review made in Decks.
+const rowsSql = (count: number): string => `
+  SELECT f.id AS id, f.state AS state, f.due_date AS due_date, f.interval AS interval,
+         f.repetitions AS repetitions, f.difficulty AS difficulty, f.stability AS stability,
+         f.lapses AS lapses, f.last_reviewed AS last_reviewed,
+         (SELECT MAX(rl.reviewed_at) FROM review_logs rl
+           WHERE rl.flashcard_id = f.id
+             AND rl.id NOT GLOB 'log_anki_*' AND rl.id NOT GLOB 'log_migrate_*') AS own_reviewed_at
+  FROM flashcards f WHERE f.id IN (${Array(count).fill("?").join(",")})`;
+const ROWS_PER_QUERY = 400;
 
 export interface AnkiDeckItem {
   deckId: string;
@@ -140,22 +169,27 @@ export class AnkiHistoryImporter {
   }
 
   /**
-   * Inject state + a synthetic migration log for every card (drives Smart
-   * Restoration), plus the real Anki review rows as a timeline when provided.
+   * Inject Anki state, a migration log and the revlog timeline per card; a card
+   * reviewed in Decks keeps its state unless Anki answered it later.
    */
   static async importHistory(
-    db: HistoryDb,
+    db: AnkiHistoryDb,
     items: AnkiDeckItem[],
     options: AnkiImportHistoryOptions = {},
     now: Date = new Date()
-  ): Promise<{ injected: number; reviews: number }> {
+  ): Promise<{ injected: number; reviews: number; kept: number }> {
     let injected = 0;
     let reviews = 0;
+    let kept = 0;
     const total = items.reduce((sum, item) => sum + item.cards.length, 0);
     let done = 0;
 
     for (const item of items) {
       const updates: Array<{ id: string; updates: Partial<Flashcard> }> = [];
+      const rows = await AnkiHistoryImporter.readRows(
+        db,
+        item.cards.map((card) => AnkiHistoryImporter.decksCardId(card))
+      );
 
       for (const card of item.cards) {
         if (++done % 200 === 0) options.onProgress?.(done, total);
@@ -178,7 +212,15 @@ export class AnkiHistoryImporter {
           injected++;
         }
 
-        updates.push({ id: cardId, updates: SrHistoryImporter.buildFlashcardUpdate(fsrs, now) });
+        const row = rows.get(cardId);
+        const ankiMs = AnkiHistoryImporter.lastAnkiAnswerMs(options.revlogByCard?.get(card.cardId));
+        if (row && AnkiHistoryImporter.ankiIsNewer(row, ankiMs)) {
+          const update = SrHistoryImporter.buildFlashcardUpdate(fsrs, now);
+          if (ankiMs !== null) update.lastReviewed = new Date(ankiMs).toISOString();
+          if (!AnkiHistoryImporter.sameState(row, update)) updates.push({ id: cardId, updates: update });
+        } else if (row) {
+          kept++;
+        }
 
         reviews += await AnkiHistoryImporter.importRevlog(
           db,
@@ -194,7 +236,51 @@ export class AnkiHistoryImporter {
     }
 
     options.onProgress?.(total, total);
-    return { injected, reviews };
+    return { injected, reviews, kept };
+  }
+
+  // By id, not by deck: a card's row may live in another deck its note also feeds.
+  private static async readRows(db: AnkiHistoryDb, cardIds: string[]): Promise<Map<string, ImportedRow>> {
+    const ids = [...new Set(cardIds)];
+    const rows = new Map<string, ImportedRow>();
+    for (let i = 0; i < ids.length; i += ROWS_PER_QUERY) {
+      const chunk = ids.slice(i, i + ROWS_PER_QUERY);
+      for (const row of await db.querySql<ImportedRow>(rowsSql(chunk.length), chunk, { asObject: true })) {
+        rows.set(row.id, row);
+      }
+    }
+    return rows;
+  }
+
+  // The newest real answer; ease-0 rows are manual reschedules, not reviews.
+  private static lastAnkiAnswerMs(revlog: AnkiRevlogRow[] | undefined): number | null {
+    let latest: number | null = null;
+    for (const row of revlog ?? []) {
+      if (row.ease > 0 && (latest === null || row.id > latest)) latest = row.id;
+    }
+    return latest;
+  }
+
+  // Anki's state stands unless Decks reviewed the card later than Anki last answered it.
+  private static ankiIsNewer(row: ImportedRow, ankiMs: number | null): boolean {
+    if (row.own_reviewed_at === null) return true;
+    if (ankiMs === null) return false;
+    const decksMs = Math.max(Date.parse(row.last_reviewed ?? "") || 0, Date.parse(row.own_reviewed_at) || 0);
+    return ankiMs > decksMs;
+  }
+
+  // Unchanged cards are not rewritten, so their modified time stays put.
+  private static sameState(row: ImportedRow, update: Partial<Flashcard>): boolean {
+    return (
+      row.state === update.state &&
+      row.due_date === update.dueDate &&
+      row.interval === update.interval &&
+      row.repetitions === update.repetitions &&
+      row.difficulty === update.difficulty &&
+      row.stability === update.stability &&
+      row.lapses === update.lapses &&
+      row.last_reviewed === update.lastReviewed
+    );
   }
 
   private static decksCardId(card: AnkiParsedCard): string {
@@ -221,6 +307,8 @@ export class AnkiHistoryImporter {
     let count = 0;
     const profile = normalizeProfile(profileFsrs.profile);
     for (const row of rows) {
+      // A manual reschedule is not an answer; logged, it would outrank later reviews.
+      if (row.ease <= 0) continue;
       const logId = `log_anki_${cardId}_${row.id}`;
       if (await db.getReviewLogById(logId)) continue;
 

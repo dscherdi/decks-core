@@ -20,6 +20,9 @@ import {
   getTypeInAnswerLine,
   indexSetsEqual,
   isTypedAnswerCorrect,
+  localMeaningVerdict,
+  MAX_MEANING_ANSWER_LENGTH,
+  stripInlineMarkdown,
 } from "./ExamGrading";
 import { sampleWithoutReplacement, shuffleInPlace } from "../utils/sampling";
 
@@ -59,6 +62,18 @@ export type ExamSkipReason =
   | "unsupported-type"
   | "invalid-question"
   | "answer-too-long";
+
+/** A typed answer for the backend to judge by meaning. */
+export interface ExamJudgeItem {
+  /** The question index, as a string. */
+  id: string;
+  prompt: string;
+  expected: string;
+  given: string;
+  context?: string;
+}
+
+const JUDGE_CONTEXT_LENGTH = 1000;
 
 export interface ExamPool {
   eligible: ExamQuestion[];
@@ -134,7 +149,8 @@ function buildQuestion(
     const isCloze = card.type === "cloze";
     const answerLine = getTypeInAnswerLine(card.back, isCloze ? card.clozeText : null);
     if (typedGrading !== "self") {
-      const gradability = checkTypeInGradability(answerLine);
+      const maxLength = typedGrading === "meaning" ? MAX_MEANING_ANSWER_LENGTH : undefined;
+      const gradability = checkTypeInGradability(answerLine, maxLength);
       if (!gradability.gradable) return { skip: "answer-too-long" };
     }
     return {
@@ -180,6 +196,14 @@ export function buildExamPool(
   return { eligible, skipped };
 }
 
+function inPoolOrder(
+  pool: readonly ExamQuestion[],
+  picked: readonly ExamQuestion[]
+): ExamQuestion[] {
+  const chosen = new Set(picked);
+  return pool.filter((question) => chosen.has(question));
+}
+
 /** Draw and order the attempt's questions per the settings. */
 export function drawExamQuestions(
   pool: ExamQuestion[],
@@ -190,9 +214,11 @@ export function drawExamQuestions(
     settings.questionCount > 0
       ? Math.min(settings.questionCount, pool.length)
       : pool.length;
+  // Random selection picks which questions; only the shuffle setting decides
+  // their order, so with it off they keep the note's order.
   let drawn =
-    settings.selectionMode === "random"
-      ? sampleWithoutReplacement(pool, count, rng)
+    settings.selectionMode === "random" && count < pool.length
+      ? inPoolOrder(pool, sampleWithoutReplacement(pool, count, rng))
       : pool.slice(0, count);
   if (settings.shuffleQuestions) drawn = shuffleInPlace([...drawn], rng);
   return drawn.map((q) => ({
@@ -218,6 +244,8 @@ export class ExamAttempt {
   private readonly startedAt: Date;
   private readonly answers = new Map<number, ExamGivenAnswer>();
   private readonly locked = new Map<number, ExamQuestionOutcome>();
+  /** Meaning verdicts, bound to the text they judged. */
+  private readonly judgements = new Map<number, { text: string; correct: boolean }>();
   private readonly screenTimeMs = new Map<number, number>();
 
   constructor(input: {
@@ -304,6 +332,73 @@ export class ExamAttempt {
     return count;
   }
 
+  /** A typed answer settled without judging: empty, a close match, or a stated value. */
+  private localVerdict(i: number): { correct: boolean; method: ExamGradingMethod } | null {
+    const question = this.questions[i];
+    const given = this.answers.get(i);
+    const text = given?.kind === "typed" ? given.text : "";
+    const expected = question.expectedAnswer ?? "";
+    return localMeaningVerdict(text, expected);
+  }
+
+  private judgementFor(i: number): boolean | null {
+    const given = this.answers.get(i);
+    const judged = this.judgements.get(i);
+    return given?.kind === "typed" && judged && judged.text === given.text ? judged.correct : null;
+  }
+
+  /** Typed answers under meaning grading that still need the backend's verdict. */
+  pendingJudgements(indices?: readonly number[]): ExamJudgeItem[] {
+    if (this.settings.typedGrading !== "meaning") return [];
+    const items: ExamJudgeItem[] = [];
+    for (const i of indices ?? this.questions.map((_q, index) => index)) {
+      const question = this.questions[i];
+      const given = this.answers.get(i);
+      if (!question || question.kind !== "type-in" || this.locked.has(i)) continue;
+      if (given?.kind !== "typed" || given.selfVerdict !== null) continue;
+      if (this.localVerdict(i) !== null || this.judgementFor(i) !== null) continue;
+      items.push({ id: String(i), ...this.judgePayload(question), given: given.text });
+    }
+    return items;
+  }
+
+  private judgePayload(question: ExamQuestion): { prompt: string; expected: string; context?: string } {
+    const expected = question.expectedAnswer ?? "";
+    if (question.isCloze && question.clozeContext) {
+      const sentence = question.clozeContext
+        .split(EXAM_TARGET_BLANK)
+        .map((part) => part.split(EXAM_INERT_BLANK).map(stripInlineMarkdown).join(EXAM_INERT_BLANK))
+        .join("[____]");
+      return { prompt: `${question.stem}\n\n${sentence}`.trim(), expected };
+    }
+    const rest = stripInlineMarkdown(question.card.back)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "" && l !== expected)
+      .join("\n")
+      .slice(0, JUDGE_CONTEXT_LENGTH);
+    return { prompt: question.stem, expected, ...(rest ? { context: rest } : {}) };
+  }
+
+  /** Record the backend's verdict for the text it judged; ignored once the answer changed. */
+  applyJudgement(i: number, text: string, correct: boolean): void {
+    if (this.locked.has(i)) return;
+    const given = this.answers.get(i);
+    if (given?.kind !== "typed" || given.text !== text) return;
+    this.judgements.set(i, { text, correct });
+  }
+
+  /** Whether the student must grade this answer themselves. */
+  needsSelfVerdict(i: number): boolean {
+    const question = this.questions[i];
+    const given = this.answers.get(i);
+    if (!question || question.kind !== "type-in" || given?.kind !== "typed") return false;
+    if (this.locked.has(i) || given.selfVerdict !== null) return false;
+    if (this.settings.typedGrading === "self") return true;
+    if (this.settings.typedGrading !== "meaning") return false;
+    return this.localVerdict(i) === null && this.judgementFor(i) === null;
+  }
+
   private grade(i: number): ExamQuestionOutcome {
     const question = this.questions[i];
     const given = this.answers.get(i);
@@ -331,6 +426,22 @@ export class ExamAttempt {
     if (mode === "self") {
       gradingMethod = "self";
       isCorrect = given?.kind === "typed" && given.selfVerdict === true;
+    } else if (mode === "meaning") {
+      const local = this.localVerdict(i);
+      const judged = this.judgementFor(i);
+      if (local) {
+        gradingMethod = local.method;
+        isCorrect = local.correct;
+      } else if (judged !== null) {
+        gradingMethod = "meaning";
+        isCorrect = judged;
+      } else if (given?.kind === "typed" && given.selfVerdict !== null) {
+        gradingMethod = "self";
+        isCorrect = given.selfVerdict;
+      } else {
+        gradingMethod = "meaning";
+        isCorrect = false;
+      }
     } else {
       gradingMethod = mode;
       isCorrect = typedText.trim() !== "" && isTypedAnswerCorrect(typedText, expected, mode);

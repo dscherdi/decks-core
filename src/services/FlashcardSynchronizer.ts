@@ -13,7 +13,7 @@ import {
   generateOcclusionV2FlashcardId,
 } from "../utils/hash";
 import { occlusionV2HashInput, occlusionImageName } from "./occlusion/OcclusionV2";
-import { reverseBindingKey } from "../utils/anchors";
+import { cardIdForKey, isIdKey, reverseBindingKey } from "../utils/anchors";
 
 export interface FlashcardUpdates {
   front: string;
@@ -50,8 +50,10 @@ function tagsEqual(a: string[], b: string[]): boolean {
 }
 
 export interface BatchOperation {
-  type: "create" | "update" | "delete" | "migrate" | "bind";
+  type: "create" | "update" | "delete" | "migrate" | "bind" | "anchor";
   flashcardId?: string;
+  // "anchor" only: the token moved or changed form; nothing a reviewer sees changed.
+  anchor?: string | null;
   flashcard?: Omit<Flashcard, "created" | "modified">;
   updates?: FlashcardUpdates;
   oldId?: string;
@@ -70,6 +72,8 @@ export interface SyncResult {
   // sync is aborted (cards preserved) rather than deleting everything. Callers
   // must NOT stamp last_synced_mtime for a skipped sync.
   skippedEmptyParse?: boolean;
+  // Different cards whose content hashed to the same id; the later one was left out.
+  idCollisions?: Array<{ id: string; fronts: [string, string] }>;
 }
 
 /**
@@ -186,6 +190,130 @@ export class FlashcardSynchronizer {
     }
   }
 
+  // A card the AI workbench wrote keeps its source page when an edit re-keys it.
+  private repointAiOrigin(oldId: string, newId: string): void {
+    try {
+      const stmt = this.db.prepare(
+        "UPDATE ai_staged_cards SET dedup_hash = ?, modified = ? WHERE dedup_hash = ?"
+      );
+      stmt.run([newId, new Date().toISOString(), oldId]);
+      stmt.free();
+    } catch {
+      // Table absent on databases that predate it.
+    }
+  }
+
+  private columnsCache: string[] | null = null;
+
+  private flashcardColumns(): string[] {
+    if (this.columnsCache) return this.columnsCache;
+    const stmt = this.db.prepare("PRAGMA table_info(flashcards)");
+    const columns: string[] = [];
+    while (stmt.step()) columns.push(stmt.getAsObject().name as string);
+    stmt.free();
+    this.columnsCache = columns;
+    return columns;
+  }
+
+  // Every row keyed by card id follows the card when its id changes.
+  private repointChildren(oldId: string, newId: string): void {
+    const run = (sql: string): void => {
+      try {
+        const stmt = this.db.prepare(sql);
+        stmt.run([newId, oldId]);
+        stmt.free();
+      } catch {
+        // Table absent on databases that predate it.
+      }
+    };
+    run("UPDATE review_logs SET flashcard_id = ? WHERE flashcard_id = ?");
+    run("UPDATE exam_answers SET flashcard_id = ? WHERE flashcard_id = ?");
+    run("UPDATE OR IGNORE custom_deck_cards SET flashcard_id = ? WHERE flashcard_id = ?");
+    run("UPDATE OR IGNORE custom_deck_card_tombstones SET flashcard_id = ? WHERE flashcard_id = ?");
+    try {
+      const leftover = this.db.prepare("DELETE FROM custom_deck_cards WHERE flashcard_id = ?");
+      leftover.run([oldId]);
+      leftover.free();
+    } catch {
+      // Table absent on databases that predate it.
+    }
+    this.repointOverlay(oldId, newId);
+    this.repointAiOrigin(oldId, newId);
+  }
+
+  // The scheduling state the newest review log under `id` implies, if any.
+  private newestLogState(id: string): {
+    state: "new" | "review";
+    intervalMinutes: number;
+    repetitions: number;
+    difficulty: number;
+    stability: number;
+    lapses: number;
+    reviewedAt: string;
+  } | null {
+    const stmt = this.db.prepare(`
+      SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
+             new_stability, new_lapses, reviewed_at
+      FROM review_logs WHERE flashcard_id = ? ORDER BY reviewed_at DESC LIMIT 1
+    `);
+    stmt.bind([id]);
+    const row = stmt.step() ? stmt.get() : null;
+    stmt.free();
+    if (!row) return null;
+    return {
+      state: row[0] as "new" | "review",
+      intervalMinutes: row[1] as number,
+      repetitions: row[2] as number,
+      difficulty: row[3] as number,
+      stability: row[4] as number,
+      lapses: row[5] as number,
+      reviewedAt: row[6] as string,
+    };
+  }
+
+  // After a merge, a review newer than the surviving row's last one wins.
+  private applyNewerLogState(id: string): void {
+    const log = this.newestLogState(id);
+    if (!log) return;
+    const current = this.db.prepare("SELECT last_reviewed FROM flashcards WHERE id = ?");
+    current.bind([id]);
+    const lastReviewed = current.step() ? (current.get()[0] as string | null) : null;
+    current.free();
+    if (lastReviewed !== null && lastReviewed >= log.reviewedAt) return;
+    const dueDate = new Date(
+      new Date(log.reviewedAt).getTime() + log.intervalMinutes * 60 * 1000
+    ).toISOString();
+    const update = this.db.prepare(`
+      UPDATE flashcards SET state = ?, due_date = ?, interval = ?, repetitions = ?,
+             difficulty = ?, stability = ?, lapses = ?, last_reviewed = ?
+      WHERE id = ?
+    `);
+    update.run([
+      log.state, dueDate, log.intervalMinutes, log.repetitions,
+      log.difficulty, log.stability, log.lapses, log.reviewedAt, id,
+    ]);
+    update.free();
+  }
+
+  // Binding rows for exactly the keys a note carries, not the whole table.
+  private loadBindings(keys: string[]): Map<string, string> {
+    const bindings = new Map<string, string>();
+    const unique = Array.from(new Set(keys));
+    for (let i = 0; i < unique.length; i += 400) {
+      const chunk = unique.slice(i, i + 400);
+      const stmt = this.db.prepare(
+        `SELECT anchor, flashcard_id FROM anchor_bindings WHERE anchor IN (${chunk.map(() => "?").join(",")})`
+      );
+      stmt.bind(chunk);
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        bindings.set(row.anchor as string, row.flashcard_id as string);
+      }
+      stmt.free();
+    }
+    return bindings;
+  }
+
   /**
    * Execute batch database operations using raw SQL
    */
@@ -206,23 +334,38 @@ export class FlashcardSynchronizer {
         const targetExists = checkStmt.step();
         checkStmt.free();
         if (targetExists) {
-          this.repointOverlay(op.oldId, card.id);
+          // Both rows are the same card: fold the old one in, keeping its history.
+          this.repointChildren(op.oldId, card.id);
           const deleteStmt = this.db.prepare("DELETE FROM flashcards WHERE id = ?");
           deleteStmt.run([op.oldId]);
           deleteStmt.free();
+          this.applyNewerLogState(card.id);
           continue;
         }
 
-        // Migrate flashcard identity: update flashcard ID and content
+        // Copy the row under its new id before moving children, so no foreign key
+        // ever points at a missing card, then refresh its content.
+        const columns = this.flashcardColumns();
+        const copyStmt = this.db.prepare(
+          `INSERT INTO flashcards (${columns.join(", ")}) SELECT ${columns
+            .map((column) => (column === "id" ? "?" : column))
+            .join(", ")} FROM flashcards WHERE id = ?`
+        );
+        copyStmt.run([card.id, op.oldId]);
+        copyStmt.free();
+        this.repointChildren(op.oldId, card.id);
+        const dropStmt = this.db.prepare("DELETE FROM flashcards WHERE id = ?");
+        dropStmt.run([op.oldId]);
+        dropStmt.free();
+
         const updateStmt = this.db.prepare(`
                     UPDATE flashcards
-                    SET id = ?, front = ?, back = ?, content_hash = ?, breadcrumb = ?, notes = ?,
+                    SET front = ?, back = ?, content_hash = ?, breadcrumb = ?, notes = ?,
                         type = ?, cloze_text = ?, cloze_order = ?, source_node_id = ?, edge_id = ?,
                         hint = ?, tags = ?, template_row = ?, anchor = ?, modified = datetime('now')
                     WHERE id = ?
                 `);
         updateStmt.run([
-          card.id,
           card.front,
           card.back,
           card.contentHash,
@@ -237,18 +380,16 @@ export class FlashcardSynchronizer {
           serializeTagsForSql(card.tags),
           serializeTemplateRow(card.templateRow),
           card.anchor ?? null,
-          op.oldId,
+          card.id,
         ]);
         updateStmt.free();
 
-        // Migrate review_logs to new ID (critical since FK removed)
-        const reviewLogStmt = this.db.prepare(
-          "UPDATE review_logs SET flashcard_id = ? WHERE flashcard_id = ?"
-        );
-        reviewLogStmt.run([card.id, op.oldId]);
-        reviewLogStmt.free();
-
-        this.repointOverlay(op.oldId, card.id);
+        // Reviews another device logged under the new id may be newer than this row.
+        this.applyNewerLogState(card.id);
+      } else if (op.type === "anchor" && op.flashcardId) {
+        const stmt = this.db.prepare("UPDATE flashcards SET anchor = ? WHERE id = ?");
+        stmt.run([op.anchor ?? null, op.flashcardId]);
+        stmt.free();
       } else if (op.type === "delete" && op.flashcardId) {
         const stmt = this.db.prepare("DELETE FROM flashcards WHERE id = ?");
         stmt.run([op.flashcardId]);
@@ -466,18 +607,13 @@ export class FlashcardSynchronizer {
         existingById.set(flashcard.id, flashcard);
       });
 
-      // Durable anchor-key -> card-id bindings. Loaded globally: bindings are
-      // deck-independent (cards move between files) and one row per reviewed
-      // card keeps the table small.
-      const bindings = new Map<string, string>();
-      const bindingsStmt = this.db.prepare(
-        "SELECT anchor, flashcard_id FROM anchor_bindings"
+      // Tokens that carry their ids need no lookup; minted ones still resolve
+      // through the bindings, read only for the keys this note holds.
+      const bindings = this.loadBindings(
+        expandedCards
+          .map((card) => card.anchorKey)
+          .filter((key): key is string => !!key && !isIdKey(key))
       );
-      while (bindingsStmt.step()) {
-        const row = bindingsStmt.getAsObject();
-        bindings.set(row.anchor as string, row.flashcard_id as string);
-      }
-      bindingsStmt.free();
 
       /*
        * Safety: a deck that had cards and now parses to none is refused.
@@ -513,9 +649,11 @@ export class FlashcardSynchronizer {
         };
       }
 
-      const processedIds = new Set<string>();
+      // Id -> who claimed it first: a content signature, and whether a token fixed it.
+      const processedIds = new Map<string, { signature: string; front: string; anchored: boolean }>();
       const batchOperations: BatchOperation[] = [];
       let duplicatesSkipped = 0;
+      const idCollisions: Array<{ id: string; fronts: [string, string] }> = [];
 
       // Build lists for smart rename detection
       interface ParsedCardData {
@@ -551,7 +689,7 @@ export class FlashcardSynchronizer {
         cardIndex < Math.min(expandedCards.length, 50000);
         cardIndex++
       ) {
-        const parsed = expandedCards[cardIndex];
+        let parsed = expandedCards[cardIndex];
 
         // Update progress periodically
         if (cardIndex % 100 === 0) {
@@ -604,10 +742,20 @@ export class FlashcardSynchronizer {
         } else {
           flashcardId = generateFlashcardId(parsed.front, parsed.sourceNodeId);
         }
-        // Anchor-first matching: a bound key overrides content-derived
-        // identity, so any content edit keeps the card's immutable id.
+        // Anchor-first matching: the token's id (or a minted token's binding)
+        // overrides content-derived identity, so an edit keeps the card's id.
         let anchored = false;
-        if (parsed.anchorKey) {
+        if (parsed.anchorKey && isIdKey(parsed.anchorKey)) {
+          const carried = cardIdForKey(parsed.anchorKey);
+          if (carried && processedIds.has(carried)) {
+            // A copied token: the first card in the note keeps the id, the copy
+            // falls back to its content and gets its own token at its first review.
+            parsed = { ...parsed, anchorKey: undefined };
+          } else if (carried) {
+            flashcardId = carried;
+            anchored = true;
+          }
+        } else if (parsed.anchorKey) {
           const boundId = bindings.get(parsed.anchorKey);
           if (boundId) {
             flashcardId = boundId;
@@ -627,26 +775,47 @@ export class FlashcardSynchronizer {
           : generateContentHash(parsed.back);
         const existingCard = existingById.get(flashcardId);
 
-        if (processedIds.has(flashcardId)) {
+        const signature = [
+          parsed.type,
+          parsed.isReverse ? "rev" : "",
+          parsed.front,
+          parsed.clozeText ?? "",
+          parsed.sourceNodeId ?? "",
+          parsed.edgeId ?? "",
+          parsed.maskId ?? "",
+        ].join("\u0000");
+        const claimed = processedIds.get(flashcardId);
+        if (claimed) {
           duplicatesSkipped++;
+          if (claimed.signature !== signature) {
+            idCollisions.push({ id: flashcardId, fronts: [claimed.front, parsed.front] });
+          }
           continue;
         }
-        processedIds.add(flashcardId);
+        processedIds.set(flashcardId, { signature, front: parsed.front, anchored });
 
         if (existingCard) {
           // Update if content, breadcrumb, notes, front, type, tags, hint, or
           // anchor changed. Tags/hint/anchor are excluded from contentHash, so
           // they need explicit comparisons.
-          if (
+          const contentChanged =
             existingCard.contentHash !== contentHash ||
             existingCard.breadcrumb !== parsed.breadcrumb ||
             existingCard.notes !== (parsed.notes || "") ||
             existingCard.front !== parsed.front ||
             existingCard.type !== parsed.type ||
             (existingCard.hint || "") !== (parsed.hint || "") ||
-            (existingCard.anchor ?? null) !== (parsed.anchorKey ?? null) ||
-            !tagsEqual(existingCard.tags, parsed.tags)
-          ) {
+            !tagsEqual(existingCard.tags, parsed.tags);
+          const anchorChanged =
+            (existingCard.anchor ?? null) !== (parsed.anchorKey ?? null);
+          if (!contentChanged && anchorChanged) {
+            // A token-only change leaves `modified` alone, so remote reviews still apply.
+            batchOperations.push({
+              type: "anchor",
+              flashcardId: existingCard.id,
+              anchor: parsed.anchorKey ?? null,
+            });
+          } else if (contentChanged) {
             batchOperations.push({
               type: "update",
               flashcardId: existingCard.id,
@@ -672,6 +841,7 @@ export class FlashcardSynchronizer {
           if (
             !anchored &&
             parsed.anchorKey &&
+            !isIdKey(parsed.anchorKey) &&
             (existingCard.lastReviewed !== null || existingCard.repetitions > 0)
           ) {
             batchOperations.push({
@@ -763,12 +933,35 @@ export class FlashcardSynchronizer {
         });
       };
 
+      // Id switch: a token now carries a different id for a row this device
+      // still holds under another. Identical content means the same card, so merge.
+      const sameCard = (row: Flashcard, data: ParsedCardData): boolean =>
+        row.type === data.parsed.type &&
+        row.front === data.parsed.front &&
+        row.back === data.parsed.back &&
+        (row.clozeText ?? null) === (data.parsed.clozeText ?? null) &&
+        (row.clozeOrder ?? null) === (data.parsed.clozeOrder ?? null) &&
+        row.id.slice(0, row.id.indexOf("_")) ===
+          data.flashcardId.slice(0, data.flashcardId.indexOf("_"));
+      const mergedAnchored = new Set<number>();
+      anchoredCardsToCreate.forEach((newCardData, createIdx) => {
+        const key = newCardData.parsed.anchorKey;
+        if (!key || !isIdKey(key)) return;
+        const deleteIdx = cardsToDelete.findIndex(
+          (row, idx) => !matchedDeletes.has(idx) && sameCard(row, newCardData)
+        );
+        if (deleteIdx < 0) return;
+        pushMigrate(newCardData, cardsToDelete[deleteIdx]);
+        mergedAnchored.add(createIdx);
+        matchedDeletes.add(deleteIdx);
+      });
+
       // Strong pass: identical back → first unmatched delete with that back.
       // Anchored rows never participate: a vanished anchored card follows
       // intended-reset semantics, not fuzzy re-attachment.
       const deletesByBack = new Map<string, number[]>();
       for (let deleteIdx = 0; deleteIdx < cardsToDelete.length; deleteIdx++) {
-        if (cardsToDelete[deleteIdx].anchor) continue;
+        if (cardsToDelete[deleteIdx].anchor || matchedDeletes.has(deleteIdx)) continue;
         const queue = deletesByBack.get(cardsToDelete[deleteIdx].back);
         if (queue) queue.push(deleteIdx);
         else deletesByBack.set(cardsToDelete[deleteIdx].back, [deleteIdx]);
@@ -864,7 +1057,9 @@ export class FlashcardSynchronizer {
       // they never participate in rename detection. Restoration is keyed by
       // the bound id — this is what re-attaches history on a rebuilt or fresh
       // database even after the card's content was edited.
-      for (const newCardData of anchoredCardsToCreate) {
+      for (let createIdx = 0; createIdx < anchoredCardsToCreate.length; createIdx++) {
+        if (mergedAnchored.has(createIdx)) continue;
+        const newCardData = anchoredCardsToCreate[createIdx];
         const reviewLogStmt = this.db.prepare(`
                     SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
                            new_stability, new_lapses, reviewed_at
@@ -1079,6 +1274,7 @@ export class FlashcardSynchronizer {
         parsedCount: parsedCards.length,
         operationsCount: batchOperations.length,
         duplicatesSkipped,
+        ...(idCollisions.length > 0 ? { idCollisions } : {}),
       };
     } catch (error) {
       throw new Error(`Sync failed: ${(error as Error).message}`);

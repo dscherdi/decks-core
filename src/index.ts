@@ -12,9 +12,16 @@ export {
   CURRENT_SCHEMA_VERSION,
   BACKUP_TABLES_SQL,
   buildMigrationSQL,
+  reviewCardDaysSQL,
 } from "./database/schemas";
 export { remapCardIdsToDeckIndependent } from "./database/remapCardIds";
 export * from "./database/sql-types";
+export {
+  aiConceptId,
+  aiSessionValues,
+  aiStagedCardValues,
+  applyRowPatch,
+} from "./database/ai-rows";
 export type {
   IDatabaseService,
   ISyncLog,
@@ -57,6 +64,11 @@ export type { BadgeParts, DeckLookup } from "./services/FilterBadgeFormatter";
 export { Scheduler } from "./services/Scheduler";
 export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession } from "./services/Scheduler";
 export { StatisticsService } from "./services/StatisticsService";
+export type {
+  TimeframeStats,
+  FutureDueData,
+  BacklogForecastData,
+} from "./services/StatisticsService";
 export { CustomDeckService } from "./services/CustomDeckService";
 export { TagGroupService } from "./services/TagGroupService";
 export { computeCardHealth, isCardLeech, isCardDense } from "./services/CardHealth";
@@ -79,6 +91,11 @@ export {
   indexSetsEqual,
   getTypeInAnswerLine,
   checkTypeInGradability,
+  extractAnswerNumbers,
+  numericAnswerVerdict,
+  localMeaningVerdict,
+  looksLikeCodeAnswer,
+  MAX_MEANING_ANSWER_LENGTH,
 } from "./services/ExamGrading";
 export type { TypeInGradability } from "./services/ExamGrading";
 export { shuffleInPlace, sampleWithoutReplacement } from "./utils/sampling";
@@ -95,7 +112,10 @@ export type {
   ExamQuestionOutcome,
   ExamSkipReason,
   ExamPool,
+  ExamJudgeItem,
 } from "./services/ExamAttempt";
+export { judgePending } from "./services/ExamJudging";
+export type { ExamJudge, ExamJudgeVerdict, JudgeOutcome } from "./services/ExamJudging";
 export { FsrsOptimizationService } from "./services/FsrsOptimizationService";
 export { FlashcardSynchronizer } from "./services/FlashcardSynchronizer";
 export type {
@@ -160,14 +180,21 @@ export { AnkiOcclusionExtractor } from "./services/migration/anki/AnkiOcclusionE
 export type { AnkiOcclusionResult } from "./services/migration/anki/AnkiOcclusionExtractor";
 export {
   AnkiDeckRenderer,
+  readAnkiEarlierRows,
+  readAnkiPins,
   DEFAULT_ANKI_CARDS_PER_FILE,
 } from "./services/migration/anki/AnkiDeckRenderer";
-export type { AnkiRenderedDeck } from "./services/migration/anki/AnkiDeckRenderer";
+export type {
+  AnkiEarlierRow,
+  AnkiRenderOptions,
+  AnkiRenderedDeck,
+} from "./services/migration/anki/AnkiDeckRenderer";
 export { AnkiHistoryImporter } from "./services/migration/anki/AnkiHistoryImporter";
 export { parseMediaManifest, isZstd } from "./services/migration/anki/AnkiMediaManifest";
 export type {
   AnkiRevlogRow,
   AnkiDeckItem,
+  AnkiHistoryDb,
   AnkiImportHistoryOptions,
 } from "./services/migration/anki/AnkiHistoryImporter";
 export type {
@@ -199,9 +226,21 @@ export type {
   SessionStartOp,
   SessionProgressOp,
   SessionEndOp,
+  AiSessionUpsertOp,
+  AiStagedCardsUpsertOp,
+  AiConceptsSaveOp,
+  ClientHelloOp,
 } from "./services/SyncLog.types";
 export { KNOWN_OP_TYPES_V1 } from "./services/SyncLog.types";
 export { applyOp } from "./services/SyncLog.handlers";
+export { sessionName, sourceDisplayName } from "./services/ai/session-name";
+export {
+  MIN_PASSAGE_CHARS,
+  MAX_PASSAGE_CHARS,
+  passageFrom,
+  passageSource,
+} from "./services/ai/passage";
+export type { PassageText } from "./services/ai/passage";
 
 // AI refactoring
 export { AiRefactoringService } from "./services/ai/AiRefactoringService";
@@ -213,6 +252,14 @@ export {
   DECKS_TIER_FAST,
   DECKS_TIER_QUALITY,
   ocrSentinelForTier,
+  critiqueSentinelForTier,
+  DECKS_CRITIQUE_FAST,
+  DECKS_CRITIQUE_QUALITY,
+  DECKS_CHAT,
+  DECKS_GRADE,
+  DECKS_CONCEPT_MAP,
+  DECKS_OVERLAP,
+  DECKS_CONCEPTS,
 } from "./services/ai/models";
 export type { AiModelOption } from "./services/ai/models";
 // AI generation
@@ -221,6 +268,7 @@ export type {
   GenerateDebugInfo,
   GenerateHandlers,
   GenerateResult,
+  GenerateRoundsRequest,
 } from "./services/ai/AiGenerationService";
 export {
   buildGenerationMessages,
@@ -230,18 +278,175 @@ export {
 } from "./services/ai/generation-prompt";
 export type {
   GeneratedCard,
+  GeneratedCardType,
   GenerateRequest,
 } from "./services/ai/generation-prompt";
 export {
   buildHeaderParagraphCard,
   buildHeaderParagraphContent,
   buildTableContent,
+  sourcePageNote,
+  withSourcePage,
   headingHashes,
 } from "./services/ai/compose";
+export {
+  formatPageList,
+  gapPages,
+  heatTone,
+  pageHeat,
+  summarizeHeat,
+} from "./services/ai/coverage";
+export type {
+  PageHeatCell,
+  PageHeatSummary,
+  PageHeatTone,
+} from "./services/ai/coverage";
+export { generatedCardId, heldByOtherDecks, partitionAgainstDeck } from "./services/ai/dedup";
+export { lexicalCandidates, overlapTokens, overlapCardFor } from "./services/ai/overlap";
+export type { OverlapCandidate, OverlapCard } from "./services/ai/overlap";
+export { AiMatchService, MATCH_CHUNK_SIZE } from "./services/ai/AiMatchService";
+export type { DedupResult } from "./services/ai/dedup";
+export {
+  DISTRACTOR_CODES,
+  RUBRIC_CODES,
+  isDistractorCode,
+  buildCritiqueMessages,
+  isRubricCode,
+  parseVerdicts,
+  settleVerdicts,
+  isKeptOverFlag,
+  serializeForCritique,
+} from "./services/ai/critique-prompt";
+export type {
+  CardVerdict,
+  CritiqueCard,
+  CritiqueRequest,
+  RubricCode,
+  RubricVerdict,
+} from "./services/ai/critique-prompt";
+export { AiChatService } from "./services/ai/AiChatService";
+export type { ChatResult } from "./services/ai/AiChatService";
+export {
+  CHAT_HISTORY_TURNS,
+  buildChatMessages,
+  deckForChat,
+  parseChatAnswer,
+  recentTurns,
+} from "./services/ai/chat";
+export type {
+  AnswerGap,
+  ChatAnswer,
+  ChatRequest,
+  ChatTurn,
+} from "./services/ai/chat";
+export { AiConceptService } from "./services/ai/AiConceptService";
+export type { ConceptResult } from "./services/ai/AiConceptService";
+export { AiCritiqueService } from "./services/ai/AiCritiqueService";
+export { AiGradingService, GRADE_CHUNK_SIZE } from "./services/ai/AiGradingService";
+export { parseGradeVerdicts } from "./services/ai/grading";
+export type {
+  CritiqueDebugInfo,
+  CritiqueResult,
+} from "./services/ai/AiCritiqueService";
+export { INVALID_QUESTION_FIXES, fixActionFor, fixFields, fixInstructionFor, fixedCard, isQuestionShaped, originForFix } from "./services/ai/fixes";
+export {
+  REPAIR_LAPSE_THRESHOLD,
+  wantsRepair,
+} from "./services/ai/repair";
+export {
+  clusterPages,
+  missedPages,
+  missesSectionCards,
+  missesSessionPrompt,
+  missesSummary,
+  weakSections,
+} from "./services/ai/exam-misses";
+export type {
+  AttemptMiss,
+  WeakSection,
+} from "./services/ai/exam-misses";
+export {
+  autoWeightByPages,
+  isPlannable,
+  blueprintTotal,
+  clampSectionQuestions,
+  mixFromPool,
+  mixTotal,
+  sectionHasNothingToLearn,
+} from "./services/ai/exam-blueprint";
+export type {
+  BlueprintSection,
+  QuestionMix,
+} from "./services/ai/exam-blueprint";
+export {
+  buildConceptMessages,
+  buildConceptRows,
+  cardsForConcepts,
+  cleanConcepts,
+  conceptNeedle,
+  conceptsByPage,
+  conceptState,
+  isCrammed,
+  isFailingCard,
+  CRAMMED_CODES,
+  filterConceptRows,
+  pageConceptTone,
+  parseConcepts,
+  tallyConcepts,
+  unmatchedCards,
+} from "./services/ai/concepts";
+export type {
+  ConceptCard,
+  ConceptMapCard,
+  ConceptCoverage,
+  ConceptFilter,
+  ConceptRequest,
+  ConceptRow,
+  ConceptState,
+  ConceptTally,
+  PageConceptTone,
+  SourceConcept,
+} from "./services/ai/concepts";
+export {
+  buildMcqContent,
+  buildMcqMarkdown,
+  checkGeneratedMcq,
+} from "./services/ai/mcq";
+export type { McqCheck, McqProblem, StagedMcq } from "./services/ai/mcq";
+export {
+  insertAfter,
+  isRefinement,
+  lastResultBlock,
+  continuationCards,
+  offersContinue,
+  pruneBlocks,
+  supersededIds,
+  localRowId,
+  nextRowCounter,
+  roundsByTurn,
+  threadFromTurns,
+} from "./services/ai/thread";
+export type { ThreadBlock } from "./services/ai/thread";
+export {
+  flagTally,
+  hubTotals,
+  keepRate,
+  relativeAge,
+} from "./services/ai/hub";
+export type {
+  HubTotals,
+  RelativeUnit,
+  SessionCounts,
+} from "./services/ai/hub";
+export type { CardOrigin, FixAction } from "./services/ai/fixes";
 export { planAnchorLine } from "./utils/anchor-token-plan";
 export type { AnchorLinePlan } from "./utils/anchor-token-plan";
 export { DECKS_OVERVIEW, SPLIT_INSTRUCTION } from "./services/ai/prompts";
-export { cardTypeFieldGuidance } from "./services/ai/refactor-prompt";
+export {
+  cardTypeFieldGuidance,
+  parseProposed,
+  parseSplitProposed,
+} from "./services/ai/refactor-prompt";
 export { AiError, REFACTOR_FIELD_KEYS } from "./services/ai/types";
 export type {
   AiProviderId,
@@ -277,6 +482,7 @@ export {
   generateSpatialClozeFlashcardId,
   generateOcclusionV2FlashcardId,
   generateAnchorId,
+  hash64,
 } from "./utils/hash";
 export {
   DK_TOKEN_REGEX,
@@ -296,23 +502,56 @@ export {
   questionBindingKey,
   edgeBindingKey,
   nodeBindingKey,
+  isIdValue,
+  isIdKey,
+  decodeAnchorValue,
+  encodeAnchorValue,
+  parseBindingKey,
+  cardIdForKey,
 } from "./utils/anchors";
+export {
+  scanClozeDeletions,
+  scanLineDeletions,
+  hasClozeDeletion,
+} from "./utils/cloze-scanner";
+export type { ClozeDeletion } from "./utils/cloze-scanner";
+export {
+  AnchorUpgrader,
+  CARD_IDENTITY_VERSION,
+  dependsOnBinding,
+  helloOp,
+  olderDevices,
+} from "./services/AnchorUpgrader";
+export type { DeviceLog, UpgradeDeck } from "./services/AnchorUpgrader";
+export { wantsReverseCards } from "./utils/frontmatter";
+export {
+  carryBodyAnchors,
+  carryRowToken,
+  refitPackedValue,
+  tableClozeSource,
+} from "./utils/anchor-carry";
 export type {
+  AnchorValueKind,
   AnchorRole,
   AnchorToken,
   AnchorSpan,
   LineAnchor,
 } from "./utils/anchors";
 export {
+  addCalendarDays,
   toLocalDateString,
   toLocalDateTimeString,
   getLocalDateSQL,
   getLocalHourSQL,
+  getStudyDaySQL,
+  studyDayKey,
+  studyDayStart,
 } from "./utils/date-utils";
 export {
   buildBackupFilename,
   parseBackupFilename,
   backupTimestamp,
+  backupTimeOfDay,
 } from "./utils/backup-names";
 export type { ParsedBackupName } from "./utils/backup-names";
 export {
@@ -343,12 +582,17 @@ export {
   extractOutline,
   extractPageText,
   buildSectionContent,
+  buildSectionPages,
+  pageMarker,
+  pageFromLabel,
   pagesForSelection,
   sectionsForSelection,
+  chapterIdsForPages,
   type SelectedSection,
 } from "./services/pdf/pdf";
 export type {
   ChapterNode,
+  PageText,
   PdfDoc,
   PdfPage,
   PdfParseMode,
@@ -407,6 +651,12 @@ export {
 export { cardFieldDefs, fieldSetValue } from "./utils/card-fields";
 export type { NoteAccess } from "./services/NoteAccess";
 export { AnchorStamper } from "./services/AnchorStamper";
+export {
+  isReverseCardId,
+  noteCardGroups,
+  noteCardOf,
+  type NoteCardGroup,
+} from "./services/ReverseCards";
 export type { StampOutcome } from "./services/AnchorStamper";
 export {
   findBreadcrumbSection,
@@ -439,5 +689,7 @@ export type {
 // Settings & i18n
 export type { DecksSettings } from "./settings";
 export { I18n } from "./i18n/I18n";
+export { formatMessage, formatSegments } from "./i18n/message";
+export type { MessageParams, MessageSegment } from "./i18n/message";
 export { SUPPORTED_LANGUAGES } from "./i18n/locales";
 export type { LanguageCode, LanguagePreference, Translations } from "./i18n/locales";

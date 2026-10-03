@@ -46,6 +46,19 @@ export interface GenerateResult {
   covered?: boolean;
 }
 
+/** A run of rounds: one request, fed its own output until it has nothing new to add. */
+export interface GenerateRoundsRequest extends Omit<GenerateRequest, "generatedSoFar"> {
+  /** Cards already on the table: fed back so the model continues, never re-emitted. */
+  existingCards?: GeneratedCard[];
+  /** Upper bound on rounds; a refinement always runs one. */
+  maxBatches?: number;
+}
+
+/** Normalized key for in-run dedup (no deck exists yet to hash against). */
+function cardKey(card: GeneratedCard): string {
+  return card.front.trim().toLowerCase();
+}
+
 /**
  * Provider-agnostic orchestrator for AI flashcard generation. Streams cards via
  * the provider's `completeStream` when available, parsing the delimited
@@ -83,6 +96,8 @@ export class AiGenerationService {
           rawSource: req.sourceContext,
           rawPrompt: req.prompt,
           rawGeneratedSoFar: req.generatedSoFar,
+          rawRefining: req.refining,
+          rawCardType: req.cardType,
           category: req.category,
           images: req.images,
           json: false,
@@ -195,5 +210,62 @@ export class AiGenerationService {
       covered: raw.includes(COVERED_MARKER),
       debug: req.debug ? makeDebug(raw) : undefined,
     };
+  }
+
+  /**
+   * Generate in rounds. Each round feeds the cards produced so far back as an
+   * assistant turn; the run stops when a round adds nothing and was not cut off,
+   * when the model says the source is spent, or at the cap.
+   */
+  async generateRounds(
+    config: AiProviderConfig,
+    req: GenerateRoundsRequest,
+    handlers: GenerateHandlers,
+    signal?: AbortSignal,
+  ): Promise<GenerateResult> {
+    const { existingCards, maxBatches: cap, ...base } = req;
+    // A refinement returns one replacement set; another round would only repeat it.
+    const maxBatches = req.refining?.length ? 1 : Math.max(1, cap ?? 1);
+    const priorContext: GeneratedCard[] = [...(existingCards ?? [])];
+    const newCards: GeneratedCard[] = [];
+    const seen = new Set<string>(priorContext.map(cardKey).filter(Boolean));
+    const dedupHandlers: GenerateHandlers = {
+      onCard: (card) => {
+        const key = cardKey(card);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        newCards.push(card);
+        priorContext.push(card);
+        handlers.onCard(card);
+      },
+      onPartial: handlers.onPartial,
+    };
+
+    let debug: GenerateResult["debug"];
+    let truncated = false;
+    let covered = false;
+    for (let batch = 0; batch < maxBatches; batch++) {
+      if (signal?.aborted) break;
+      const countBefore = newCards.length;
+      try {
+        const result = await this.generateStream(
+          config,
+          { ...base, generatedSoFar: priorContext.length ? [...priorContext] : undefined },
+          dedupHandlers,
+          signal,
+        );
+        debug = result.debug ?? debug;
+        truncated = result.truncated ?? false;
+        covered = result.covered ?? false;
+      } catch (e) {
+        if (signal?.aborted) break;
+        // The first round's failure is the real error; a later one keeps what arrived.
+        if (batch === 0) throw e;
+        break;
+      }
+      if (covered) break;
+      if (newCards.length === countBefore && !truncated) break;
+    }
+    return { cards: newCards, debug, truncated, covered };
   }
 }

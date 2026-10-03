@@ -8,9 +8,10 @@ import {
   headingProfileId,
   headingProfileName,
 } from "./types";
+import { getStudyDaySQL } from "../utils/date-utils";
 
 // Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 40;
+export const CURRENT_SCHEMA_VERSION = 42;
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.
@@ -372,6 +373,108 @@ export const CREATE_TABLES_SQL = `
     time_ms INTEGER,
     created TEXT NOT NULL
   );
+
+
+  -- AI workbench. A session is a source plus a selection plus everything that
+  -- came out of it; a staged card is a proposal with a verdict and a lineage.
+  -- Both are mutable and merge newer-wins by modified, like the cram tables,
+  -- so a pile started on one device can be triaged on another.
+  --
+  -- No enum CHECKs: these persist across versions, so a CHECK would force a
+  -- rebuild the day a new card type or origin lands; the writer enforces values.
+  CREATE TABLE IF NOT EXISTS ai_sessions (
+    id TEXT PRIMARY KEY,
+    -- pdf | note | selection
+    source_kind TEXT NOT NULL,
+    source_ref TEXT NOT NULL,
+    -- The hash already computed for the OCR cache, so a resumed session finds
+    -- its transcribed pages instead of paying for them twice.
+    source_hash TEXT,
+    -- JSON array of chapter ids, so Resume restores the tree as it was left.
+    selected_ids TEXT NOT NULL DEFAULT '[]',
+    deck_id TEXT,
+    profile_id TEXT,
+    model TEXT,
+    spend_cents REAL NOT NULL DEFAULT 0,
+    -- Append-only JSON log of prompts and answers: refinement adds a turn, it
+    -- never rewrites one.
+    turns TEXT NOT NULL DEFAULT '[]',
+    archived INTEGER NOT NULL DEFAULT 0,
+    touched_at TEXT NOT NULL,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
+  );
+
+  -- Proposals, not cards. These never reach the vault until they are saved, so
+  -- nothing here has a foreign key into flashcards: a staged card may never
+  -- become one, and one that does outlives its session.
+  CREATE TABLE IF NOT EXISTS ai_staged_cards (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    front TEXT NOT NULL,
+    back TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    -- basic | cloze | reversed | occlusion | mcq
+    card_type TEXT NOT NULL DEFAULT 'basic',
+    -- MCQ only. options is a JSON array of strings; correct a JSON array of
+    -- indices — one is single-answer, several is multi-select graded
+    -- all-or-nothing.
+    options TEXT,
+    correct TEXT,
+    explanation TEXT,
+    -- Cached result of the local parse check, so a question is never saved only
+    -- to be skipped later by the exam setup dialog.
+    valid INTEGER,
+    source_page INTEGER,
+    section_idx INTEGER,
+    concept_id TEXT,
+    -- proposed | kept | saved | discarded | superseded. saved is terminal: the card is in
+    -- the vault now, and a merge must never walk it back.
+    status TEXT NOT NULL DEFAULT 'proposed',
+    -- pass | flagged, plus a JSON array of rubric codes. NULL verdict means the
+    -- critique has not run or could not — which is not the same as passing.
+    rubric_verdict TEXT,
+    rubric_codes TEXT,
+    fix_proposal TEXT,
+    -- Lineage. A split writes children and leaves the parent discarded; a
+    -- rewrite keeps the original behind its replacement. Nothing is deleted, so
+    -- what the AI replaced stays readable and a fix can be undone.
+    parent_id TEXT,
+    -- generate | chat_capture | split | rewrite | add_context
+    origin TEXT NOT NULL DEFAULT 'generate',
+    -- The front-text id this card would be saved under, checked against the
+    -- destination deck before it is staged.
+    dedup_hash TEXT,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_staged_session ON ai_staged_cards(session_id, status);
+  CREATE INDEX IF NOT EXISTS idx_ai_staged_dedup ON ai_staged_cards(dedup_hash);
+  CREATE INDEX IF NOT EXISTS idx_ai_sessions_touched ON ai_sessions(archived, touched_at);
+
+
+  -- Examinable concepts extracted from a source, cached by its hash so one pass
+  -- serves every session over that PDF.
+  CREATE TABLE IF NOT EXISTS ai_source_concepts (
+    id TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    term TEXT NOT NULL,
+    blurb TEXT NOT NULL DEFAULT '',
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
+  );
+
+  -- Which pages have been through extraction. Without this a page with no
+  -- concepts is indistinguishable from one nobody has read, and a solutions page
+  -- would be reported as a gap forever.
+  CREATE TABLE IF NOT EXISTS ai_source_extractions (
+    source_hash TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    created TEXT NOT NULL,
+    PRIMARY KEY (source_hash, page)
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_concepts_source ON ai_source_concepts(source_hash, page);
 
   -- Insert DEFAULT profile
   INSERT OR IGNORE INTO deckprofiles (
@@ -1095,6 +1198,106 @@ export function buildMigrationSQL(db: Database): string {
     CREATE INDEX IF NOT EXISTS idx_exam_sessions_deck ON exam_sessions(deck_key);
     CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_answers(session_id);
 
+    -- AI workbench. A session is a source plus a selection plus everything that
+    -- came out of it; a staged card is a proposal with a verdict and a lineage.
+    -- Both are mutable and merge newer-wins by modified, like the cram tables,
+    -- so a pile started on one device can be triaged on another.
+    --
+    -- No enum CHECKs: these persist across versions, so a CHECK would force a
+    -- rebuild the day a new card type or origin lands; the writer enforces values.
+    CREATE TABLE IF NOT EXISTS ai_sessions (
+      id TEXT PRIMARY KEY,
+      -- pdf | note | selection
+      source_kind TEXT NOT NULL,
+      source_ref TEXT NOT NULL,
+      -- The hash already computed for the OCR cache, so a resumed session finds
+      -- its transcribed pages instead of paying for them twice.
+      source_hash TEXT,
+      -- JSON array of chapter ids, so Resume restores the tree as it was left.
+      selected_ids TEXT NOT NULL DEFAULT '[]',
+      deck_id TEXT,
+      profile_id TEXT,
+      model TEXT,
+      spend_cents REAL NOT NULL DEFAULT 0,
+      -- Append-only JSON log of prompts and answers: refinement adds a turn, it
+      -- never rewrites one.
+      turns TEXT NOT NULL DEFAULT '[]',
+      archived INTEGER NOT NULL DEFAULT 0,
+      touched_at TEXT NOT NULL,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
+    );
+
+    -- Proposals, not cards. These never reach the vault until they are saved, so
+    -- nothing here has a foreign key into flashcards: a staged card may never
+    -- become one, and one that does outlives its session.
+    CREATE TABLE IF NOT EXISTS ai_staged_cards (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      front TEXT NOT NULL,
+      back TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      -- basic | cloze | reversed | occlusion | mcq
+      card_type TEXT NOT NULL DEFAULT 'basic',
+      -- MCQ only. options is a JSON array of strings; correct a JSON array of
+      -- indices — one is single-answer, several is multi-select graded
+      -- all-or-nothing.
+      options TEXT,
+      correct TEXT,
+      explanation TEXT,
+      -- Cached result of the local parse check, so a question is never saved only
+      -- to be skipped later by the exam setup dialog.
+      valid INTEGER,
+      source_page INTEGER,
+      section_idx INTEGER,
+      concept_id TEXT,
+      -- proposed | kept | saved | discarded | superseded. saved is terminal: the card is in
+      -- the vault now, and a merge must never walk it back.
+      status TEXT NOT NULL DEFAULT 'proposed',
+      -- pass | flagged, plus a JSON array of rubric codes. NULL verdict means the
+      -- critique has not run or could not — which is not the same as passing.
+      rubric_verdict TEXT,
+      rubric_codes TEXT,
+      fix_proposal TEXT,
+      -- Lineage. A split writes children and leaves the parent discarded; a
+      -- rewrite keeps the original behind its replacement. Nothing is deleted, so
+      -- what the AI replaced stays readable and a fix can be undone.
+      parent_id TEXT,
+      -- generate | chat_capture | split | rewrite | add_context
+      origin TEXT NOT NULL DEFAULT 'generate',
+      -- The front-text id this card would be saved under, checked against the
+      -- destination deck before it is staged.
+      dedup_hash TEXT,
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_staged_session ON ai_staged_cards(session_id, status);
+    CREATE INDEX IF NOT EXISTS idx_ai_staged_dedup ON ai_staged_cards(dedup_hash);
+    CREATE INDEX IF NOT EXISTS idx_ai_sessions_touched ON ai_sessions(archived, touched_at);
+
+    -- Examinable concepts extracted from a source, cached by its hash so one pass
+    -- serves every session over that PDF.
+    CREATE TABLE IF NOT EXISTS ai_source_concepts (
+      id TEXT PRIMARY KEY,
+      source_hash TEXT NOT NULL,
+      page INTEGER NOT NULL,
+      term TEXT NOT NULL,
+      blurb TEXT NOT NULL DEFAULT '',
+      created TEXT NOT NULL,
+      modified TEXT NOT NULL
+    );
+
+    -- Which pages have been through extraction. Without this a page with no
+    -- concepts is indistinguishable from one nobody has read, and a solutions page
+    -- would be reported as a gap forever.
+    CREATE TABLE IF NOT EXISTS ai_source_extractions (
+      source_hash TEXT NOT NULL,
+      page INTEGER NOT NULL,
+      created TEXT NOT NULL,
+      PRIMARY KEY (source_hash, page)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_concepts_source ON ai_source_concepts(source_hash, page);
+
     -- Set schema version
     PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
 
@@ -1107,6 +1310,66 @@ export function buildMigrationSQL(db: Database): string {
 
 // SQL Query Constants
 export const SQL_QUERIES = {
+  // AI workbench
+  INSERT_AI_SESSION: `
+    INSERT INTO ai_sessions (
+      id, source_kind, source_ref, source_hash, selected_ids,
+      deck_id, profile_id, model, spend_cents, turns,
+      archived, touched_at, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `,
+  // An upsert rather than REPLACE: the pile is rewritten whole on every save, and
+  // REPLACE reset `created` and `modified` on every card, re-counting old cards as new.
+  INSERT_AI_STAGED_CARD: `
+    INSERT INTO ai_staged_cards (
+      id, session_id, front, back, notes, card_type,
+      options, correct, explanation, valid,
+      source_page, section_idx, concept_id, status,
+      rubric_verdict, rubric_codes, fix_proposal,
+      parent_id, origin, dedup_hash, created, modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      session_id = excluded.session_id,
+      front = excluded.front,
+      back = excluded.back,
+      notes = excluded.notes,
+      card_type = excluded.card_type,
+      options = excluded.options,
+      correct = excluded.correct,
+      explanation = excluded.explanation,
+      valid = excluded.valid,
+      source_page = excluded.source_page,
+      section_idx = excluded.section_idx,
+      concept_id = excluded.concept_id,
+      status = excluded.status,
+      rubric_verdict = excluded.rubric_verdict,
+      rubric_codes = excluded.rubric_codes,
+      fix_proposal = excluded.fix_proposal,
+      parent_id = excluded.parent_id,
+      origin = excluded.origin,
+      dedup_hash = excluded.dedup_hash,
+      modified = CASE WHEN
+        ai_staged_cards.session_id IS NOT excluded.session_id
+        OR ai_staged_cards.front IS NOT excluded.front
+        OR ai_staged_cards.back IS NOT excluded.back
+        OR ai_staged_cards.notes IS NOT excluded.notes
+        OR ai_staged_cards.card_type IS NOT excluded.card_type
+        OR ai_staged_cards.options IS NOT excluded.options
+        OR ai_staged_cards.correct IS NOT excluded.correct
+        OR ai_staged_cards.explanation IS NOT excluded.explanation
+        OR ai_staged_cards.valid IS NOT excluded.valid
+        OR ai_staged_cards.source_page IS NOT excluded.source_page
+        OR ai_staged_cards.section_idx IS NOT excluded.section_idx
+        OR ai_staged_cards.concept_id IS NOT excluded.concept_id
+        OR ai_staged_cards.status IS NOT excluded.status
+        OR ai_staged_cards.rubric_verdict IS NOT excluded.rubric_verdict
+        OR ai_staged_cards.rubric_codes IS NOT excluded.rubric_codes
+        OR ai_staged_cards.fix_proposal IS NOT excluded.fix_proposal
+        OR ai_staged_cards.parent_id IS NOT excluded.parent_id
+        OR ai_staged_cards.origin IS NOT excluded.origin
+        OR ai_staged_cards.dedup_hash IS NOT excluded.dedup_hash
+        THEN excluded.modified ELSE ai_staged_cards.modified END
+  `,
   // Deck operations
   INSERT_DECK: `
     INSERT OR REPLACE INTO decks (
@@ -1365,7 +1628,7 @@ export const SQL_QUERIES = {
     UPDATE flashcards SET deck_id = ? WHERE deck_id = ?
   `,
 
-  GET_FLASHCARDS_BY_DECK: `SELECT * FROM flashcards WHERE deck_id = ? ORDER BY created`,
+  GET_FLASHCARDS_BY_DECK: `SELECT * FROM flashcards WHERE deck_id = ? ORDER BY created, rowid`,
 
   GET_DUE_FLASHCARDS: `SELECT * FROM flashcards
     WHERE deck_id = ? AND due_date <= ?
@@ -1462,37 +1725,6 @@ export const SQL_QUERIES = {
 
   COUNT_TOTAL_CARDS: `
     SELECT COUNT(*) FROM flashcards WHERE deck_id = ?
-  `,
-
-  // Optimized forecast queries with index-friendly SQL. Excludes suspended /
-  // actively-buried cards so what the user sees as "upcoming workload" matches
-  // what the review queue will actually surface.
-  GET_SCHEDULED_DUE_BY_DAY: `
-    SELECT substr(due_date,1,10) AS day, COUNT(*) AS c
-    FROM flashcards
-    WHERE deck_id = ? AND state='review'
-      AND due_date >= ? AND due_date < ?
-      AND suspended_at IS NULL
-      AND (buried_until IS NULL OR buried_until <= ?)
-    GROUP BY day
-    ORDER BY day
-  `,
-
-  GET_CURRENT_BACKLOG: `
-    SELECT COUNT(*) AS n
-    FROM flashcards
-    WHERE deck_id = ? AND state='review' AND due_date < ?
-      AND suspended_at IS NULL
-      AND (buried_until IS NULL OR buried_until <= ?)
-  `,
-
-  GET_DECK_REVIEW_COUNT_RANGE: `
-    SELECT COUNT(*) AS n
-    FROM review_logs rl
-    JOIN flashcards f ON f.id = rl.flashcard_id
-    WHERE f.deck_id = ?
-      AND rl.reviewed_at >= ?
-      AND rl.reviewed_at < ?
   `,
 
   // Migration helpers
@@ -1833,6 +2065,19 @@ export const SQL_QUERIES = {
 };
 
 // Backup table creation SQL - matches main database schema exactly
+/** A deck's review-state cards studied in [?, ?), each counted once a study day: what the review limit counts. */
+export function reviewCardDaysSQL(nextDayStartsAt: number): string {
+  return `
+    SELECT COUNT(DISTINCT rl.flashcard_id || '|' || ${getStudyDaySQL("rl.reviewed_at", nextDayStartsAt)}) AS n
+    FROM review_logs rl
+    JOIN flashcards f ON f.id = rl.flashcard_id
+    WHERE f.deck_id = ?
+      AND rl.old_state = 'review'
+      AND rl.reviewed_at >= ?
+      AND rl.reviewed_at < ?
+  `;
+}
+
 export const BACKUP_TABLES_SQL = `
   CREATE TABLE review_logs (
     id TEXT PRIMARY KEY,

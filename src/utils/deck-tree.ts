@@ -327,14 +327,48 @@ function extractPinned(node: TreeNode, pinnedSection: TreeNode): void {
 export function filterDeckTree(tree: DeckTree, query: string): DeckTree {
   const q = query.trim().toLowerCase();
   if (!q) return tree;
+  const deckStats = collectDeckStats(tree);
   return {
-    pinned: filterBranch(tree.pinned, q) ?? emptyLike(tree.pinned),
-    sections: tree.sections.map((s) => filterBranch(s, q) ?? emptyLike(s)),
+    pinned: filterBranch(tree.pinned, q, deckStats) ?? emptyLike(tree.pinned),
+    sections: tree.sections.map((s) => filterBranch(s, q, deckStats) ?? emptyLike(s)),
   };
 }
 
 function emptyLike(node: TreeNode): TreeNode {
-  return { ...node, children: [] };
+  return { ...node, children: [], deckIds: [], newCount: 0, dueCount: 0, hasLimit: false };
+}
+
+type DeckCounts = Map<string, { newCount: number; dueCount: number }>;
+
+/** Each deck's own counts, read off the leaves, so a filtered branch can total what it still shows. */
+function collectDeckStats(tree: DeckTree): DeckCounts {
+  const out: DeckCounts = new Map();
+  const stack = [tree.pinned, ...tree.sections];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const id = node.fileDeck?.id ?? node.customDeck?.id;
+    if (node.kind === "leaf" && id) out.set(id, { newCount: node.newCount, dueCount: node.dueCount });
+    stack.push(...node.children);
+  }
+  return out;
+}
+
+/** A branch kept only for its matching descendants totals those, each deck once. */
+function totalKept(node: TreeNode, kids: TreeNode[], deckStats: DeckCounts): TreeNode {
+  const ids = [...new Set(kids.flatMap((k) => k.deckIds))];
+  const known = ids.every((id) => deckStats.has(id));
+  const sum = (pick: (k: { newCount: number; dueCount: number }) => number): number =>
+    known
+      ? ids.reduce((n, id) => n + pick(deckStats.get(id)!), 0)
+      : kids.reduce((n, k) => n + pick(k), 0);
+  return {
+    ...node,
+    children: kids,
+    deckIds: ids,
+    newCount: sum((k) => k.newCount),
+    dueCount: sum((k) => k.dueCount),
+    hasLimit: kids.some((k) => k.hasLimit),
+  };
 }
 
 function matchesQuery(node: TreeNode, q: string): boolean {
@@ -343,11 +377,14 @@ function matchesQuery(node: TreeNode, q: string): boolean {
   return tag ? tag.toLowerCase().includes(q) : false;
 }
 
-function filterBranch(node: TreeNode, q: string): TreeNode | null {
+function filterBranch(node: TreeNode, q: string, deckStats: DeckCounts): TreeNode | null {
   if (node.kind === "leaf") return matchesQuery(node, q) ? node : null;
-  const kids = node.children.map((c) => filterBranch(c, q)).filter((c): c is TreeNode => c !== null);
-  if (kids.length > 0) return { ...node, children: kids };
-  return matchesQuery(node, q) ? { ...node, children: [] } : null;
+  const kids = node.children
+    .map((c) => filterBranch(c, q, deckStats))
+    .filter((c): c is TreeNode => c !== null);
+  // A branch matching in its own right keeps its own totals; otherwise it totals what survived.
+  if (matchesQuery(node, q)) return { ...node, children: kids };
+  return kids.length > 0 ? totalKept(node, kids, deckStats) : null;
 }
 
 /**
