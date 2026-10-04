@@ -65,6 +65,30 @@ export interface GenerateRoundsRequest extends Omit<GenerateRequest, "generatedS
   maxBatches?: number;
 }
 
+/** A part of the source generated in one request, read when its turn comes. */
+export interface SourceChunk {
+  pages: number[];
+  label: string;
+  /** The chunk's source text; "" when its pages hold none. */
+  load: () => Promise<string>;
+}
+
+export interface GenerateChunkedRequest
+  extends Omit<GenerateRoundsRequest, "sourceContext" | "maxBatches" | "refining"> {
+  chunks: SourceChunk[];
+  /** Other source text, such as an attached note, sent with the first chunk only, as are images. */
+  extraContext?: string;
+}
+
+export interface GenerateChunkedResult extends GenerateResult {
+  /** Chunks generated before the run ended. */
+  doneChunks: number;
+  /** Chunks whose pages held no text. */
+  emptyChunks: number;
+  /** What ended the run early once cards had arrived; they are kept. */
+  error?: unknown;
+}
+
 /** Normalized key for in-run dedup (no deck exists yet to hash against). */
 function cardKey(card: GeneratedCard): string {
   return card.front.trim().toLowerCase();
@@ -313,5 +337,95 @@ export class AiGenerationService {
       if (newCards.length === countBefore && !truncated) break;
     }
     return { cards: newCards, debug, truncated, covered };
+  }
+
+  /**
+   * Generate a large source a chunk at a time, so the first cards come from the
+   * first chunk rather than after the whole source. The next chunk is read while
+   * the current one generates; cards are deduplicated across chunks.
+   */
+  async generateChunked(
+    config: AiProviderConfig,
+    req: GenerateChunkedRequest,
+    handlers: GenerateHandlers,
+    signal?: AbortSignal,
+  ): Promise<GenerateChunkedResult> {
+    const { chunks, existingCards, extraContext, images, ...base } = req;
+    const prior: GeneratedCard[] = [...(existingCards ?? [])];
+    const seen = new Set<string>(prior.map(cardKey).filter(Boolean));
+    const result: GenerateChunkedResult = { cards: [], doneChunks: 0, emptyChunks: 0 };
+    let extra = extraContext?.trim() ?? "";
+    let pictures = images;
+    let allCovered = true;
+
+    let next: Promise<string> | null = chunks[0]?.load() ?? null;
+    for (let i = 0; i < chunks.length && next; i++) {
+      if (signal?.aborted) break;
+      const chunk = chunks[i];
+      const section = { kind: "section" as const, index: i + 1, total: chunks.length, label: chunk.label };
+      handlers.onStage?.(section);
+      let text: string;
+      try {
+        text = (await next).trim();
+      } catch (e) {
+        if (signal?.aborted) break;
+        if (result.cards.length === 0) throw e;
+        result.error = e;
+        break;
+      }
+      next = chunks[i + 1]?.load() ?? null;
+      // Awaited on the next pass; this only keeps an early failure from going unhandled.
+      next?.catch(() => {});
+      if (!text) {
+        result.emptyChunks += 1;
+        continue;
+      }
+
+      // The chunk's own pages last, so the cap keeps them over cards from elsewhere.
+      const pages = new Set(chunk.pages);
+      const own = (c: GeneratedCard): boolean => c.page !== undefined && pages.has(c.page);
+      const covered = [...prior.filter((c) => !own(c)), ...prior.filter(own)].slice(-PRIOR_CARD_LIMIT);
+      try {
+        const round = await this.generateStream(
+          config,
+          {
+            ...base,
+            sourceContext: [extra, text].filter(Boolean).join("\n\n"),
+            images: pictures,
+            generatedSoFar: covered.length ? covered : undefined,
+          },
+          {
+            onCard: (card) => {
+              const key = cardKey(card);
+              if (!key || seen.has(key)) return;
+              seen.add(key);
+              prior.push(card);
+              result.cards.push(card);
+              handlers.onCard(card);
+            },
+            onPartial: handlers.onPartial,
+            onStage: (inner) => handlers.onStage?.({ ...section, inner }),
+            onReasoning: handlers.onReasoning,
+          },
+          signal,
+        );
+        extra = "";
+        pictures = undefined;
+        result.doneChunks += 1;
+        result.debug = round.debug ?? result.debug;
+        if (round.truncated) result.truncated = true;
+        if (!round.covered) allCovered = false;
+      } catch (e) {
+        if (signal?.aborted) break;
+        if (result.cards.length === 0) throw e;
+        result.error = e;
+        break;
+      }
+    }
+    const finished = result.doneChunks + result.emptyChunks === chunks.length;
+    // Stopped early by a failure, the rest of the source is still to read.
+    if (!finished && result.error !== undefined) result.truncated = true;
+    result.covered = finished && result.doneChunks > 0 && allCovered;
+    return result;
   }
 }

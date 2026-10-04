@@ -270,7 +270,21 @@ export type {
   GenerateHandlers,
   GenerateResult,
   GenerateRoundsRequest,
+  GenerateChunkedRequest,
+  GenerateChunkedResult,
+  SourceChunk,
 } from "./services/ai/AiGenerationService";
+export {
+  planChunks,
+  shouldChunk,
+  chunkLabel,
+  ESTIMATED_PAGE_CHARS,
+  CHUNK_MIN_PAGES,
+  CHUNK_MIN_CHARS,
+  type ChunkUnit,
+  type PlannedChunk,
+  type ChunkPlanOptions,
+} from "./services/ai/chunks";
 export {
   buildGenerationMessages,
   parseGeneratedCards,

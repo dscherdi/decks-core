@@ -7,7 +7,7 @@ export type GenerationStage =
   | { kind: "server"; step: string; done?: number; total?: number }
   | { kind: "thinking"; since: number }
   | { kind: "writing"; card: number }
-  | { kind: "section"; index: number; total: number; label: string }
+  | { kind: "section"; index: number; total: number; label: string; inner?: GenerationStage }
   | { kind: "retrying" };
 
 /** The stage in words; `now` makes the thinking time tick. */
@@ -24,8 +24,10 @@ export function stageLabel(stage: GenerationStage, now: number): string {
       return I18n.format(t.stageThinking, { seconds: Math.max(0, Math.floor((now - stage.since) / 1000)) });
     case "writing":
       return I18n.format(t.stageWriting, { n: stage.card });
-    case "section":
-      return I18n.format(t.stageSection, { index: stage.index, total: stage.total, label: stage.label });
+    case "section": {
+      const section = I18n.format(t.stageSection, { index: stage.index, total: stage.total, label: stage.label });
+      return stage.inner ? `${section} · ${stageLabel(stage.inner, now)}` : section;
+    }
     case "retrying":
       return t.stageRetrying;
   }
