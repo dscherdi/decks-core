@@ -4,7 +4,9 @@ import {
   EXAM_INERT_BLANK,
   EXAM_TARGET_BLANK,
   ExamAttempt,
+  examQuestionText,
 } from "../ExamAttempt";
+import { FlashcardParser } from "../FlashcardParser";
 import { DEFAULT_EXAM_SETTINGS } from "../../database/types";
 import type { ExamSettings, Flashcard } from "../../database/types";
 
@@ -241,5 +243,90 @@ describe("ExamAttempt", () => {
     const attempt = attemptFor([card]);
     const { answers } = attempt.finish();
     expect(answers[0].prompt.length).toBeLessThanOrEqual(200);
+  });
+});
+
+/** Cards as the parser makes them from a deck note with clozes on. */
+function parsedCards(markdown: string): Flashcard[] {
+  return FlashcardParser.parseFlashcardsFromContent(markdown, 2, "Deck", true, true).map((parsed) =>
+    makeCard({
+      front: parsed.front,
+      back: parsed.back,
+      type: parsed.type,
+      clozeText: parsed.clozeText ?? null,
+      clozeOrder: parsed.clozeOrder ?? null,
+    })
+  );
+}
+
+describe("front-only cloze questions", () => {
+  const ONE_COLUMN = "## Capitals\n\n| Sentence |\n| --- |\n";
+
+  it("blanks the deletion in the front and never shows it", () => {
+    const [card] = parsedCards(`${ONE_COLUMN}| ==Paris== is the capital of France |\n`);
+    expect(card).toMatchObject({ type: "cloze", back: "", clozeText: "Paris" });
+    const [question] = buildExamPool([card], EXAM_DECKS, "tolerant").eligible;
+
+    expect(question.stem).toBe("");
+    expect(question.clozeContext).toBe(`${EXAM_TARGET_BLANK} is the capital of France`);
+    expect(question.expectedAnswer).toBe("Paris");
+    expect(examQuestionText(question)).toBe("[...] is the capital of France");
+    for (const text of [question.stem, question.clozeContext, examQuestionText(question)]) {
+      expect(text).not.toContain("Paris");
+      expect(text).not.toContain("==");
+    }
+
+    const attempt = attemptFor([card]);
+    attempt.setAnswer(0, { kind: "typed", text: "paris", selfVerdict: null });
+    const { outcomes, answers } = attempt.finish();
+    expect(outcomes[0]).toMatchObject({ isCorrect: true, correctAnswerText: "Paris" });
+    expect(answers[0].prompt).toBe("[...] is the capital of France");
+  });
+
+  it("asks each deletion of a front on its own, siblings blanked", () => {
+    const cards = parsedCards(`${ONE_COLUMN}| ==Paris== is the capital of ==France== |\n`);
+    for (const showContext of [true, false]) {
+      const [first, second] = buildExamPool(cards, EXAM_DECKS, "tolerant", showContext).eligible;
+      expect(first.clozeContext).toBe(`${EXAM_TARGET_BLANK} is the capital of ${EXAM_INERT_BLANK}`);
+      expect(second.clozeContext).toBe(`${EXAM_INERT_BLANK} is the capital of ${EXAM_TARGET_BLANK}`);
+      expect(examQuestionText(second)).toBe(`${EXAM_INERT_BLANK} is the capital of [...]`);
+      expect([first.expectedAnswer, second.expectedAnswer]).toEqual(["Paris", "France"]);
+      for (const question of [first, second]) {
+        expect(question.stem).toBe("");
+        expect(examQuestionText(question)).not.toMatch(/Paris|France|==/);
+      }
+    }
+  });
+
+  it("keeps only the target's line of a front when context is hidden", () => {
+    const card = makeCard({
+      type: "cloze",
+      front: "==Paris== is in France\n==Rome== is in Italy",
+      back: "",
+      clozeText: "Rome",
+      clozeOrder: 1,
+    });
+    const shown = buildExamPool([card], EXAM_DECKS, "tolerant", true).eligible[0];
+    const hidden = buildExamPool([card], EXAM_DECKS, "tolerant", false).eligible[0];
+    expect(shown.clozeContext).toBe(`${EXAM_INERT_BLANK} is in France\n${EXAM_TARGET_BLANK} is in Italy`);
+    expect(hidden.clozeContext).toBe(`${EXAM_TARGET_BLANK} is in Italy`);
+  });
+
+  it("leaves a cloze in the back as it was", () => {
+    const [card] = parsedCards("## Capitals\n\n| Front | Back |\n| --- | --- |\n| Capital of France | ==Paris== |\n");
+    expect(card).toMatchObject({ type: "cloze", front: "Capital of France", back: "==Paris==" });
+    const [question] = buildExamPool([card], EXAM_DECKS, "tolerant").eligible;
+    expect(question.stem).toBe("Capital of France");
+    expect(question.clozeContext).toBe(EXAM_TARGET_BLANK);
+    expect(examQuestionText(question)).toBe("Capital of France");
+    expect(attemptFor([card]).finish().answers[0].prompt).toBe("Capital of France");
+  });
+
+  it("sends the blanked front sentence for meaning grading", () => {
+    const cards = parsedCards(`${ONE_COLUMN}| ==Paris== is the capital of ==France== |\n`);
+    const attempt = attemptFor(cards, { typedGrading: "meaning" });
+    attempt.setAnswer(0, { kind: "typed", text: "Lyon", selfVerdict: null });
+    const [item] = attempt.pendingJudgements();
+    expect(item).toMatchObject({ prompt: "[____] is the capital of ____", expected: "Paris" });
   });
 });

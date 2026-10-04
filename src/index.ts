@@ -103,6 +103,7 @@ export {
   ExamAttempt,
   buildExamPool,
   drawExamQuestions,
+  examQuestionText,
   EXAM_TARGET_BLANK,
   EXAM_INERT_BLANK,
 } from "./services/ExamAttempt";

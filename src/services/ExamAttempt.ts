@@ -33,6 +33,8 @@ const CLOZE_REGEX = /==((?:(?!==).)+)==/g;
 // as plain placeholders so no other question's answer is revealed.
 export const EXAM_TARGET_BLANK = "⟦DECKS-EXAM-BLANK⟧";
 export const EXAM_INERT_BLANK = "____";
+// The target blank where a question is shown as text, as review masks a deletion.
+const EXAM_TEXT_BLANK = "[...]";
 
 export interface ExamQuestion {
   card: Flashcard;
@@ -42,7 +44,7 @@ export interface ExamQuestion {
   displayOrder: number[] | null; // presentation permutation
   expectedAnswer: string | null;
   isCloze: boolean;
-  clozeContext: string | null; // body with every segment blanked, target = sentinel
+  clozeContext: string | null; // cloze body (the front when there is no back), blanked, target = sentinel
 }
 
 export type ExamGivenAnswer =
@@ -147,6 +149,8 @@ function buildQuestion(
       return { skip: "invalid-question" };
     }
     const isCloze = card.type === "cloze";
+    // A cloze written in the front has no back; the front is the sentence to blank.
+    const frontCloze = isCloze && card.back.trim() === "";
     const answerLine = getTypeInAnswerLine(card.back, isCloze ? card.clozeText : null);
     if (typedGrading !== "self") {
       const maxLength = typedGrading === "meaning" ? MAX_MEANING_ANSWER_LENGTH : undefined;
@@ -157,19 +161,29 @@ function buildQuestion(
       question: {
         card,
         kind: "type-in",
-        stem: card.front,
+        stem: frontCloze ? "" : card.front,
         options: null,
         displayOrder: null,
         expectedAnswer: answerLine,
         isCloze,
         clozeContext: isCloze
-          ? buildClozeContext(card.back, card.clozeOrder ?? 0, showClozeContext)
+          ? buildClozeContext(
+              frontCloze ? card.front : card.back,
+              card.clozeOrder ?? 0,
+              showClozeContext
+            )
           : null,
       },
     };
   }
 
   return { skip: "unsupported-type" };
+}
+
+/** The question as text: its stem, or for a front cloze the sentence with a visible blank. */
+export function examQuestionText(question: Pick<ExamQuestion, "stem" | "clozeContext">): string {
+  if (question.stem.trim() !== "" || !question.clozeContext) return question.stem;
+  return question.clozeContext.split(EXAM_TARGET_BLANK).join(EXAM_TEXT_BLANK);
 }
 
 /** Filter a gathered selection down to exam-eligible questions. */
@@ -473,7 +487,7 @@ export class ExamAttempt {
       ordinal: i,
       questionType: this.questions[i].kind,
       gradingMethod: outcome.gradingMethod,
-      prompt: truncatePrompt(this.questions[i].stem),
+      prompt: truncatePrompt(examQuestionText(this.questions[i])),
       correctAnswer: outcome.correctAnswerText,
       givenAnswer: outcome.givenAnswerText,
       isCorrect: outcome.isCorrect,
