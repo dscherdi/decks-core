@@ -8,6 +8,8 @@ import {
   threadFromTurns,
   pruneBlocks,
   supersededIds,
+  roundSummary,
+  type SummaryRow,
   type ThreadBlock,
 } from "../thread";
 
@@ -209,5 +211,34 @@ describe("the thread through the turn log", () => {
     const blocks = [prompt("p1"), result("r1", ["a"])];
     const back = threadFromTurns(turnsFor(blocks), [], counter());
     expect(back.map((b) => b.kind)).toEqual(["prompt"]);
+  });
+});
+
+describe("a round's summary", () => {
+  const row = (front: string, over: Partial<SummaryRow> & { back?: string; page?: number } = {}): SummaryRow => ({
+    card: { front, back: over.back ?? "A", notes: "", page: over.page },
+    keep: over.keep ?? true,
+    saved: over.saved ?? false,
+    verdict: over.verdict,
+    invalid: over.invalid,
+  });
+
+  it("counts pages, clean, flagged, misformatted, kept, discarded and saved cards", () => {
+    const summary = roundSummary([
+      row("Q1", { page: 70 }),
+      row("Q2", { page: 68, verdict: { verdict: "flagged" } }),
+      row("Q3", { page: 70, back: "$\\mu forever", keep: false }),
+      row("Q4", { saved: true, invalid: "no_options" }),
+    ]);
+    expect(summary).toEqual({
+      count: 4,
+      pages: [68, 70],
+      clean: 1,
+      flagged: 2,
+      misformatted: 1,
+      kept: 2,
+      discarded: 1,
+      saved: 1,
+    });
   });
 });

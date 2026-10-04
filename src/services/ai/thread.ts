@@ -2,6 +2,7 @@
 
 import type { AiSessionTurn, AiTurnRound } from "../../database/types";
 import type { GeneratedCard } from "./generation-prompt";
+import { checkCardFormat, type FormatIssue } from "./format-check";
 
 export type ThreadBlock =
   | { kind: "prompt"; id: string; text: string }
@@ -177,4 +178,49 @@ export function offersContinue(result: {
   covered?: boolean;
 }): boolean {
   return !result.covered && ((result.cards?.length ?? 0) > 0 || Boolean(result.truncated));
+}
+
+/** A staged card as a round summary counts it. */
+export interface SummaryRow {
+  card: GeneratedCard;
+  keep: boolean;
+  saved: boolean;
+  verdict?: { verdict: string } | null;
+  /** Set when a question does not parse. */
+  invalid?: unknown;
+}
+
+export interface RoundSummary {
+  count: number;
+  /** Pages the cards cite, sorted, each once. */
+  pages: number[];
+  /** No rubric flag, no parse fault and no formatting fault. */
+  clean: number;
+  flagged: number;
+  misformatted: number;
+  kept: number;
+  discarded: number;
+  saved: number;
+}
+
+/** What a round holds, counted the same way on every surface. */
+export function roundSummary(
+  rows: readonly SummaryRow[],
+  formatOf: (card: GeneratedCard) => readonly FormatIssue[] = (card) => checkCardFormat(card),
+): RoundSummary {
+  const out: RoundSummary = { count: rows.length, pages: [], clean: 0, flagged: 0, misformatted: 0, kept: 0, discarded: 0, saved: 0 };
+  const pages = new Set<number>();
+  for (const row of rows) {
+    if (typeof row.card.page === "number") pages.add(row.card.page);
+    const flagged = row.verdict?.verdict === "flagged" || Boolean(row.invalid);
+    const misformatted = formatOf(row.card).length > 0;
+    if (flagged) out.flagged += 1;
+    if (misformatted) out.misformatted += 1;
+    if (!flagged && !misformatted) out.clean += 1;
+    if (row.saved) out.saved += 1;
+    else if (row.keep) out.kept += 1;
+    else out.discarded += 1;
+  }
+  out.pages = [...pages].sort((a, b) => a - b);
+  return out;
 }

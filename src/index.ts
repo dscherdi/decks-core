@@ -448,9 +448,10 @@ export {
   localRowId,
   nextRowCounter,
   roundsByTurn,
+  roundSummary,
   threadFromTurns,
 } from "./services/ai/thread";
-export type { ThreadBlock } from "./services/ai/thread";
+export type { ThreadBlock, RoundSummary, SummaryRow } from "./services/ai/thread";
 export {
   flagTally,
   hubTotals,
