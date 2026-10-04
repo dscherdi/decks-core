@@ -330,3 +330,13 @@ describe("front-only cloze questions", () => {
     expect(item).toMatchObject({ prompt: "[____] is the capital of ____", expected: "Paris" });
   });
 });
+
+describe("cloze context and inline code", () => {
+  it("blanks the deletion the parser counted, leaving a ==x== inside code alone", () => {
+    const [card] = parsedCards("## Capitals\n\n| Sentence |\n| --- |\n| `==x==` and ==Paris== is the capital |\n");
+    expect(card).toMatchObject({ type: "cloze", clozeText: "Paris" });
+    const [question] = buildExamPool([card], EXAM_DECKS, "tolerant").eligible;
+    expect(question.clozeContext).toBe(`\`==x==\` and ${EXAM_TARGET_BLANK} is the capital`);
+    expect(question.expectedAnswer).toBe("Paris");
+  });
+});

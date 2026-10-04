@@ -25,9 +25,9 @@ import {
   stripInlineMarkdown,
 } from "./ExamGrading";
 import { sampleWithoutReplacement, shuffleInPlace } from "../utils/sampling";
+import { scanLineDeletions } from "../utils/cloze-scanner";
 
 const PROMPT_SNAPSHOT_LENGTH = 200;
-const CLOZE_REGEX = /==((?:(?!==).)+)==/g;
 
 // Sentinel the UI swaps for the answer input; inert sibling blanks render
 // as plain placeholders so no other question's answer is revealed.
@@ -102,14 +102,19 @@ function buildClozeContext(
 ): string {
   let order = 0;
   let targetLineIndex = 0;
-  const lines = back.split("\n").map((line, lineIndex) =>
-    line.replace(new RegExp(CLOZE_REGEX.source, "g"), () => {
+  // Numbered as the parser numbers them, so a ==x== inside inline code is not a deletion.
+  const lines = back.split("\n").map((line, lineIndex) => {
+    let out = "";
+    let at = 0;
+    for (const deletion of scanLineDeletions(line)) {
       const isTarget = order === clozeOrder;
       if (isTarget) targetLineIndex = lineIndex;
       order++;
-      return isTarget ? EXAM_TARGET_BLANK : EXAM_INERT_BLANK;
-    })
-  );
+      out += line.slice(at, deletion.start) + (isTarget ? EXAM_TARGET_BLANK : EXAM_INERT_BLANK);
+      at = deletion.end;
+    }
+    return out + line.slice(at);
+  });
   return showContext ? lines.join("\n") : lines[targetLineIndex];
 }
 
