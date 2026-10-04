@@ -2,6 +2,7 @@ import { I18n } from "../../i18n/I18n";
 import type { RubricCode } from "./critique-prompt";
 import type { GeneratedCard, GeneratedCardType } from "./generation-prompt";
 import type { RefactorFieldSet } from "./types";
+import type { FormatIssue } from "./format-check";
 
 /** What a flagged card offers to do about it, derived from the rubric code so
  *  the button never disagrees with the chip. */
@@ -13,7 +14,8 @@ export type FixAction =
   | "even_out"
   | "replace_distractor"
   | "flatten"
-  | "type_in";
+  | "type_in"
+  | "fix_format";
 
 const ACTION_BY_CODE: Record<RubricCode, FixAction> = {
   // Two distractor faults have a fix of their own; the rest rewrite the options.
@@ -57,6 +59,12 @@ export function fixActionFor(
 /** What a question that does not parse offers: one flat list, or a type-in. */
 export const INVALID_QUESTION_FIXES: readonly FixAction[] = ["flatten", "type_in"];
 
+/** The formatting faults on a card, named for the model that is asked to fix them. */
+export function formatIssueSummary(issues: readonly FormatIssue[]): string {
+  const names = I18n.t.modals.aiGenerator.formatIssues;
+  return [...new Set(issues.map((i) => names[i.kind]))].join(", ");
+}
+
 /** A question reworked as a type-in is a heading and a short answer, so the
  *  question check does not apply to it. */
 export function isQuestionShaped(origin: CardOrigin | undefined): boolean {
@@ -83,6 +91,8 @@ export function fixInstructionFor(action: FixAction, suggestion = ""): string {
       return g.fixFlattenInstruction;
     case "type_in":
       return g.fixTypeInInstruction;
+    case "fix_format":
+      return I18n.format(g.fixFormatInstruction, { issues: detail });
     default:
       return detail || g.fixRewriteInstruction;
   }
@@ -121,7 +131,8 @@ export type CardOrigin =
   | "even_out"
   | "replace_distractor"
   | "flatten"
-  | "type_in";
+  | "type_in"
+  | "fix_format";
 
 /** The origin a fix produces. */
 export function originForFix(action: FixAction): CardOrigin {

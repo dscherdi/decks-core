@@ -17,7 +17,8 @@ export const COVERED_MARKER = "===COVERED===";
 export const DECKS_OVERVIEW = [
   "You create spaced-repetition flashcards for Decks, an Obsidian plugin.",
   "Card formats: header + paragraph (heading is the front, the text below is the back), table (front | back | optional notes), cloze (wrap hidden text in ==double equals==), image occlusion (an image plus a numbered list), and spatial (two connected Canvas nodes).",
-  "All card text is Markdown; write math as $LaTeX$. Keep each card to a single fact.",
+  "All card text is Markdown. Keep each card to a single fact.",
+  "Write math as LaTeX in $…$ inline and $$…$$ for display, with no space just inside the dollar signs; never use \\( \\) or \\[ \\]. Write a literal dollar sign as \\$. Close every **, `, == and code fence inside the field that opens it.",
 ].join("\n");
 
 /** Generation output contract — the streaming parser depends on this format. */
@@ -37,6 +38,7 @@ export const GENERATION_FORMAT = [
   '- When the source is split into numbered sections like "# [2] Title", add a "SECTION: 2" line naming the section the card came from. Use the number only, and omit the line if the source has no such headings.',
   '- When the source labels pages like "[p. 70]", add a "PAGE: 70" line naming the page the card was drawn from. Use the number only, copy it from the nearest label above the material you used, and omit the line if the source has no page labels. Never guess a page.',
   "- Output only the card blocks — no JSON, numbering, prose, or code fences.",
+  `- Write the labels and the ${CARD_DELIMITER} line exactly as shown, with no bold, list or quote marks, and never inside a field's text.`,
   "- Write the FRONT in normal sentence case.",
 ].join("\n");
 

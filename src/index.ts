@@ -363,7 +363,7 @@ export type {
   CritiqueDebugInfo,
   CritiqueResult,
 } from "./services/ai/AiCritiqueService";
-export { INVALID_QUESTION_FIXES, fixActionFor, fixFields, fixInstructionFor, fixedCard, isQuestionShaped, originForFix } from "./services/ai/fixes";
+export { INVALID_QUESTION_FIXES, fixActionFor, fixFields, fixInstructionFor, fixedCard, formatIssueSummary, isQuestionShaped, originForFix } from "./services/ai/fixes";
 export {
   REPAIR_LAPSE_THRESHOLD,
   wantsRepair,
@@ -479,6 +479,21 @@ export type { HttpClient, HttpRequest, HttpResponse } from "./services/ai/HttpCl
 export { HttpStatusError } from "./services/ai/HttpClient";
 export { stageLabel, SILENT_THINKING_MS, type GenerationStage } from "./services/ai/stages";
 export { ThinkingBuffer, THINKING_CAP } from "./services/ai/thinking";
+export {
+  checkCardFormat,
+  repairCardFormat,
+  scanMath,
+  maskCode,
+  isInlineMathBody,
+  MATH_BLOCK_RE,
+  MATH_INLINE_RE,
+  type FormatIssue,
+  type FormatIssueKind,
+  type FormatField,
+  type FormatCard,
+  type MathValidator,
+  type MathSpan,
+} from "./services/ai/format-check";
 export type {
   AiProvider,
   ProviderCompleteRequest,

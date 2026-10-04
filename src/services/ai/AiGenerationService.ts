@@ -14,6 +14,7 @@ import {
 import type { AiProviderConfig } from "./types";
 import { AiError } from "./types";
 import { SILENT_THINKING_MS, type GenerationStage } from "./stages";
+import { repairCardFormat } from "./format-check";
 
 /** Callbacks invoked as cards stream in. */
 export interface GenerateHandlers {
@@ -159,9 +160,11 @@ export class AiGenerationService {
     }
 
     const cards: GeneratedCard[] = [];
+    // Repaired as it arrives, so a stored card never holds a fault the repair can fix.
     const emit = (card: GeneratedCard): void => {
-      cards.push(card);
-      handlers.onCard(card);
+      const fixed = repairCardFormat(card);
+      cards.push(fixed);
+      handlers.onCard(fixed);
     };
 
     const makeDebug = (raw: string): GenerateDebugInfo => ({
@@ -226,7 +229,7 @@ export class AiGenerationService {
         // card (no closing ===END===) is incomplete — drop it; the next batch
         // re-generates it cleanly.
         const tail = parser.finish();
-        if (tail && !truncated) emit(tail);
+        for (const c of truncated ? tail.slice(0, -1) : tail) emit(c);
         handlers.onPartial?.(null);
         return {
           cards,

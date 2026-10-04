@@ -123,7 +123,7 @@ describe("GenerationStreamParser", () => {
   it("flushes a trailing unterminated card on finish", () => {
     const p = new GenerationStreamParser();
     p.push("FRONT: Q\nBACK: A");
-    expect(p.finish()).toEqual(card("Q", "A"));
+    expect(p.finish()).toEqual([card("Q", "A")]);
   });
 
   it("exposes a front-only partial while the back streams", () => {
@@ -569,5 +569,57 @@ describe("the source-covered marker", () => {
     const parser = new GenerationStreamParser();
     parser.push(block("Q1", "A1"));
     expect(parser.covered).toBe(false);
+  });
+});
+
+describe("replies that drift from the format", () => {
+  const drifted = [
+    "```",
+    "**FRONT:** What does variance measure?",
+    "**BACK:** The spread of a random variable around its mean.",
+    "**===END===**",
+    "- FRONT: Define the median.",
+    "- BACK: The middle value of an ordered sample.",
+    "=== END ===",
+    "> FRONT: What is a quantile?",
+    "> BACK: A cut point dividing a distribution.",
+    "FRONT: What is a mode?",
+    "BACK: The most frequent value.",
+    "FRONT: Name a measure of location.",
+    "BACK: The mean.",
+    "```",
+  ].join("\n");
+
+  it("reads bold, listed and quoted labels and delimiters, and closes a card a new FRONT starts", () => {
+    expect(parseGeneratedCards(drifted).map((c) => [c.front, c.back])).toEqual([
+      ["What does variance measure?", "The spread of a random variable around its mean."],
+      ["Define the median.", "The middle value of an ordered sample."],
+      ["What is a quantile?", "A cut point dividing a distribution."],
+      ["What is a mode?", "The most frequent value."],
+      ["Name a measure of location.", "The mean.\n```"],
+    ]);
+  });
+
+  it("does not take card text in another case for a label", () => {
+    const [only] = parseGeneratedCards("FRONT: Q\nBACK: Parts of a bone:\n- **front** view: anterior\n===END===\n");
+    expect(only.back).toBe("Parts of a bone:\n- **front** view: anterior");
+  });
+
+  it("streams to the same cards however the reply is cut into deltas", () => {
+    const whole = parseGeneratedCards(drifted);
+    for (let seed = 1; seed <= 40; seed++) {
+      const parser = new GenerationStreamParser();
+      const streamed: GeneratedCard[] = [];
+      let i = 0;
+      let step = seed;
+      while (i < drifted.length) {
+        step = (step * 7 + 3) % 11;
+        const size = 1 + step;
+        streamed.push(...parser.push(drifted.slice(i, i + size)).completed);
+        i += size;
+      }
+      streamed.push(...parser.finish());
+      expect(streamed).toEqual(whole);
+    }
   });
 });

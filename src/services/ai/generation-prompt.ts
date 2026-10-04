@@ -132,23 +132,72 @@ interface SegmentFields {
   started: boolean;
 }
 
-const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SECTION|PAGE)\s*:(.*)$/i;
+type Label = "front" | "back" | "notes" | "section" | "page";
+
+const PLAIN_LABEL_RE = /^\s*(FRONT|BACK|NOTES|SECTION|PAGE)\s*:(.*)$/i;
+// Bold, list, quote or heading marks around a label; upper case only, so card text is not misread.
+const DECORATED_LABEL_RE =
+  /^\s*(?:(?:[-*+>]|#{1,6})\s+)?(?:\*\*|__)(FRONT|BACK|NOTES|SECTION|PAGE)(?:\*\*|__)?\s*:\s*(?:\*\*|__)?(.*)$|^\s*(?:[-*+>]|#{1,6})\s+(FRONT|BACK|NOTES|SECTION|PAGE)\s*:(.*)$/;
+// The delimiter as models drift into writing it: spaced, bolded, quoted or listed.
+const DELIMITER_LINE_RE = /^\s*(?:[-*+>]\s*)*(?:\*\*|__)?\s*={2,}\s*END\s*={2,}\s*(?:\*\*|__)?\s*$/i;
+
+/** The label a line opens, with the rest of the line, or null for a continuation line. */
+function labelOf(line: string): { label: Label; rest: string } | null {
+  const plain = PLAIN_LABEL_RE.exec(line);
+  if (plain) return { label: plain[1].toLowerCase() as Label, rest: plain[2] };
+  const decorated = DECORATED_LABEL_RE.exec(line);
+  if (!decorated) return null;
+  const name = decorated[1] ?? decorated[3];
+  return { label: name.toLowerCase() as Label, rest: decorated[2] ?? decorated[4] ?? "" };
+}
+
+/**
+ * Rewrite delimiter variants to the delimiter, and close a card that a new FRONT
+ * starts after its BACK without one. Only whole lines are rewritten unless `final`.
+ */
+function normalizeReply(text: string, final: boolean): string {
+  const lines = text.split("\n");
+  const tail = final ? null : (lines.pop() ?? "");
+  const out: string[] = [];
+  let sawBack = false;
+  for (const line of lines) {
+    if (DELIMITER_LINE_RE.test(line)) {
+      out.push(CARD_DELIMITER);
+      sawBack = false;
+      continue;
+    }
+    if (line.includes(CARD_DELIMITER)) {
+      out.push(line);
+      sawBack = false;
+      continue;
+    }
+    const label = labelOf(line)?.label;
+    if (label === "front" && sawBack) {
+      out.push(CARD_DELIMITER);
+      sawBack = false;
+    }
+    if (label === "back") sawBack = true;
+    out.push(line);
+  }
+  if (tail !== null) out.push(tail);
+  return out.join("\n");
+}
 
 /** Parse one card block (text between delimiters) into its fields. */
 function parseSegment(segment: string): SegmentFields {
-  const buf: Record<"front" | "back" | "notes" | "section" | "page", string[]> = {
+  const buf: Record<Label, string[]> = {
     front: [],
     back: [],
     notes: [],
     section: [],
     page: [],
   };
-  let current: "front" | "back" | "notes" | "section" | "page" | null = null;
+  let current: Label | null = null;
   for (const line of segment.split("\n")) {
-    const m = LABEL_RE.exec(line);
+    const m = labelOf(line);
     if (m) {
-      current = m[1].toLowerCase() as "front" | "back" | "notes" | "section" | "page";
-      buf[current].push(m[2]);
+      current = m.label;
+      buf[current].push(m.rest);
     } else if (current) {
       buf[current].push(line);
     }
@@ -179,7 +228,8 @@ function toCard(fields: SegmentFields): GeneratedCard | null {
 /** Parse a full (non-streamed) response into cards — the fallback path. */
 export function parseGeneratedCards(fullText: string): GeneratedCard[] {
   const out: GeneratedCard[] = [];
-  for (const segment of fullText.split(COVERED_MARKER).join("").split(CARD_DELIMITER)) {
+  const text = normalizeReply(fullText.split(COVERED_MARKER).join(""), true);
+  for (const segment of text.split(CARD_DELIMITER)) {
     const card = toCard(parseSegment(segment));
     if (card) out.push(card);
   }
@@ -207,9 +257,11 @@ export class GenerationStreamParser {
       this.covered = true;
       this.buffer = this.buffer.split(COVERED_MARKER).join("");
     }
+    this.buffer = normalizeReply(this.buffer, false);
     const completed: GeneratedCard[] = [];
     let idx: number;
-    while ((idx = this.buffer.indexOf(CARD_DELIMITER)) >= 0) {
+    // Only within finished lines: a delimiter line may still gain its closing marks.
+    while ((idx = this.buffer.indexOf(CARD_DELIMITER)) >= 0 && this.buffer.indexOf("\n", idx) >= 0) {
       const segment = this.buffer.slice(0, idx);
       this.buffer = this.buffer.slice(idx + CARD_DELIMITER.length);
       const card = toCard(parseSegment(segment));
@@ -218,11 +270,11 @@ export class GenerationStreamParser {
     return { completed, partial: this.peekPartial() };
   }
 
-  /** Flush any complete card left in the buffer when the stream ends. */
-  finish(): GeneratedCard | null {
-    const card = toCard(parseSegment(this.buffer));
+  /** Flush the cards left in the buffer when the stream ends; the last one may be unterminated. */
+  finish(): GeneratedCard[] {
+    const segments = normalizeReply(this.buffer, true).split(CARD_DELIMITER);
     this.buffer = "";
-    return card;
+    return segments.map((segment) => toCard(parseSegment(segment))).filter((c): c is GeneratedCard => c !== null);
   }
 
   /** The card currently being streamed (front may still be filling in). */
