@@ -462,6 +462,9 @@ export type {
   RefactorImage,
 } from "./services/ai/types";
 export type { HttpClient, HttpRequest, HttpResponse } from "./services/ai/HttpClient";
+export { HttpStatusError } from "./services/ai/HttpClient";
+export { stageLabel, SILENT_THINKING_MS, type GenerationStage } from "./services/ai/stages";
+export { ThinkingBuffer, THINKING_CAP } from "./services/ai/thinking";
 export type {
   AiProvider,
   ProviderCompleteRequest,
@@ -584,6 +587,7 @@ export {
   extractPageText,
   buildSectionContent,
   buildSectionPages,
+  pageTextUsable,
   pageMarker,
   pageFromLabel,
   pagesForSelection,

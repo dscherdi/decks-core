@@ -203,8 +203,22 @@ export async function extractPageText(doc: PdfDoc, pageNum: number): Promise<str
     .trim();
 }
 
-/** How a PDF section is turned into text: embedded text, or rendered-page OCR. */
-export type PdfParseMode = "text" | "ocr";
+/** How a PDF section is turned into text: embedded text, rendered-page OCR, or
+ *  the text layer where it reads well and OCR for the rest. */
+export type PdfParseMode = "text" | "ocr" | "auto";
+
+const MATH_GLYPHS = /[\u{1D400}-\u{1D7FF}∑∫∏√∞≤≥≠±∂∇∈∉⊂⊆∀∃→⇒⇔]/gu;
+
+/** Whether a page's text layer reads as prose, so transcribing it would add nothing. */
+export function pageTextUsable(text: string): boolean {
+  const visible = text.replace(/\s/g, "").length;
+  if (visible < 80 || /\(cid:\d+\)/.test(text)) return false;
+  const letters = (text.match(/\p{L}/gu) ?? []).length;
+  const broken = (text.match(/\uFFFD/g) ?? []).length;
+  // Formulas survive a text layer as loose symbols; a transcription keeps their structure.
+  const math = (text.match(MATH_GLYPHS) ?? []).length;
+  return letters / visible >= 0.5 && broken / visible < 0.02 && math < 3;
+}
 
 /** Runs OCR for the given pages; `onEach` ticks once per page transcribed. */
 export type OcrRunner = (
@@ -235,7 +249,8 @@ export function pageFromLabel(value: string): number | undefined {
 
 /**
  * Resolve the selected pages into per-page source text. "text" uses each page's
- * embedded text layer; "ocr" transcribes each page via the injected `ocr` runner.
+ * embedded text layer; "ocr" transcribes each page via the injected `ocr` runner;
+ * "auto" transcribes only pages whose text layer fails `pageTextUsable`.
  * `onProgress(done, total)` fires once per processed page. Blank pages are dropped.
  */
 export async function buildSectionPages(
@@ -256,6 +271,26 @@ export async function buildSectionPages(
   if (mode === "ocr") {
     const ocrText = await ocr(pages, tick);
     for (const [p, t] of ocrText) textByPage.set(p, t);
+  } else if (mode === "auto") {
+    const layer = new Map<number, string>();
+    const needOcr: number[] = [];
+    for (const p of pages) {
+      const text = await extractPageText(doc, p);
+      if (pageTextUsable(text)) {
+        textByPage.set(p, text);
+        tick();
+      } else {
+        layer.set(p, text);
+        needOcr.push(p);
+      }
+    }
+    if (needOcr.length > 0) {
+      const ocrText = await ocr(needOcr, tick);
+      for (const p of needOcr) {
+        const text = ocrText.get(p) || layer.get(p);
+        if (text) textByPage.set(p, text);
+      }
+    }
   } else {
     for (const p of pages) {
       textByPage.set(p, await extractPageText(doc, p));

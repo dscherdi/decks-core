@@ -96,7 +96,9 @@ export type AiErrorCode =
   | "invalid_output"
   | "rate_limited"
   | "quota_exceeded"
-  | "aborted";
+  | "aborted"
+  /** The connection went quiet: no first byte, or no byte for too long mid-stream. */
+  | "timeout";
 
 export class AiError extends Error {
   readonly code: AiErrorCode;

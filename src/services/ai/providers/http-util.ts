@@ -1,4 +1,4 @@
-import type { HttpClient, HttpRequest, HttpResponse } from "../HttpClient";
+import { HttpStatusError, type HttpClient, type HttpRequest, type HttpResponse } from "../HttpClient";
 import { AiError } from "../types";
 import { I18n } from "../../../i18n/I18n";
 
@@ -61,27 +61,32 @@ export async function sendJson(
       e instanceof Error ? e.message : String(e),
     );
   }
-  if (res.status === 429) {
-    throw new AiError(
-      "rate_limited",
-      hostedMessage(res.text, res.status) ?? I18n.t.settings.ai.rateLimited,
-      res.status,
-    );
+  if (res.status < 200 || res.status >= 300) throw httpFailure(res.status, res.text);
+  return res;
+}
+
+/** The typed error for a non-2xx response, the same for a request and a stream. */
+export function httpFailure(status: number, text: string): AiError {
+  if (status === 429) {
+    return new AiError("rate_limited", hostedMessage(text, status) ?? I18n.t.settings.ai.rateLimited, status);
   }
   // 402 carries a machine-readable reason from the hosted backend, which decides
   // whether the user should wait until tomorrow or subscribe.
-  if (res.status === 402) {
-    throw new AiError("quota_exceeded", quotaMessage(res.text), res.status);
-  }
-  if (res.status < 200 || res.status >= 300) {
-    throw new AiError(
-      "provider_error",
-      hostedMessage(res.text, res.status) ??
-        `Provider returned ${res.status}: ${truncate(res.text)}`,
-      res.status,
-    );
-  }
-  return res;
+  if (status === 402) return new AiError("quota_exceeded", quotaMessage(text), status);
+  return new AiError(
+    "provider_error",
+    hostedMessage(text, status) ?? `Provider returned ${status}: ${truncate(text)}`,
+    status,
+  );
+}
+
+export interface StreamOptions {
+  /** Fail when no byte arrives within this long. */
+  firstByteMs?: number;
+  /** Fail when the stream goes this long without a byte once it has started. */
+  idleMs?: number;
+  /** Called on every chunk, keep-alives included. */
+  onActivity?: () => void;
 }
 
 /**
@@ -94,11 +99,27 @@ export async function streamSse(
   http: HttpClient,
   req: HttpRequest,
   onData: (payload: string) => void,
+  opts: StreamOptions = {},
 ): Promise<void> {
   if (!http.stream) {
     throw new AiError("provider_error", "Streaming is not supported by the transport");
   }
   checkAborted(req.signal);
+
+  // Our own controller, linked by hand to the caller's, so a silence can end the request.
+  const controller = new AbortController();
+  const forward = (): void => controller.abort();
+  req.signal?.addEventListener("abort", forward, { once: true });
+  let silence: "first_byte" | "idle" | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number | undefined, phase: "first_byte" | "idle"): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = ms ? setTimeout(() => {
+      silence = phase;
+      controller.abort();
+    }, ms) : undefined;
+  };
+  arm(opts.firstByteMs, "first_byte");
 
   let buffer = "";
   const drainLines = (final: boolean): void => {
@@ -121,13 +142,25 @@ export async function streamSse(
   };
 
   try {
-    await http.stream(req, (chunk) => {
+    await http.stream({ ...req, signal: controller.signal }, (chunk) => {
+      arm(opts.idleMs, "idle");
+      opts.onActivity?.();
       buffer += chunk;
       drainLines(false);
     });
   } catch (e) {
+    if (silence) {
+      throw new AiError(
+        "timeout",
+        silence === "first_byte" ? I18n.t.settings.ai.noResponse : I18n.t.settings.ai.streamStalled,
+      );
+    }
     if (e instanceof AiError) throw e;
+    if (e instanceof HttpStatusError) throw httpFailure(e.status, e.body);
     throw new AiError("network_error", e instanceof Error ? e.message : String(e));
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    req.signal?.removeEventListener("abort", forward);
   }
   drainLines(true);
 }

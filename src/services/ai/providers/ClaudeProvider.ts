@@ -1,7 +1,7 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest, StreamResult } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest, StreamResult, StreamEvents } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
@@ -11,7 +11,7 @@ interface ClaudeResponse {
 
 interface ClaudeStreamEvent {
   type?: string;
-  delta?: { type?: string; text?: unknown; stop_reason?: string | null };
+  delta?: { type?: string; text?: unknown; thinking?: unknown; stop_reason?: string | null };
 }
 
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
@@ -84,6 +84,7 @@ export class ClaudeProvider implements AiProvider {
   async completeStream(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
+    events?: StreamEvents,
   ): Promise<StreamResult> {
     const body = { ...this.buildBody(req), stream: true };
     let finishReason: string | undefined;
@@ -110,6 +111,9 @@ export class ClaudeProvider implements AiProvider {
         ) {
           onDelta(event.delta.text);
         }
+        if (event.delta?.type === "thinking_delta" && typeof event.delta.thinking === "string") {
+          events?.onReasoning?.(event.delta.thinking);
+        }
         // The `message_delta` event carries the final stop reason; normalize
         // Claude's "max_tokens" to "length".
         if (event.type === "message_delta" && event.delta?.stop_reason) {
@@ -119,6 +123,7 @@ export class ClaudeProvider implements AiProvider {
               : event.delta.stop_reason;
         }
       },
+      { firstByteMs: 60_000, idleMs: 60_000, onActivity: events?.onActivity },
     );
     return { finishReason };
   }

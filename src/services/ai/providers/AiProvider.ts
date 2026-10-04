@@ -69,6 +69,22 @@ export interface ProviderCompleteRequest {
   category?: string;
 }
 
+/** What a stream reports besides the answer text. All optional, so any provider may ignore them. */
+export interface StreamEvents {
+  /** Thinking text, where the model streams it. Never part of the answer. */
+  onReasoning?(text: string): void;
+  /** A step the server reports before the model starts. */
+  onServerStage?(stage: { step: string; done?: number; total?: number }): void;
+  /** Any bytes at all, keep-alives included. */
+  onActivity?(): void;
+}
+
+/** How long a stream may stay silent: before its first byte, and between bytes. */
+export interface StreamTimeouts {
+  firstByteMs: number;
+  idleMs: number;
+}
+
 /** Metadata a streaming completion reports when it finishes. */
 export interface StreamResult {
   /**
@@ -101,5 +117,13 @@ export interface AiProvider {
   completeStream?(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
+    events?: StreamEvents,
   ): Promise<StreamResult>;
+  /**
+   * Whether a stream that failed before its first byte may be retried without
+   * streaming. False where a second attempt would run the whole generation again.
+   */
+  allowsNonStreamingFallback?(): boolean;
+  /** Silence limits for this provider's streams. */
+  streamTimeouts?(): StreamTimeouts;
 }

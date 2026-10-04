@@ -8,6 +8,7 @@ import {
   parseGeneratedCards,
   serializeCards,
   CARD_DELIMITER,
+  PRIOR_CARD_LIMIT,
 } from "../generation-prompt";
 import { GENERATION_FORMAT } from "../prompts";
 import { pageMarker } from "../../pdf/pdf";
@@ -177,11 +178,21 @@ describe("buildGenerationMessages", () => {
     // The cached prefix must not change between batch 1 and batch N.
     expect(next.system).toBe(first.system);
     expect(next.user).toBe(first.user);
-    expect(next.followupUser).toBe(first.followupUser);
-    // The only dynamic content is the assistant turn, and it holds the cards.
-    expect(first.priorAssistant).toBeUndefined();
-    expect(next.priorAssistant).toContain("Q1");
-    expect(next.priorAssistant).toContain(CARD_DELIMITER);
+    // The only dynamic content is the trailing turn, which names what is covered.
+    expect(first.followupUser).not.toContain("Already covered");
+    expect(next.followupUser).toContain("Already covered — do not repeat these:\n- Q1");
+    expect(next.followupUser?.endsWith(first.followupUser ?? "")).toBe(true);
+    expect(next.priorAssistant).toBeUndefined();
+  });
+
+  it("names only the newest prior cards, by front, so the input stops growing", () => {
+    const prior = Array.from({ length: PRIOR_CARD_LIMIT + 15 }, (_, i) => card(`Front ${i}`, "x".repeat(500)));
+    prior.push(card(`Long ${"y".repeat(400)}`, "b"));
+    const { followupUser } = buildGenerationMessages({ prompt: "", sourceContext: "notes", generatedSoFar: prior });
+    expect(followupUser).not.toContain("- Front 15\n");
+    expect(followupUser).toContain("- Front 16\n");
+    expect(followupUser).not.toContain("xxx");
+    expect(followupUser).toContain(`- Long ${"y".repeat(194)}…\n`);
   });
 
   it("degrades to a single user message when there is no source material", () => {
@@ -219,18 +230,10 @@ describe("generation message wire shape", () => {
 
     const noCards = JSON.parse(withoutCards.requests[0].body ?? "{}");
     const cards = JSON.parse(withCards.requests[0].body ?? "{}");
-    // Batch 1: system, user(notes), user(trigger). Batch N inserts the assistant.
-    expect(noCards.messages.map((m: { role: string }) => m.role)).toEqual([
-      "system",
-      "user",
-      "user",
-    ]);
-    expect(cards.messages.map((m: { role: string }) => m.role)).toEqual([
-      "system",
-      "user",
-      "assistant",
-      "user",
-    ]);
+    // Every batch: system, user(notes), user(covered + trigger).
+    for (const body of [noCards, cards]) {
+      expect(body.messages.map((m: { role: string }) => m.role)).toEqual(["system", "user", "user"]);
+    }
     // The cached prefix (messages 0 and 1) is byte-identical across batches.
     expect(cards.messages[0]).toEqual(noCards.messages[0]);
     expect(cards.messages[1]).toEqual(noCards.messages[1]);
@@ -266,12 +269,9 @@ describe("generation message wire shape", () => {
     expect(b1.messages.map((m: { role: string }) => m.role)).toEqual(["user"]);
     expect(b1.messages[0].content).toContain("Paris is the capital.");
     expect(b1.messages[0].content).toContain("Make cards about France");
-    // Batch N: valid alternation, the assistant separating the two user turns.
-    expect(bn.messages.map((m: { role: string }) => m.role)).toEqual([
-      "user",
-      "assistant",
-      "user",
-    ]);
+    // Batch N merges the same way, the covered list included.
+    expect(bn.messages.map((m: { role: string }) => m.role)).toEqual(["user"]);
+    expect(bn.messages[0].content).toContain("- Q1");
     // No two consecutive same-role messages.
     const roles = bn.messages.map((m: { role: string }) => m.role);
     expect(roles.some((r: string, i: number) => r === roles[i + 1])).toBe(false);

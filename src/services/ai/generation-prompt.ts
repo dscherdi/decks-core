@@ -50,6 +50,21 @@ export interface GenerateRequest {
 /** What a generation run is asked to produce. */
 export type GeneratedCardType = "basic" | "mcq";
 
+/** How many prior cards a round names as covered; older ones still count for deduplication. */
+export const PRIOR_CARD_LIMIT = 60;
+const PRIOR_FRONT_CHARS = 200;
+
+/** The prior cards as a list of fronts the model must not repeat, or "" for none. */
+export function coveredList(cards: readonly GeneratedCard[] | undefined): string {
+  const fronts = (cards ?? [])
+    .map((card) => card.front.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(-PRIOR_CARD_LIMIT)
+    .map((front) => (front.length > PRIOR_FRONT_CHARS ? `${front.slice(0, PRIOR_FRONT_CHARS - 1)}…` : front));
+  if (!fronts.length) return "";
+  return `Already covered — do not repeat these:\n${fronts.map((front) => `- ${front}`).join("\n")}`;
+}
+
 /** Render prior cards back into the model's own output grammar, page included so a rewrite keeps it. */
 export function serializeCards(cards: GeneratedCard[]): string {
   return cards
@@ -65,10 +80,10 @@ export function serializeCards(cards: GeneratedCard[]): string {
 
 /**
  * Build the message parts for a generation request as a cache-friendly sequence:
- * a static system prompt, a static first user message (the source notes), an
- * optional dynamic assistant turn (cards generated so far), and a trailing user
- * message carrying the instruction + continue trigger. Keeping the source notes
- * in their own static block lets the system+user prefix be cached across batches.
+ * a static system prompt, a static first user message (the source notes), and a
+ * trailing user message carrying what is already covered, the instruction and the
+ * continue trigger. Keeping the source notes in their own static block lets the
+ * system+user prefix be cached across batches.
  *
  * When there is no source material the structure degrades to a single user
  * message (the instruction), matching the original prompt-only behaviour.
@@ -93,20 +108,16 @@ export function buildGenerationMessages(req: GenerateRequest): {
       followupUser: `${instruction}\n\n${REFINE_TRIGGER}`,
     };
   }
-  const priorAssistant = req.generatedSoFar?.length
-    ? `Here are the cards generated so far:\n\n${serializeCards(req.generatedSoFar)}`
-    : undefined;
+  const covered = coveredList(req.generatedSoFar);
 
   if (!source) {
-    // No source notes: keep the single-message shape (prompt only).
-    return { system, user: instruction, priorAssistant };
+    // No source notes: one message, the covered list ahead of the instruction.
+    return { system, user: [covered, instruction || CONTINUE_TRIGGER].filter(Boolean).join("\n\n") };
   }
 
   const user = `Here are the source notes:\n\n${source}`;
-  const followupUser = instruction
-    ? `${instruction}\n\n${CONTINUE_TRIGGER}`
-    : CONTINUE_TRIGGER;
-  return { system, user, priorAssistant, followupUser };
+  const followupUser = [covered, instruction, CONTINUE_TRIGGER].filter(Boolean).join("\n\n");
+  return { system, user, followupUser };
 }
 
 interface SegmentFields {

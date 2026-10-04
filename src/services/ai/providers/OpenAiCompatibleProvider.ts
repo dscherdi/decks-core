@@ -1,5 +1,6 @@
 import { AiError } from "../types";
 import { OpenAiProvider } from "./OpenAiProvider";
+import type { StreamTimeouts } from "./AiProvider";
 
 /**
  * Generic OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM).
@@ -24,5 +25,10 @@ export class OpenAiCompatibleProvider extends OpenAiProvider {
 
   protected useJsonResponseFormat(): boolean {
     return false;
+  }
+
+  // A local server may load the model into memory before its first byte.
+  streamTimeouts(): StreamTimeouts {
+    return { firstByteMs: 180_000, idleMs: 120_000 };
   }
 }

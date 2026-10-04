@@ -7,11 +7,13 @@ import {
   GenerationStreamParser,
   COVERED_MARKER,
   parseGeneratedCards,
+  PRIOR_CARD_LIMIT,
   type GeneratedCard,
   type GenerateRequest,
 } from "./generation-prompt";
 import type { AiProviderConfig } from "./types";
 import { AiError } from "./types";
+import { SILENT_THINKING_MS, type GenerationStage } from "./stages";
 
 /** Callbacks invoked as cards stream in. */
 export interface GenerateHandlers {
@@ -19,7 +21,14 @@ export interface GenerateHandlers {
   onCard: (card: GeneratedCard) => void;
   /** Called with the card currently being streamed (or null when none). */
   onPartial?: (card: GeneratedCard | null) => void;
+  /** Where the request is, before and while cards arrive. */
+  onStage?: (stage: GenerationStage) => void;
+  /** Thinking text, where the model streams it. */
+  onReasoning?: (text: string) => void;
 }
+
+/** Thinking kept for the debug view, so a long trace cannot grow without bound. */
+const DEBUG_REASONING_CHARS = 50_000;
 
 /** Structured request payload + raw response, attached only when `debug` was set. */
 export interface GenerateDebugInfo {
@@ -31,6 +40,8 @@ export interface GenerateDebugInfo {
   followupUser?: string;
   imageCount: number;
   raw: string;
+  /** What the model thought before answering, where it streamed it. */
+  reasoning?: string;
 }
 
 export interface GenerateResult {
@@ -148,17 +159,44 @@ export class AiGenerationService {
     if (provider.completeStream) {
       // Declared outside the try so the catch can surface what streamed so far.
       let streamedRaw = "";
+      let reasoning = "";
+      let heard = false;
+      let thinkingSince: number | null = null;
+      const think = (): void => {
+        if (thinkingSince !== null || streamedRaw) return;
+        thinkingSince = Date.now();
+        handlers.onStage?.({ kind: "thinking", since: thinkingSince });
+      };
+      // A model that thinks without streaming its thoughts still keeps the line open.
+      const silentThinking = setTimeout(think, SILENT_THINKING_MS);
+      handlers.onStage?.({ kind: "sending" });
       try {
         const parser = new GenerationStreamParser();
         const streamRes = await provider.completeStream(
           { ...baseReq, signal },
           (delta) => {
+            if (!streamedRaw) handlers.onStage?.({ kind: "writing", card: cards.length + 1 });
             streamedRaw += delta;
             const { completed, partial } = parser.push(delta);
-            for (const c of completed) emit(c);
+            for (const c of completed) {
+              emit(c);
+              handlers.onStage?.({ kind: "writing", card: cards.length + 1 });
+            }
             handlers.onPartial?.(partial);
           },
+          {
+            onActivity: () => {
+              heard = true;
+            },
+            onReasoning: (text) => {
+              think();
+              if (req.debug && reasoning.length < DEBUG_REASONING_CHARS) reasoning += text;
+              handlers.onReasoning?.(text);
+            },
+            onServerStage: (stage) => handlers.onStage?.({ kind: "server", ...stage }),
+          },
         );
+        clearTimeout(silentThinking);
         const truncated = streamRes?.finishReason === "length";
         // When the response was cut off by the output-token limit, the trailing
         // card (no closing ===END===) is incomplete — drop it; the next batch
@@ -170,28 +208,34 @@ export class AiGenerationService {
           cards,
           truncated,
           covered: parser.covered,
-          debug: req.debug ? makeDebug(streamedRaw) : undefined,
+          debug: req.debug ? { ...makeDebug(streamedRaw), reasoning: reasoning || undefined } : undefined,
         };
       } catch (e) {
+        clearTimeout(silentThinking);
         // User pressed Stop: surface what streamed so far (incl. debug) rather
         // than failing, so the debug panel can show the partial exchange.
         if (signal?.aborted || (e instanceof AiError && e.code === "aborted")) {
           handlers.onPartial?.(null);
           return {
             cards,
-            debug: req.debug ? makeDebug(streamedRaw) : undefined,
+            debug: req.debug ? { ...makeDebug(streamedRaw), reasoning: reasoning || undefined } : undefined,
           };
         }
-        // A mid-stream failure that already produced cards is a real error;
-        // otherwise (e.g. browser streaming blocked by CORS before any card)
-        // fall back to the non-streaming path below.
-        if (cards.length > 0) throw e;
+        // Retry without streaming only where streaming itself failed (e.g. blocked
+        // by CORS): never after a byte, a status, a silence, or where it would run twice.
+        const transportFailed = e instanceof AiError && e.code === "network_error";
+        if (cards.length > 0 || heard || !transportFailed || provider.allowsNonStreamingFallback?.() === false) {
+          throw e;
+        }
         this.logger?.debug(
           `AI generation streaming failed, falling back to non-streaming: ${
             e instanceof Error ? e.message : String(e)
           }`,
         );
+        handlers.onStage?.({ kind: "retrying" });
       }
+    } else {
+      handlers.onStage?.({ kind: "sending" });
     }
 
     let raw: string;
@@ -239,6 +283,8 @@ export class AiGenerationService {
         handlers.onCard(card);
       },
       onPartial: handlers.onPartial,
+      onStage: handlers.onStage,
+      onReasoning: handlers.onReasoning,
     };
 
     let debug: GenerateResult["debug"];
@@ -250,7 +296,7 @@ export class AiGenerationService {
       try {
         const result = await this.generateStream(
           config,
-          { ...base, generatedSoFar: priorContext.length ? [...priorContext] : undefined },
+          { ...base, generatedSoFar: priorContext.length ? priorContext.slice(-PRIOR_CARD_LIMIT) : undefined },
           dedupHandlers,
           signal,
         );

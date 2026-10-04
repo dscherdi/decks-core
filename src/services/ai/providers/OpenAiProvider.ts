@@ -1,7 +1,13 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest, StreamResult } from "./AiProvider";
+import type {
+  AiProvider,
+  ProviderCompleteRequest,
+  StreamEvents,
+  StreamResult,
+  StreamTimeouts,
+} from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 
 interface ChatMessage {
@@ -13,11 +19,37 @@ interface ChatCompletionResponse {
   choices?: Array<{ message?: { content?: unknown } }>;
 }
 
+interface ReasoningDetail {
+  type?: string;
+  text?: unknown;
+  summary?: unknown;
+}
+
 interface ChatCompletionChunk {
   choices?: Array<{
-    delta?: { content?: unknown };
+    delta?: {
+      content?: unknown;
+      /** Thinking text; servers name it either way. */
+      reasoning?: unknown;
+      reasoning_content?: unknown;
+      reasoning_details?: ReasoningDetail[];
+    };
     finish_reason?: string | null;
   }>;
+  error?: { code?: unknown; message?: unknown };
+  /** A step reported by the hosted backend before the model starts. */
+  decks?: { stage?: { step?: unknown; done?: unknown; total?: unknown } };
+}
+
+/** The thinking text a chunk carries, from whichever field the server used. */
+export function reasoningOf(delta: NonNullable<NonNullable<ChatCompletionChunk["choices"]>[number]["delta"]>): string {
+  const direct = delta.reasoning ?? delta.reasoning_content;
+  if (typeof direct === "string") return direct;
+  // Encrypted details carry no readable text and are skipped.
+  return (delta.reasoning_details ?? [])
+    .filter((d) => d.type !== "reasoning.encrypted")
+    .map((d) => (typeof d.text === "string" ? d.text : typeof d.summary === "string" ? d.summary : ""))
+    .join("");
 }
 
 /**
@@ -102,9 +134,15 @@ export class OpenAiProvider implements AiProvider {
     return content;
   }
 
+  /** Hosted endpoints answer quickly or not at all; a local server may load a model first. */
+  streamTimeouts(): StreamTimeouts {
+    return { firstByteMs: 60_000, idleMs: 60_000 };
+  }
+
   async completeStream(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
+    events?: StreamEvents,
   ): Promise<StreamResult> {
     const body = { ...this.buildBody(req), stream: true };
     let finishReason: string | undefined;
@@ -125,11 +163,30 @@ export class OpenAiProvider implements AiProvider {
         } catch {
           return;
         }
+        // An error after the stream opened arrives as a chunk, not a status.
+        if (chunk.error) {
+          const message = typeof chunk.error.message === "string" ? chunk.error.message : "Stream failed";
+          throw new AiError("provider_error", message);
+        }
+        const stage = chunk.decks?.stage;
+        if (stage && typeof stage.step === "string") {
+          events?.onServerStage?.({
+            step: stage.step,
+            done: typeof stage.done === "number" ? stage.done : undefined,
+            total: typeof stage.total === "number" ? stage.total : undefined,
+          });
+          return;
+        }
         const choice = chunk.choices?.[0];
-        const delta = choice?.delta?.content;
-        if (typeof delta === "string" && delta) onDelta(delta);
+        if (choice?.delta) {
+          const thought = reasoningOf(choice.delta);
+          if (thought) events?.onReasoning?.(thought);
+          const delta = choice.delta.content;
+          if (typeof delta === "string" && delta) onDelta(delta);
+        }
         if (choice?.finish_reason) finishReason = choice.finish_reason;
       },
+      { ...this.streamTimeouts(), onActivity: events?.onActivity },
     );
     return { finishReason };
   }

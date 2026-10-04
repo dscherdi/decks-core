@@ -9,6 +9,7 @@ import {
   pageFromLabel,
   pageMarker,
   pagesForSelection,
+  pageTextUsable,
 } from "../pdf";
 
 /** Build a fake pdf.js document from per-page text and an optional outline. */
@@ -221,5 +222,43 @@ describe("pageFromLabel", () => {
     for (const bad of ["", "0", "-3", "n/a", "70-71", "about 70", "[p. 0]"]) {
       expect(pageFromLabel(bad)).toBeUndefined();
     }
+  });
+});
+
+describe("reading the text layer first", () => {
+  const PROSE =
+    "Die Varianz misst die Streuung einer Zufallsvariablen um ihren Erwartungswert und ist stets nicht negativ.";
+  const FORMULA = "𝑉𝑎𝑟(𝑋) = 𝐸[(𝑋 − 𝜇)²] = ∑ (𝑥ᵢ − 𝜇)² 𝑝ᵢ ≥ 0 and the rest of the line is ordinary words";
+
+  it("trusts prose, and not a scan, a glyph soup or a formula", () => {
+    expect(pageTextUsable(PROSE)).toBe(true);
+    expect(pageTextUsable("")).toBe(false);
+    expect(pageTextUsable("Figure 3")).toBe(false);
+    expect(pageTextUsable("(cid:12)(cid:40)(cid:77) ".repeat(10) + PROSE)).toBe(false);
+    expect(pageTextUsable("\uFFFD\uFFFD\uFFFD ".repeat(10) + PROSE)).toBe(false);
+    expect(pageTextUsable(FORMULA)).toBe(false);
+  });
+
+  it("transcribes only the pages whose text layer does not read", async () => {
+    const doc = fakeDoc({ pages: [PROSE, "", FORMULA] });
+    const ocr = jest.fn(async (pages: number[], onEach?: () => void) => {
+      for (const _ of pages) onEach?.();
+      return new Map(pages.map((p) => [p, `ocr-${p}`]));
+    });
+    const progress: number[] = [];
+    const pages = await buildSectionPages(doc, [1, 2, 3], "auto", ocr, (done) => progress.push(done));
+    expect(ocr).toHaveBeenCalledWith([2, 3], expect.any(Function));
+    expect(pages).toEqual([
+      { page: 1, text: PROSE },
+      { page: 2, text: "ocr-2" },
+      { page: 3, text: "ocr-3" },
+    ]);
+    expect(progress).toEqual([1, 2, 3]);
+  });
+
+  it("keeps the text layer of a page the transcription could not read", async () => {
+    const doc = fakeDoc({ pages: [FORMULA] });
+    const pages = await buildSectionPages(doc, [1], "auto", async () => new Map());
+    expect(pages).toEqual([{ page: 1, text: FORMULA }]);
   });
 });

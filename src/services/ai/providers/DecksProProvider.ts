@@ -1,7 +1,7 @@
 import { DECKS_PRO_DEFAULT_BASE_URL } from "../models";
 import { AiError } from "../types";
 import { OpenAiProvider } from "./OpenAiProvider";
-import type { ProviderCompleteRequest } from "./AiProvider";
+import type { ProviderCompleteRequest, StreamTimeouts } from "./AiProvider";
 
 /**
  * Hosted Decks Pro provider. Wire-compatible with OpenAI chat-completions, but
@@ -25,6 +25,16 @@ export class DecksProProvider extends OpenAiProvider {
   // The server assembles the generation request from raw materials.
   buildsPromptServerSide(): boolean {
     return true;
+  }
+
+  // A second, non-streamed attempt would run the whole generation again.
+  allowsNonStreamingFallback(): boolean {
+    return false;
+  }
+
+  // The backend opens the stream and keeps it alive while the model works.
+  streamTimeouts(): StreamTimeouts {
+    return { firstByteMs: 45_000, idleMs: 60_000 };
   }
 
   protected buildBody(req: ProviderCompleteRequest): Record<string, unknown> {

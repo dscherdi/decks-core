@@ -1,13 +1,13 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest, StreamResult } from "./AiProvider";
+import type { AiProvider, ProviderCompleteRequest, StreamEvents, StreamResult } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
 interface GeminiResponse {
   candidates?: Array<{
-    content?: { parts?: Array<{ text?: unknown }> };
+    content?: { parts?: Array<{ text?: unknown; thought?: unknown }> };
     finishReason?: string;
   }>;
 }
@@ -74,6 +74,7 @@ export class GeminiProvider implements AiProvider {
   async completeStream(
     req: ProviderCompleteRequest,
     onDelta: (text: string) => void,
+    events?: StreamEvents,
   ): Promise<StreamResult> {
     let finishReason: string | undefined;
     await streamSse(
@@ -93,8 +94,12 @@ export class GeminiProvider implements AiProvider {
           return;
         }
         const candidate = chunk.candidates?.[0];
-        const text = candidate?.content?.parts?.[0]?.text;
-        if (typeof text === "string" && text) onDelta(text);
+        for (const part of candidate?.content?.parts ?? []) {
+          if (typeof part.text !== "string" || !part.text) continue;
+          // Thought summaries are flagged parts, never answer text.
+          if (part.thought === true) events?.onReasoning?.(part.text);
+          else onDelta(part.text);
+        }
         // Normalize Gemini's "MAX_TOKENS" to "length".
         if (candidate?.finishReason) {
           finishReason =
@@ -103,6 +108,7 @@ export class GeminiProvider implements AiProvider {
               : candidate.finishReason;
         }
       },
+      { firstByteMs: 60_000, idleMs: 60_000, onActivity: events?.onActivity },
     );
     return { finishReason };
   }
