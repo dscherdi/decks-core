@@ -1,7 +1,7 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest, StreamEvents, StreamResult } from "./AiProvider";
+import type { AiProvider, CompleteResult, ProviderCompleteRequest, StreamEvents, StreamResult } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
@@ -55,6 +55,10 @@ export class GeminiProvider implements AiProvider {
   }
 
   async complete(req: ProviderCompleteRequest): Promise<string> {
+    return (await this.completeWithMeta(req)).text;
+  }
+
+  async completeWithMeta(req: ProviderCompleteRequest): Promise<CompleteResult> {
     const res = await sendJson(this.http, {
       url: this.url("generateContent"),
       method: "POST",
@@ -64,11 +68,12 @@ export class GeminiProvider implements AiProvider {
     });
 
     const parsed = parseJsonBody(res.text) as GeminiResponse;
-    const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = parsed.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
     if (typeof text !== "string") {
       throw new AiError("invalid_output", "Gemini response had no text content");
     }
-    return text;
+    return { text, finishReason: candidate?.finishReason === "MAX_TOKENS" ? "length" : candidate?.finishReason };
   }
 
   async completeStream(

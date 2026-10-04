@@ -1,12 +1,13 @@
 import type { HttpClient } from "../HttpClient";
 import type { AiProviderConfig, AiProviderId } from "../types";
 import { AiError } from "../types";
-import type { AiProvider, ProviderCompleteRequest, StreamResult, StreamEvents } from "./AiProvider";
+import type { AiProvider, CompleteResult, ProviderCompleteRequest, StreamResult, StreamEvents } from "./AiProvider";
 import { parseJsonBody, sendJson, streamSse } from "./http-util";
 import { buildTurns, coalesceAdjacentRoles } from "./turns";
 
 interface ClaudeResponse {
   content?: Array<{ type?: string; text?: unknown }>;
+  stop_reason?: string | null;
 }
 
 interface ClaudeStreamEvent {
@@ -64,6 +65,10 @@ export class ClaudeProvider implements AiProvider {
   }
 
   async complete(req: ProviderCompleteRequest): Promise<string> {
+    return (await this.completeWithMeta(req)).text;
+  }
+
+  async completeWithMeta(req: ProviderCompleteRequest): Promise<CompleteResult> {
     const res = await sendJson(this.http, {
       url: ENDPOINT,
       method: "POST",
@@ -78,7 +83,7 @@ export class ClaudeProvider implements AiProvider {
     if (typeof text !== "string") {
       throw new AiError("invalid_output", "Claude response had no text content");
     }
-    return text;
+    return { text, finishReason: parsed.stop_reason === "max_tokens" ? "length" : (parsed.stop_reason ?? undefined) };
   }
 
   async completeStream(

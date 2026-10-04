@@ -4,6 +4,7 @@ import { AiError } from "../types";
 import type {
   AiProvider,
   ProviderCompleteRequest,
+  CompleteResult,
   StreamEvents,
   StreamResult,
   StreamTimeouts,
@@ -16,7 +17,7 @@ interface ChatMessage {
 }
 
 interface ChatCompletionResponse {
-  choices?: Array<{ message?: { content?: unknown } }>;
+  choices?: Array<{ message?: { content?: unknown }; finish_reason?: string | null }>;
 }
 
 interface ReasoningDetail {
@@ -118,6 +119,10 @@ export class OpenAiProvider implements AiProvider {
   }
 
   async complete(req: ProviderCompleteRequest): Promise<string> {
+    return (await this.completeWithMeta(req)).text;
+  }
+
+  async completeWithMeta(req: ProviderCompleteRequest): Promise<CompleteResult> {
     const res = await sendJson(this.http, {
       url: this.endpoint(),
       method: "POST",
@@ -127,11 +132,12 @@ export class OpenAiProvider implements AiProvider {
     });
 
     const parsed = parseJsonBody(res.text) as ChatCompletionResponse;
-    const content = parsed.choices?.[0]?.message?.content;
+    const choice = parsed.choices?.[0];
+    const content = choice?.message?.content;
     if (typeof content !== "string") {
       throw new AiError("invalid_output", "Response had no message content");
     }
-    return content;
+    return { text: content, finishReason: choice?.finish_reason ?? undefined };
   }
 
   /** Hosted endpoints answer quickly or not at all; a local server may load a model first. */

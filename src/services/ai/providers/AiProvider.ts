@@ -69,6 +69,11 @@ export interface ProviderCompleteRequest {
   category?: string;
 }
 
+export interface CompleteResult {
+  text: string;
+  finishReason?: string;
+}
+
 /** What a stream reports besides the answer text. All optional, so any provider may ignore them. */
 export interface StreamEvents {
   /** Thinking text, where the model streams it. Never part of the answer. */
@@ -103,6 +108,8 @@ export interface StreamResult {
 export interface AiProvider {
   readonly id: AiProviderId;
   complete(req: ProviderCompleteRequest): Promise<string>;
+  /** `complete`, also saying why the reply ended; "length" means it was cut off. */
+  completeWithMeta?(req: ProviderCompleteRequest): Promise<CompleteResult>;
   /**
    * Whether this provider assembles the request server-side. When true the
    * orchestrator skips client-side message building and sends the raw materials

@@ -355,7 +355,16 @@ export type {
   ChatTurn,
 } from "./services/ai/chat";
 export { AiConceptService } from "./services/ai/AiConceptService";
-export type { ConceptResult } from "./services/ai/AiConceptService";
+export type { ConceptResult, ConceptChunkHandlers } from "./services/ai/AiConceptService";
+export {
+  noteUnits,
+  unitSource,
+  unitLabel,
+  textSourceKey,
+  isPdfSourceKey,
+  TEXT_SOURCE_PREFIX,
+  type SourceUnit,
+} from "./services/ai/source-units";
 export { AiCritiqueService } from "./services/ai/AiCritiqueService";
 export { AiGradingService, GRADE_CHUNK_SIZE } from "./services/ai/AiGradingService";
 export { parseGradeVerdicts } from "./services/ai/grading";
