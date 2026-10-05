@@ -342,6 +342,17 @@ describe("parseSplitProposed", () => {
     ]);
   });
 
+  it("splits blocks a model runs together or delimits in bold", () => {
+    const cards = parseSplitProposed(
+      "**FRONT:** Q1\n**BACK:** A1\nFRONT: Q2\nBACK: A2\n**===END===**",
+      "header-paragraph",
+    );
+    expect(cards).toEqual([
+      { type: "header-paragraph", front: "Q1", back: "A1" },
+      { type: "header-paragraph", front: "Q2", back: "A2" },
+    ]);
+  });
+
   it("throws invalid_output when no block has a usable field", () => {
     expect(() => parseSplitProposed("BOGUS: x", "header-paragraph")).toThrow(
       AiError,
@@ -373,6 +384,19 @@ describe("parseProposed", () => {
 
   it("throws invalid_output when no known field is present", () => {
     expect(() => parseProposed("just some prose", headerParaCard)).toThrow(AiError);
+  });
+
+  it("reads bold, listed and quoted labels", () => {
+    const out = parseProposed("**FRONT:** New front\n- **BACK**: Paris\n**===END===**", headerParaCard);
+    expect(out).toEqual({ type: "header-paragraph", front: "New front", back: "Paris" });
+  });
+
+  it("ends the card where a second front starts without a delimiter", () => {
+    const out = parseProposed(
+      "FRONT: Recall: the capital\nBACK: Paris\n**FRONT:** What is the sample mean?\n**BACK:** x",
+      headerParaCard,
+    );
+    expect(out).toEqual({ type: "header-paragraph", front: "Recall: the capital", back: "Paris" });
   });
 
   it("only merges fields in targetKeys; ignores non-target changes", () => {

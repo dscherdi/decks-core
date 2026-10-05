@@ -131,6 +131,26 @@ describe("GenerationStreamParser", () => {
     const r = p.push("FRONT: Capital of Fra");
     expect(r.partial).toEqual(card("Capital of Fra", ""));
   });
+
+  it("keeps a half-arrived label out of the partial card", () => {
+    const p = new GenerationStreamParser();
+    expect(p.push("FRONT: Q\nBACK: The standard deviation.\nNOT").partial).toEqual(card("Q", "The standard deviation."));
+    expect(p.push("ES: in the unit of the data\n").partial).toEqual(
+      card("Q", "The standard deviation.", "in the unit of the data"),
+    );
+  });
+
+  it("keeps a half-arrived delimiter or bold mark out of the partial card", () => {
+    const p = new GenerationStreamParser();
+    expect(p.push("FRONT: Q\nBACK: A\n===EN").partial).toEqual(card("Q", "A"));
+    const q = new GenerationStreamParser();
+    expect(q.push("FRONT: Q\nBACK: A\n**").partial).toEqual(card("Q", "A"));
+  });
+
+  it("shows a last line that cannot become a label", () => {
+    const p = new GenerationStreamParser();
+    expect(p.push("FRONT: Q\nBACK: line one\nNothing").partial).toEqual(card("Q", "line one\nNothing"));
+  });
 });
 
 describe("buildGenerationMessages", () => {

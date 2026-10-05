@@ -1,5 +1,6 @@
 import type { RefactorImage } from "./types";
 import { pageFromLabel } from "../pdf/pdf";
+import { isDelimiterLine, labelReader, mayBecomeMarker } from "./reply-labels";
 import {
   CARD_DELIMITER,
   MCQ_FORMAT,
@@ -134,21 +135,13 @@ interface SegmentFields {
 
 type Label = "front" | "back" | "notes" | "section" | "page";
 
-const PLAIN_LABEL_RE = /^\s*(FRONT|BACK|NOTES|SECTION|PAGE)\s*:(.*)$/i;
-// Bold, list, quote or heading marks around a label; upper case only, so card text is not misread.
-const DECORATED_LABEL_RE =
-  /^\s*(?:(?:[-*+>]|#{1,6})\s+)?(?:\*\*|__)(FRONT|BACK|NOTES|SECTION|PAGE)(?:\*\*|__)?\s*:\s*(?:\*\*|__)?(.*)$|^\s*(?:[-*+>]|#{1,6})\s+(FRONT|BACK|NOTES|SECTION|PAGE)\s*:(.*)$/;
-// The delimiter as models drift into writing it: spaced, bolded, quoted or listed.
-const DELIMITER_LINE_RE = /^\s*(?:[-*+>]\s*)*(?:\*\*|__)?\s*={2,}\s*END\s*={2,}\s*(?:\*\*|__)?\s*$/i;
+const LABEL_NAMES = ["FRONT", "BACK", "NOTES", "SECTION", "PAGE"] as const;
+const readLabel = labelReader(LABEL_NAMES);
 
 /** The label a line opens, with the rest of the line, or null for a continuation line. */
 function labelOf(line: string): { label: Label; rest: string } | null {
-  const plain = PLAIN_LABEL_RE.exec(line);
-  if (plain) return { label: plain[1].toLowerCase() as Label, rest: plain[2] };
-  const decorated = DECORATED_LABEL_RE.exec(line);
-  if (!decorated) return null;
-  const name = decorated[1] ?? decorated[3];
-  return { label: name.toLowerCase() as Label, rest: decorated[2] ?? decorated[4] ?? "" };
+  const m = readLabel(line);
+  return m ? { label: m.name.toLowerCase() as Label, rest: m.rest } : null;
 }
 
 /**
@@ -161,7 +154,7 @@ function normalizeReply(text: string, final: boolean): string {
   const out: string[] = [];
   let sawBack = false;
   for (const line of lines) {
-    if (DELIMITER_LINE_RE.test(line)) {
+    if (isDelimiterLine(line)) {
       out.push(CARD_DELIMITER);
       sawBack = false;
       continue;
@@ -279,7 +272,11 @@ export class GenerationStreamParser {
 
   /** The card currently being streamed (front may still be filling in). */
   private peekPartial(): GeneratedCard | null {
-    const fields = parseSegment(this.buffer);
+    // A last line still arriving may be the start of the next label, which is not the card's text.
+    const cut = this.buffer.lastIndexOf("\n");
+    const tail = this.buffer.slice(cut + 1);
+    const settled = cut >= 0 && mayBecomeMarker(tail, LABEL_NAMES) ? this.buffer.slice(0, cut) : this.buffer;
+    const fields = parseSegment(settled);
     if (!fields.started) return null;
     return { front: fields.front, back: fields.back, notes: fields.notes };
   }

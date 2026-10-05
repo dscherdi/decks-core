@@ -362,7 +362,7 @@ export class AiGenerationService {
     let allCovered = true;
 
     let next: Promise<string> | null = chunks[0]?.load() ?? null;
-    for (let i = 0; i < chunks.length && next; i++) {
+    for (let i = 0; i < chunks.length && next !== null; i++) {
       if (signal?.aborted) break;
       const chunk = chunks[i];
       const section = { kind: "section" as const, index: i + 1, total: chunks.length, label: chunk.label };

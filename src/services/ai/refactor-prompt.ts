@@ -6,6 +6,7 @@ import type {
 } from "./types";
 import { AiError, REFACTOR_FIELD_KEYS } from "./types";
 import { CARD_DELIMITER, DECKS_OVERVIEW, SPLIT_INSTRUCTION } from "./prompts";
+import { labelReader, normalizeDelimiters } from "./reply-labels";
 
 const FIELD_LABELS: Record<string, string> = {
   front: "Front",
@@ -33,7 +34,7 @@ const LABEL_TO_KEY: Record<string, string> = {
   HINT: "hint",
   "LIST ITEM": "listItem",
 };
-const LABEL_RE = /^\s*(FRONT|BACK|NOTES|SENTENCE|HINT|LIST ITEM)\s*:(.*)$/i;
+const readLabel = labelReader(Object.keys(LABEL_TO_KEY));
 
 const CARD_TYPE_FIELD_GUIDANCE: Record<RefactorCardType, string> = {
   "header-paragraph":
@@ -163,12 +164,12 @@ function parseLabeledBlock(
   let current: string | null = null;
   let sawKnown = false;
   for (const line of segment.split("\n")) {
-    const m = LABEL_RE.exec(line);
+    const m = readLabel(line);
     if (m) {
-      const key = LABEL_TO_KEY[m[1].toUpperCase()];
+      const key = LABEL_TO_KEY[m.name];
       current = allowed.has(key) ? key : null;
       if (current) {
-        (buf[current] ??= []).push(m[2]);
+        (buf[current] ??= []).push(m.rest);
         sawKnown = true;
       }
     } else if (current) {
@@ -178,6 +179,27 @@ function parseLabeledBlock(
   const values: Record<string, string> = {};
   for (const k of keys) if (buf[k]) values[k] = buf[k].join("\n").trim();
   return { values, sawKnown };
+}
+
+/** The card blocks of a reply: split at the delimiter, and where a field starts again without one. */
+function replyBlocks(raw: string): string[] {
+  const blocks: string[] = [];
+  for (const segment of normalizeDelimiters(raw).split(CARD_DELIMITER)) {
+    let lines: string[] = [];
+    const seen = new Set<string>();
+    for (const line of segment.split("\n")) {
+      const name = readLabel(line)?.name;
+      if (name && seen.has(name)) {
+        blocks.push(lines.join("\n"));
+        lines = [];
+        seen.clear();
+      }
+      if (name) seen.add(name);
+      lines.push(line);
+    }
+    blocks.push(lines.join("\n"));
+  }
+  return blocks;
 }
 
 /**
@@ -194,7 +216,7 @@ export function parseProposed(
     targetKeys && targetKeys.length > 0
       ? allKeys.filter((k) => targetKeys.includes(k))
       : allKeys;
-  const segment = raw.split(CARD_DELIMITER)[0] ?? raw;
+  const segment = replyBlocks(raw)[0] ?? raw;
   const { values, sawKnown } = parseLabeledBlock(segment, keys);
   if (!sawKnown) {
     throw new AiError(
@@ -218,7 +240,7 @@ export function parseSplitProposed(
 ): RefactorFieldSet[] {
   const keys = REFACTOR_FIELD_KEYS[type];
   const cards: RefactorFieldSet[] = [];
-  for (const segment of raw.split(CARD_DELIMITER)) {
+  for (const segment of replyBlocks(raw)) {
     const { values, sawKnown } = parseLabeledBlock(segment, keys);
     if (!sawKnown) continue;
     const card: Record<string, unknown> = { type };
