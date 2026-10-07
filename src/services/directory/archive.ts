@@ -1,5 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync, type UnzipFileInfo, type Zippable } from "fflate";
-import { CURRENT_SCHEMA_VERSION } from "../../database/schemas";
+import { CURRENT_SCHEMA_VERSION } from "../../database/schema-version";
 import { sha256Hex } from "../../utils/sha256";
 import {
   DPKG_FORMAT_VERSION,

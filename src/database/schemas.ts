@@ -10,8 +10,9 @@ import {
 } from "./types";
 import { getStudyDaySQL } from "../utils/date-utils";
 
-// Current Schema Version
-export const CURRENT_SCHEMA_VERSION = 42;
+import { CURRENT_SCHEMA_VERSION } from "./schema-version";
+
+export { CURRENT_SCHEMA_VERSION };
 
 // Preinstalled, selectable profiles: one per header level (H1–H6) plus a
 // title-mode profile (headerLevel 0, cloze off) for whole-note reviews.

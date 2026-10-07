@@ -1,10 +1,12 @@
 import { isJsonObject, parseJson } from "../../utils/json";
 import { isValidDirectorySlug } from "./ids";
+import type { DirectoryMediaRef } from "./media-refs";
 
 export const DECKS_DIRECTORY_BASE_URL = "https://decksmd.app/decks/api";
 
 const TICKET_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const EXT_PATTERN = /^[a-z0-9]{1,8}$/;
 
 /** What the directory says about a deck before it is downloaded. */
 export interface DirectoryDeckInfo {
@@ -28,8 +30,8 @@ export function directoryDownloadUrl(ticket: string, base = DECKS_DIRECTORY_BASE
   return `${base}/download?ticket=${encodeURIComponent(ticket)}`;
 }
 
-export function directoryMediaUrl(sha256: string, base = DECKS_DIRECTORY_BASE_URL): string | null {
-  return SHA256_PATTERN.test(sha256) ? `${base}/media/${sha256}` : null;
+export function directoryMediaUrl(ref: DirectoryMediaRef, base = DECKS_DIRECTORY_BASE_URL): string | null {
+  return SHA256_PATTERN.test(ref.sha256) && EXT_PATTERN.test(ref.ext) ? `${base}/media/${ref.sha256}.${ref.ext}` : null;
 }
 
 /** The parameters of an import link; anything malformed is refused, never guessed at. */
