@@ -1,6 +1,12 @@
 import { DIRECTORY_TABLES_SQL } from "../../database/schemas";
 import type { SqlJsValue } from "../../database/sql-types";
-import { DEFAULT_PROFILE_ID, type DeckTemplate, type ProfileTagMapping } from "../../database/types";
+import {
+  DEFAULT_PROFILE_ID,
+  type DeckGroup,
+  type DeckTemplate,
+  type DeckWithProfile,
+  type ProfileTagMapping,
+} from "../../database/types";
 import { pickProfileMapping } from "../../utils/deck-tags";
 import { isJsonObject, isStringList, parseJson } from "../../utils/json";
 import type { ParsedFlashcard } from "../FlashcardParser";
@@ -303,6 +309,36 @@ export function packageExamDeckId(records: readonly Pick<DirectoryDeckRecord, "s
   const record = records.find((candidate) => candidate.slug === slug);
   const deck = record ? manifestOf(record)?.decks.find((entry) => entry.exam !== null) : undefined;
   return record && deck ? directoryDeckId(record.slug, deck.key) : null;
+}
+
+/**
+ * A package's decks studied together: in the package's order, each keeping its own
+ * daily limits, with the first deck's profile for the rest.
+ */
+export function directoryPackageGroup(
+  record: Pick<DirectoryDeckRecord, "slug" | "title" | "manifestJson">,
+  decks: readonly DeckWithProfile[],
+  tag: string
+): DeckGroup | null {
+  const root = directoryDeckPath(record.slug);
+  const order = (manifestOf(record)?.decks ?? []).map((deck) => directoryDeckId(record.slug, deck.key));
+  const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length);
+  const own = decks
+    .filter((deck) => deck.filepath === root || deck.filepath.startsWith(`${root}/`))
+    .sort((a, b) => rank(a.id) - rank(b.id));
+  if (own.length === 0) return null;
+  const latest = (values: (string | null)[]) => values.reduce<string | null>((max, v) => (v && (!max || v > max) ? v : max), null);
+  return {
+    type: "group",
+    tag,
+    name: record.title,
+    deckIds: own.map((deck) => deck.id),
+    profile: own[0].profile,
+    deckLimits: true,
+    lastReviewed: latest(own.map((deck) => deck.lastReviewed)),
+    created: own.reduce((min, deck) => (deck.created < min ? deck.created : min), own[0].created),
+    modified: latest(own.map((deck) => deck.modified)) ?? own[0].modified,
+  };
 }
 
 /** A deck's package profile, when it has one that is still live. */

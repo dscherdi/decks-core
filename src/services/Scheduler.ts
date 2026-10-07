@@ -2,6 +2,7 @@ import type {
   Flashcard,
   FlashcardType,
   FlashcardState,
+  DeckProfile,
   DeckWithProfile,
   ReviewLog,
   DeckGroup,
@@ -1184,12 +1185,24 @@ export class Scheduler {
     return await this.getAgainCardInSession(now);
   }
 
+  /** The profile whose daily limits a deck of the group follows. */
+  private async limitProfileFor(deckGroup: DeckGroup, deckId: string): Promise<DeckProfile | null> {
+    if (!deckGroup.deckLimits) return deckGroup.profile;
+    return (await this.db.getDeckWithProfile(deckId))?.profile ?? null;
+  }
+
   private async getDeckIdsWithNewQuota(deckGroup: DeckGroup): Promise<string[]> {
-    if (!deckGroup.profile.hasNewCardsLimitEnabled) return [...deckGroup.deckIds];
+    if (!deckGroup.deckLimits && !deckGroup.profile.hasNewCardsLimitEnabled) return [...deckGroup.deckIds];
     const eligible: string[] = [];
     for (const deckId of deckGroup.deckIds) {
+      const profile = await this.limitProfileFor(deckGroup, deckId);
+      if (!profile) continue;
+      if (!profile.hasNewCardsLimitEnabled) {
+        eligible.push(deckId);
+        continue;
+      }
       const counts = await this.db.getDailyReviewCounts(deckId, this.settings.review.nextDayStartsAt);
-      if (counts.newCount < deckGroup.profile.newCardsPerDay) {
+      if (counts.newCount < profile.newCardsPerDay) {
         eligible.push(deckId);
       }
     }
@@ -1197,11 +1210,17 @@ export class Scheduler {
   }
 
   private async getDeckIdsWithReviewQuota(deckGroup: DeckGroup): Promise<string[]> {
-    if (!deckGroup.profile.hasReviewCardsLimitEnabled) return [...deckGroup.deckIds];
+    if (!deckGroup.deckLimits && !deckGroup.profile.hasReviewCardsLimitEnabled) return [...deckGroup.deckIds];
     const eligible: string[] = [];
     for (const deckId of deckGroup.deckIds) {
+      const profile = await this.limitProfileFor(deckGroup, deckId);
+      if (!profile) continue;
+      if (!profile.hasReviewCardsLimitEnabled) {
+        eligible.push(deckId);
+        continue;
+      }
       const counts = await this.db.getDailyReviewCounts(deckId, this.settings.review.nextDayStartsAt);
-      if (counts.reviewCount < deckGroup.profile.reviewCardsPerDay) {
+      if (counts.reviewCount < profile.reviewCardsPerDay) {
         eligible.push(deckId);
       }
     }

@@ -241,6 +241,8 @@ export interface DeckGroup {
   name: string;
   deckIds: string[];
   profile: DeckProfile;
+  /** Each deck keeps its own daily limits instead of taking the group profile's. */
+  deckLimits?: boolean;
   lastReviewed: string | null;
   created: string;
   modified: string;
