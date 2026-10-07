@@ -1,4 +1,4 @@
-import type { FlashcardType } from "../../database/types";
+import { parseExamSettings, type ExamSettings, type FlashcardType } from "../../database/types";
 import { isJsonObject, isStringList, parseJson, type JsonObject } from "../../utils/json";
 import { isValidDirectorySlug } from "./ids";
 
@@ -29,6 +29,8 @@ export interface DpkgManifest {
   dbSha256: string;
   createdAt: string;
   generator: string;
+  /** Set on exam decks, which need an exam-enabled profile; their settings pre-fill an exam. */
+  exam: ExamSettings | null;
 }
 
 export type DpkgErrorCode =
@@ -154,7 +156,21 @@ export function parseDpkgManifest(json: string): DpkgManifest {
     dbSha256,
     createdAt: text(parsed, "createdAt"),
     generator: text(parsed, "generator", false),
+    exam: examSettings(parsed),
   };
+}
+
+function examSettings(obj: JsonObject): ExamSettings | null {
+  const value = obj.exam;
+  if (value === undefined || value === null) return null;
+  if (!isJsonObject(value)) fail("manifest.exam must be an object");
+  return parseExamSettings(JSON.stringify(value));
+}
+
+/** Whether a stored manifest marks an exam deck; unreadable manifests are not. */
+export function isExamManifest(json: string): boolean {
+  const parsed = parseJson(json);
+  return isJsonObject(parsed) && isJsonObject(parsed.exam);
 }
 
 export function dpkgMediaPath(entry: Pick<DpkgMediaEntry, "sha256" | "ext">): string {

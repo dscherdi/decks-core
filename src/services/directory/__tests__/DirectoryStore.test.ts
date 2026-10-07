@@ -12,6 +12,7 @@ import {
 import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "../ids";
 import type { DirectoryDeckContent } from "../deck-db";
 import { buildPackage, card, mainDb, opener, review, rows, sqlJs } from "./helpers";
+import { DEFAULT_EXAM_SETTINGS, DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID } from "../../../database/types";
 
 const SLUG = "capitals";
 const DECK = directoryDeckId(SLUG);
@@ -167,6 +168,33 @@ describe("directory decks in the main database", () => {
     );
     await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
     expect(rows(db, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(profileId);
+  });
+
+  it("studies an exam deck with the Exams preset unless #directory is mapped", async () => {
+    const exam: DirectoryDeckContent = {
+      ...v1(),
+      cards: [...v1().cards, card(SLUG, "qcard_gas", "Noble gas?", "- [ ] Oxygen\n- [x] Argon", { type: "multiple-choice" })],
+    };
+    const installExam = async (db: Database) => {
+      const pkg = await buildPackage(SLUG, 1, exam, [], { ...DEFAULT_EXAM_SETTINGS, questionCount: 2 });
+      await importDpkgContent(db, await unpackDpkg(pkg, { includeMedia: false }), "sha-exam", await opener(), "2026-10-01T10:00:00.000Z");
+    };
+
+    const db = await mainDb();
+    await installExam(db);
+    expect(rows(db, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(EXAMS_PROFILE_ID);
+    expect(rows(db, "SELECT type FROM flashcards WHERE deck_id = ? AND front = 'Noble gas?'", [DECK])[0].type).toBe("multiple-choice");
+
+    const mappedDb = await mainDb();
+    const profileId = rows(mappedDb, "SELECT id FROM deckprofiles WHERE id NOT IN (?, ?) LIMIT 1", [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID])[0].id;
+    mappedDb.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory', 'x')`, [profileId]);
+    await installExam(mappedDb);
+    expect(rows(mappedDb, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(profileId);
+
+    const noPresetDb = await mainDb();
+    noPresetDb.run("UPDATE deckprofiles SET deleted_at = 'x' WHERE id = ?", [EXAMS_PROFILE_ID]);
+    await installExam(noPresetDb);
+    expect(rows(noPresetDb, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(DEFAULT_PROFILE_ID);
   });
 
   it("follows a #directory mapping made after it was installed", async () => {

@@ -3,6 +3,7 @@ import { unpackDpkg } from "../archive";
 import { DpkgError, parseDpkgManifest } from "../manifest";
 import { readDpkgContent } from "../import";
 import { buildPackage, card, opener } from "./helpers";
+import { DEFAULT_EXAM_SETTINGS } from "../../../database/types";
 
 const SLUG = "spanish-basics";
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
@@ -48,6 +49,17 @@ describe(".dpkg packages", () => {
     expect(read.fileTags).toEqual(["languages"]);
     expect(read.cards.map((c) => c.id)).toEqual(content().cards.map((c) => c.id));
     expect(read.cards[2]).toMatchObject({ type: "cloze", clozeText: "perro", clozeOrder: 0 });
+  });
+
+  it("keeps an exam deck's settings, filled in where the author left gaps", async () => {
+    const plain = await unpackDpkg(await buildPackage(SLUG, 1, content()), { includeMedia: false });
+    expect(plain.manifest.exam).toBeNull();
+    const exam = await unpackDpkg(
+      await buildPackage(SLUG, 1, content(), [], { ...DEFAULT_EXAM_SETTINGS, questionCount: 10, passScorePct: 80 }),
+      { includeMedia: false }
+    );
+    expect(exam.manifest.exam).toEqual({ ...DEFAULT_EXAM_SETTINGS, questionCount: 10, passScorePct: 80 });
+    expect(() => parseDpkgManifest(JSON.stringify({ ...exam.manifest, exam: "yes" }))).toThrow(DpkgError);
   });
 
   it("can skip media when only the deck is needed", async () => {

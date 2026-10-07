@@ -71,6 +71,14 @@ describe("exporting a deck's cards", () => {
     expect(result.skipped).toEqual([{ id: "scard_edge", reason: "unsupported_type" }]);
   });
 
+  it("carries multiple-choice questions only from an exam deck", () => {
+    const question = card({ id: "qcard_gas", type: "multiple-choice", front: "Noble gas?", back: "- [ ] Oxygen\n- [x] Argon" });
+    expect(buildDirectoryCards("chem", [question], resolve).skipped).toEqual([{ id: "qcard_gas", reason: "unsupported_type" }]);
+    const exam = buildDirectoryCards("chem", [question], resolve, { exam: true });
+    expect(exam.skipped).toEqual([]);
+    expect(exam.cards[0]).toMatchObject({ type: "multiple-choice", back: "- [ ] Oxygen\n- [x] Argon" });
+  });
+
   it("moves an occlusion card's image into the package", () => {
     const back = serializeOcclusionBack({ __v: 2, image: "![[flags/fr.png]]", masks: [] });
     const occlusion = card({ id: "ocard_1", type: "image-occlusion-v2", back });

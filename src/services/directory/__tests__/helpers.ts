@@ -1,5 +1,6 @@
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import { CREATE_TABLES_SQL } from "../../../database/schemas";
+import type { ExamSettings } from "../../../database/types";
 import { packDpkg, type DpkgMediaInput } from "../archive";
 import { writeDpkgDeckDb, type DirectoryCardContent, type DirectoryDeckContent } from "../deck-db";
 import type { ClosableRawDatabase } from "../import";
@@ -49,7 +50,8 @@ export async function buildPackage(
   slug: string,
   version: number,
   content: DirectoryDeckContent,
-  media: DpkgMediaInput[] = []
+  media: DpkgMediaInput[] = [],
+  exam: ExamSettings | null = null
 ): Promise<Uint8Array> {
   const SQL = await sqlJs();
   const deckDb = new SQL.Database();
@@ -70,6 +72,7 @@ export async function buildPackage(
       typeCounts: {},
       createdAt: "2026-10-01T00:00:00.000Z",
       generator: "test",
+      exam,
     },
     deckDb: bytes,
     cardsJson: JSON.stringify(content.cards),

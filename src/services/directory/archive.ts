@@ -133,7 +133,9 @@ export interface DpkgMediaInput {
   mime: string;
 }
 
-export type DpkgManifestDraft = Omit<DpkgManifest, "formatVersion" | "schemaVersion" | "media" | "dbSha256">;
+export type DpkgManifestDraft = Omit<DpkgManifest, "formatVersion" | "schemaVersion" | "media" | "dbSha256" | "exam"> & {
+  exam?: DpkgManifest["exam"];
+};
 
 export interface PackDpkgInput {
   manifest: DpkgManifestDraft;
@@ -158,6 +160,7 @@ export async function packDpkg(input: PackDpkgInput): Promise<{ bytes: Uint8Arra
 
   const manifest: DpkgManifest = {
     ...input.manifest,
+    exam: input.manifest.exam ?? null,
     formatVersion: DPKG_FORMAT_VERSION,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     media: mediaEntries,

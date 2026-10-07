@@ -82,7 +82,11 @@ export interface DirectoryExportResult {
   unresolved: string[];
 }
 
-const UNSUPPORTED: ReadonlySet<Flashcard["type"]> = new Set(["spatial", "multiple-choice"]);
+/** Card types a package can carry; multiple-choice only from an exam deck. */
+function isPackable(card: Flashcard, exam: boolean): boolean {
+  if (card.type === "spatial" || card.edgeId) return false;
+  return card.type !== "multiple-choice" || exam;
+}
 
 /**
  * Turn a deck's cards into packaged content: ids derived from the slug, media
@@ -91,7 +95,8 @@ const UNSUPPORTED: ReadonlySet<Flashcard["type"]> = new Set(["spatial", "multipl
 export function buildDirectoryCards(
   slug: string,
   cards: Flashcard[],
-  resolve: (linkpath: string) => DirectoryMediaRef | null
+  resolve: (linkpath: string) => DirectoryMediaRef | null,
+  options: { exam?: boolean } = {}
 ): DirectoryExportResult {
   const out: DirectoryExportResult = { cards: [], skipped: [], unresolved: [] };
   const unresolved = new Set<string>();
@@ -101,7 +106,7 @@ export function buildDirectoryCards(
     return result.text;
   };
   for (const card of cards) {
-    if (UNSUPPORTED.has(card.type) || card.edgeId) {
+    if (!isPackable(card, options.exam === true)) {
       out.skipped.push({ id: card.id, reason: "unsupported_type" });
       continue;
     }

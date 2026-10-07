@@ -1,6 +1,6 @@
 import { DIRECTORY_TABLES_SQL } from "../../database/schemas";
 import type { SqlJsValue } from "../../database/sql-types";
-import { DEFAULT_PROFILE_ID, type DeckTemplate, type ProfileTagMapping } from "../../database/types";
+import { DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID, type DeckTemplate, type ProfileTagMapping } from "../../database/types";
 import { pickProfileMapping } from "../../utils/deck-tags";
 import type { ParsedFlashcard } from "../FlashcardParser";
 import { FlashcardSynchronizer, type RawDatabase, type SyncResult } from "../FlashcardSynchronizer";
@@ -12,7 +12,7 @@ import {
   type DirectoryDeckContent,
 } from "./deck-db";
 import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "./ids";
-import { DpkgError, type DpkgManifest } from "./manifest";
+import { DpkgError, isExamManifest, type DpkgManifest } from "./manifest";
 
 export interface DirectoryDeckRecord {
   id: string;
@@ -228,8 +228,18 @@ function writeContent(
   }
 }
 
-/** The profile a directory deck studies with: a `#directory` tag mapping, else the default. */
-export function resolveDirectoryProfileId(db: RawDatabase, slug: string): string {
+function liveProfile(db: RawDatabase, id: string): boolean {
+  return scalar(db, "SELECT 1 FROM deckprofiles WHERE id = ? AND deleted_at IS NULL", [id]) !== undefined;
+}
+
+/**
+ * The profile a directory deck studies with: a `#directory` tag mapping, else
+ * the Exams preset for an exam deck, else the default.
+ */
+export function resolveDirectoryProfileId(
+  db: RawDatabase,
+  record: Pick<DirectoryDeckRecord, "slug" | "manifestJson">
+): string {
   const mappings: ProfileTagMapping[] = query(
     db,
     "SELECT id, profile_id, tag, created FROM profile_tag_mappings WHERE deleted_at IS NULL"
@@ -239,10 +249,9 @@ export function resolveDirectoryProfileId(db: RawDatabase, slug: string): string
     tag: String(row.tag ?? ""),
     created: String(row.created ?? ""),
   }));
-  const mapped = pickProfileMapping(mappings, [directoryDeckTag(slug)]);
-  if (mapped && scalar(db, "SELECT 1 FROM deckprofiles WHERE id = ? AND deleted_at IS NULL", [mapped]) !== undefined) {
-    return mapped;
-  }
+  const mapped = pickProfileMapping(mappings, [directoryDeckTag(record.slug)]);
+  if (mapped && liveProfile(db, mapped)) return mapped;
+  if (isExamManifest(record.manifestJson) && liveProfile(db, EXAMS_PROFILE_ID)) return EXAMS_PROFILE_ID;
   return DEFAULT_PROFILE_ID;
 }
 
@@ -290,7 +299,7 @@ export function materialiseDirectoryDeck(db: RawDatabase, record: DirectoryDeckR
     db.run(
       `INSERT INTO decks (id, name, filepath, tag, last_reviewed, profile_id, created, modified, last_synced_mtime, file_tags)
        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0, ?)`,
-      [record.id, record.title, path, tag, resolveDirectoryProfileId(db, record.slug), now, now, fileTags]
+      [record.id, record.title, path, tag, resolveDirectoryProfileId(db, record), now, now, fileTags]
     );
   } else {
     db.run("UPDATE decks SET name = ?, filepath = ?, tag = ?, file_tags = ? WHERE id = ?", [
@@ -361,7 +370,7 @@ export function materialiseDirectoryDecks(db: RawDatabase, now: string): Materia
       materialiseDirectoryDeck(db, record, now);
       out.materialised.push(record.id);
     }
-    const profileId = resolveDirectoryProfileId(db, record.slug);
+    const profileId = resolveDirectoryProfileId(db, record);
     if (scalar(db, "SELECT profile_id FROM decks WHERE id = ?", [record.id]) !== profileId) {
       db.run("UPDATE decks SET profile_id = ? WHERE id = ?", [profileId, record.id]);
       out.reprofiled.push(record.id);
