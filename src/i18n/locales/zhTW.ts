@@ -47,6 +47,12 @@ export const zhTW: Translations = {
     exported: "已儲存 {path}。",
     exportFailed: "匯出失敗：{error}",
     notADeck: "請開啟一個牌組筆記再匯出。",
+    exportFolderMenu: "將資料夾匯出為 Decks 套件",
+    exportDecksName: "牌組",
+    exportDecksDesc: "套件依此順序排列。每個牌組在各版本間保留自己的鍵，學習者的進度因此得以保留。",
+    moveUp: "上移",
+    moveDown: "下移",
+    noDecksInFolder: "此資料夾中沒有可匯出的牌組。",
   },
 
   mobileApp: {

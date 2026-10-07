@@ -47,6 +47,12 @@ export const zh: Translations = {
     exported: "已保存 {path}。",
     exportFailed: "导出失败：{error}",
     notADeck: "请打开一个牌组笔记再导出。",
+    exportFolderMenu: "将文件夹导出为 Decks 包",
+    exportDecksName: "牌组",
+    exportDecksDesc: "包中按此顺序排列。每个牌组在各版本间保留自己的键，学习者的进度因此得以保留。",
+    moveUp: "上移",
+    moveDown: "下移",
+    noDecksInFolder: "此文件夹中没有可导出的牌组。",
   },
 
   mobileApp: {

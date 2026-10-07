@@ -47,6 +47,12 @@ export const hi: Translations = {
     exported: "{path} सहेजा गया।",
     exportFailed: "निर्यात विफल: {error}",
     notADeck: "निर्यात करने के लिए कोई डेक नोट खोलें।",
+    exportFolderMenu: "फ़ोल्डर को Decks पैकेज के रूप में निर्यात करें",
+    exportDecksName: "डेक",
+    exportDecksDesc: "पैकेज उन्हें इसी क्रम में दिखाता है। हर डेक संस्करणों के बीच अपनी कुंजी रखता है, ताकि सीखने वालों की प्रगति बनी रहे।",
+    moveUp: "ऊपर ले जाएँ",
+    moveDown: "नीचे ले जाएँ",
+    noDecksInFolder: "इस फ़ोल्डर में निर्यात करने के लिए कोई डेक नहीं है।",
   },
 
   mobileApp: {

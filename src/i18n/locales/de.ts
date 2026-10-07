@@ -47,6 +47,12 @@ export const de: Translations = {
     exported: "{path} gespeichert.",
     exportFailed: "Export fehlgeschlagen: {error}",
     notADeck: "Öffne eine Stapel-Notiz, um sie zu exportieren.",
+    exportFolderMenu: "Ordner als Decks-Paket exportieren",
+    exportDecksName: "Stapel",
+    exportDecksDesc: "Das Paket führt sie in dieser Reihenfolge. Jeder Stapel behält seinen Schlüssel über Versionen hinweg, damit Lernende ihren Fortschritt behalten.",
+    moveUp: "Nach oben",
+    moveDown: "Nach unten",
+    noDecksInFolder: "Dieser Ordner enthält keine Stapel zum Exportieren.",
   },
 
   mobileApp: {

@@ -3,7 +3,7 @@ import type { FileDeck, DeckGroup, CustomDeckGroup } from "../database/types";
 import { generateDeckGroupId } from "./hash";
 import { naturalCompare } from "./string";
 import { I18n } from "../i18n/I18n";
-import { isDirectoryDeckPath } from "../services/directory/ids";
+import { directoryDeckKeyFromPath, directorySlugFromPath, isDirectoryDeckPath } from "../services/directory/ids";
 
 /**
  * View-model for the unified Decks tree. Top-level `section` nodes
@@ -12,7 +12,7 @@ import { isDirectoryDeckPath } from "../services/directory/ids";
  * decks at the bottom.
  *
  * - Files nest by the deck note's vault folder path (`filepath`).
- * - Directory decks (installed packages) are a flat list of their own.
+ * - Directory decks (installed packages) list on their own; a package of several decks is a folder.
  * - Tags nest by nested-tag path (`#a/b/c`). A node at a group's exact tag is
  *   "backed" (`group` set); intermediate paths with no exact group are virtual
  *   folders whose counts/ids are summed from children.
@@ -26,7 +26,7 @@ export type TreeSection = "files" | "tags" | "custom" | "directory" | "pinned";
 
 export interface TreeNode {
   /** Stable, unique id. section: "sec:files". folder: "dir:<path>" /
-   *  "tag:<a/b>". leaf: the deck / group / custom id. */
+   *  "tag:<a/b>" / "pkg:<slug>". leaf: the deck / group / custom id. */
   id: string;
   kind: TreeKind;
   /** Display label — last path segment for nested folders/tags. */
@@ -80,6 +80,15 @@ export interface BuildDeckTreeInput {
   /** Flat view: list every deck/group directly under its section, no folder or
    *  sub-tag nesting. Sections and the Pinned block are kept. */
   flat?: boolean;
+  /** Installed package titles by slug, naming the folder of a package with several decks. */
+  directoryTitles?: ReadonlyMap<string, string>;
+}
+
+const PACKAGE_NODE_PREFIX = "pkg:";
+
+/** The slug of an installed package's folder node; null for any other node. */
+export function directoryPackageSlugOfNode(node: Pick<TreeNode, "id" | "kind">): string | null {
+  return node.kind === "folder" && node.id.startsWith(PACKAGE_NODE_PREFIX) ? node.id.slice(PACKAGE_NODE_PREFIX.length) : null;
 }
 
 function makeNode(partial: Partial<TreeNode> & Pick<TreeNode, "id" | "kind" | "name" | "depth">): TreeNode {
@@ -108,7 +117,7 @@ function dirSegments(filepath: string): string[] {
  * it through `filterDeckTree` / `sortDeckTree` / `flattenDeckTree`.
  */
 export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
-  const { fileDecks, deckGroups, customDeckGroups, getStats, pinnedIds, minDeckCardCount, flat } = input;
+  const { fileDecks, deckGroups, customDeckGroups, getStats, pinnedIds, minDeckCardCount, flat, directoryTitles } = input;
   const minCount = Number.isFinite(minDeckCardCount) && minDeckCardCount > 0 ? minDeckCardCount : 0;
 
   // Section names are resolved here rather than stored, so a rebuilt tree always
@@ -137,13 +146,26 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
     return parent;
   };
 
+  const packageFolders = new Map<string, TreeNode>();
   for (const deck of fileDecks) {
     const pinned = pinnedIds.has(deck.id);
     // Installed explicitly, so the minimum-size filter never hides one.
     if (isDirectoryDeckPath(deck.filepath)) {
-      directorySection.children.push(
-        makeNode({ id: deck.id, kind: "leaf", name: deck.name, depth: 1, fileDeck: deck, pinned })
-      );
+      const slug = directorySlugFromPath(deck.filepath) ?? "";
+      const title = directoryTitles?.get(slug) ?? slug;
+      const inPackage = directoryDeckKeyFromPath(deck.filepath) !== "";
+      let parent = directorySection;
+      if (inPackage && !flat) {
+        let folder = packageFolders.get(slug);
+        if (!folder) {
+          folder = makeNode({ id: `${PACKAGE_NODE_PREFIX}${slug}`, kind: "folder", name: title, depth: 1 });
+          packageFolders.set(slug, folder);
+          directorySection.children.push(folder);
+        }
+        parent = folder;
+      }
+      const name = inPackage && flat ? `${title} › ${deck.name}` : deck.name;
+      parent.children.push(makeNode({ id: deck.id, kind: "leaf", name, depth: parent.depth + 1, fileDeck: deck, pinned }));
       continue;
     }
     if (minCount > 0 && !pinned && (getStats(deck.id)?.totalCount ?? 0) < minCount) continue;

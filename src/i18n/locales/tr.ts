@@ -47,6 +47,12 @@ export const tr: Translations = {
     exported: "{path} kaydedildi.",
     exportFailed: "Dışa aktarma başarısız: {error}",
     notADeck: "Dışa aktarmak için bir deste notu aç.",
+    exportFolderMenu: "Klasörü Decks paketi olarak dışa aktar",
+    exportDecksName: "Desteler",
+    exportDecksDesc: "Paket onları bu sırayla listeler. Her deste sürümler arasında anahtarını korur, böylece öğrenenlerin ilerlemesi korunur.",
+    moveUp: "Yukarı taşı",
+    moveDown: "Aşağı taşı",
+    noDecksInFolder: "Bu klasörde dışa aktarılacak deste yok.",
   },
 
   mobileApp: {

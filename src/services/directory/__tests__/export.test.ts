@@ -97,7 +97,7 @@ describe("exporting a deck's cards", () => {
 
 describe("author to learner round trip", () => {
   it("installs exactly the cards the author exported, with media and new scheduling", async () => {
-    const { mainDb, opener, rows, sqlJs } = await import("./helpers");
+    const { mainDb, opener, rows, singleDeck, sqlJs } = await import("./helpers");
     const { writeDpkgDeckDb } = await import("../deck-db");
     const { packDpkg, unpackDpkg } = await import("../archive");
     const { importDpkgContent } = await import("../import");
@@ -110,11 +110,12 @@ describe("author to learner round trip", () => {
     const built = buildDirectoryCards("french", authored, resolve);
     const SQL = await sqlJs();
     const deckDb = new SQL.Database();
-    writeDpkgDeckDb(deckDb, "french", { name: "French", fileTags: [], cards: built.cards, templates: [] }, "2026-10-01T00:00:00.000Z");
+    writeDpkgDeckDb(deckDb, "french", singleDeck("French", built.cards), "2026-10-01T00:00:00.000Z");
     const { bytes } = await packDpkg({
       manifest: {
         slug: "french", version: 1, title: "French", description: "", language: "fr", subject: "",
         tags: [], license: "", cardCount: built.cards.length, typeCounts: {}, createdAt: "2026-10-01T00:00:00.000Z", generator: "test",
+        decks: [{ key: "", title: "French", cardCount: built.cards.length, exam: null }],
       },
       deckDb: deckDb.export(),
       cardsJson: JSON.stringify(built.cards),

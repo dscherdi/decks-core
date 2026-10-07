@@ -47,6 +47,12 @@ export const es: Translations = {
     exported: "Se guardó {path}.",
     exportFailed: "Error al exportar: {error}",
     notADeck: "Abre una nota de mazo para exportarla.",
+    exportFolderMenu: "Exportar carpeta como paquete de Decks",
+    exportDecksName: "Mazos",
+    exportDecksDesc: "El paquete los muestra en este orden. Cada mazo conserva su clave entre versiones, así quienes aprenden conservan su progreso.",
+    moveUp: "Subir",
+    moveDown: "Bajar",
+    noDecksInFolder: "Esta carpeta no tiene mazos para exportar.",
   },
 
   mobileApp: {

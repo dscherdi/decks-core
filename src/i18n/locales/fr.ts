@@ -47,6 +47,12 @@ export const fr: Translations = {
     exported: "{path} enregistré.",
     exportFailed: "Échec de l’export : {error}",
     notADeck: "Ouvrez une note de paquet pour l’exporter.",
+    exportFolderMenu: "Exporter le dossier comme paquet Decks",
+    exportDecksName: "Paquets de cartes",
+    exportDecksDesc: "Le paquet Decks les présente dans cet ordre. Chacun garde sa clé d’une version à l’autre, pour que les apprenants conservent leur progression.",
+    moveUp: "Monter",
+    moveDown: "Descendre",
+    noDecksInFolder: "Ce dossier ne contient aucun paquet de cartes à exporter.",
   },
 
   mobileApp: {

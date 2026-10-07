@@ -47,6 +47,12 @@ export const ar: Translations = {
     exported: "تم حفظ {path}.",
     exportFailed: "فشل التصدير: {error}",
     notADeck: "افتح ملاحظة رزمة لتصديرها.",
+    exportFolderMenu: "تصدير المجلد كحزمة Decks",
+    exportDecksName: "الرزم",
+    exportDecksDesc: "تعرضها الحزمة بهذا الترتيب. تحتفظ كل رزمة بمفتاحها بين الإصدارات، فيحتفظ المتعلمون بتقدمهم.",
+    moveUp: "نقل لأعلى",
+    moveDown: "نقل لأسفل",
+    noDecksInFolder: "لا يحتوي هذا المجلد على رزم للتصدير.",
   },
 
   mobileApp: {

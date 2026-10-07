@@ -4,6 +4,7 @@ import {
   sortDeckTree,
   flattenDeckTree,
   allBranchIds,
+  directoryPackageSlugOfNode,
   type DeckTree,
   type TreeNode,
   type BuildDeckTreeInput,
@@ -509,5 +510,26 @@ describe("buildDeckTree — Deck directory", () => {
   it("is not hidden by the minimum card count", () => {
     const tree = build({ fileDecks: [installed], minDeckCardCount: 50, getStats: () => ({ newCount: 1, dueCount: 0, totalCount: 3 }) });
     expect(findNode(tree, "deck_dir_x")).toBeDefined();
+  });
+
+  it("files the decks of a package in a folder named after it, studied together or one by one", () => {
+    const vocabulary = fileDeck("deck_dir_v", "Vocabulary", "decks-directory:german-a1/vocabulary");
+    const grammar = fileDeck("deck_dir_g", "Grammar", "decks-directory:german-a1/grammar");
+    const directoryTitles = new Map([["german-a1", "German A1"]]);
+    const tree = build({ fileDecks: [installed, vocabulary, grammar], directoryTitles });
+    const section = tree.sections.find((s) => s.section === "directory");
+    const folder = section?.children.find((c) => c.kind === "folder");
+    expect(folder).toMatchObject({ id: "pkg:german-a1", name: "German A1", depth: 1 });
+    expect(folder && directoryPackageSlugOfNode(folder)).toBe("german-a1");
+    expect(folder?.children.map((c) => [c.id, c.depth])).toEqual([["deck_dir_v", 2], ["deck_dir_g", 2]]);
+    expect(folder?.deckIds.sort()).toEqual(["deck_dir_g", "deck_dir_v"]);
+    expect(section?.children.find((c) => c.id === "deck_dir_x")?.kind).toBe("leaf");
+    expect(directoryPackageSlugOfNode({ id: "dir:German", kind: "folder" })).toBeNull();
+
+    const flat = build({ fileDecks: [vocabulary], directoryTitles, flat: true });
+    expect(flat.sections.find((s) => s.section === "directory")?.children[0]).toMatchObject({
+      id: "deck_dir_v",
+      name: "German A1 › Vocabulary",
+    });
   });
 });

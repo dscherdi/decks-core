@@ -2,17 +2,19 @@ import { DIRECTORY_TABLES_SQL } from "../../database/schemas";
 import type { SqlJsValue } from "../../database/sql-types";
 import { DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID, type DeckTemplate, type ProfileTagMapping } from "../../database/types";
 import { pickProfileMapping } from "../../utils/deck-tags";
+import { isJsonObject, isStringList, parseJson } from "../../utils/json";
 import type { ParsedFlashcard } from "../FlashcardParser";
 import { FlashcardSynchronizer, type RawDatabase, type SyncResult } from "../FlashcardSynchronizer";
 import {
   cardContentFromRow,
+  packageCards,
   parseStringList,
   templateFromRow,
   type DirectoryCardContent,
-  type DirectoryDeckContent,
+  type DirectoryPackageContent,
 } from "./deck-db";
-import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "./ids";
-import { DpkgError, isExamManifest, type DpkgManifest } from "./manifest";
+import { DIRECTORY_PATH_PREFIX, directoryDeckId, directoryDeckPath, directoryDeckTag } from "./ids";
+import { DpkgError, examDeckKeys, parseDpkgManifest, type DpkgManifest } from "./manifest";
 
 export interface DirectoryDeckRecord {
   id: string;
@@ -22,7 +24,8 @@ export interface DirectoryDeckRecord {
   description: string;
   manifestJson: string;
   archiveSha256: string;
-  fileTags: string[];
+  /** Each deck's note tags, by deck key. */
+  fileTagsByKey: Record<string, string[]>;
   importedAt: string;
   modified: string;
   removedAt: string | null;
@@ -56,6 +59,18 @@ function hasTable(db: RawDatabase, name: string): boolean {
   return scalar(db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", [name]) !== undefined;
 }
 
+function parseFileTagsByKey(raw: string | null): Record<string, string[]> {
+  const parsed = raw ? parseJson(raw) : null;
+  // A single deck's tags were once stored as a plain list.
+  if (Array.isArray(parsed)) return { "": parseStringList(raw) };
+  if (!isJsonObject(parsed)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (isStringList(value)) out[key] = value;
+  }
+  return out;
+}
+
 export function directoryDeckFromRow(row: Row): DirectoryDeckRecord {
   const text = (key: string): string => (typeof row[key] === "string" ? String(row[key]) : "");
   const removed = row.removed_at;
@@ -67,16 +82,19 @@ export function directoryDeckFromRow(row: Row): DirectoryDeckRecord {
     description: text("description"),
     manifestJson: text("manifest"),
     archiveSha256: text("archive_sha256"),
-    fileTags: parseStringList(typeof row.file_tags === "string" ? row.file_tags : null),
+    fileTagsByKey: parseFileTagsByKey(typeof row.file_tags === "string" ? row.file_tags : null),
     importedAt: text("imported_at"),
     modified: text("modified"),
     removedAt: typeof removed === "string" ? removed : null,
   };
 }
 
-/** Idempotent; for databases created before the directory tables existed. */
+/** Idempotent; for databases created before the directory tables, or a column of them, existed. */
 export function ensureDirectoryTables(db: RawDatabase): void {
   db.run(DIRECTORY_TABLES_SQL);
+  if (!columnsOf(db, "directory_cards").includes("deck_key")) {
+    db.run("ALTER TABLE directory_cards ADD COLUMN deck_key TEXT NOT NULL DEFAULT ''");
+  }
 }
 
 export function listDirectoryDecks(db: RawDatabase, includeRemoved = false): DirectoryDeckRecord[] {
@@ -91,9 +109,47 @@ export function getDirectoryDeck(db: RawDatabase, deckId: string): DirectoryDeck
   return row ? directoryDeckFromRow(row) : null;
 }
 
-export function loadDirectoryCards(db: RawDatabase, deckId: string): DirectoryCardContent[] {
-  return query(db, "SELECT * FROM directory_cards WHERE directory_deck_id = ? ORDER BY position", [deckId]).map(
-    (row, index) => cardContentFromRow(row, index)
+/** A package's stored cards: all of them, or one deck's. */
+export function loadDirectoryCards(db: RawDatabase, packageId: string, key?: string): DirectoryCardContent[] {
+  const rows =
+    key === undefined
+      ? query(db, "SELECT * FROM directory_cards WHERE directory_deck_id = ? ORDER BY position", [packageId])
+      : query(db, "SELECT * FROM directory_cards WHERE directory_deck_id = ? AND deck_key = ? ORDER BY position", [
+          packageId,
+          key,
+        ]);
+  return rows.map((row, index) => cardContentFromRow(row, index));
+}
+
+export interface DirectoryPackageDeck {
+  key: string;
+  title: string;
+  exam: boolean;
+}
+
+/** The decks an installed package holds, as its manifest lists them. */
+export function directoryPackageDecks(db: RawDatabase, record: DirectoryDeckRecord): DirectoryPackageDeck[] {
+  const exams = examDeckKeys(record.manifestJson);
+  try {
+    return parseDpkgManifest(record.manifestJson).decks.map((deck) => ({
+      key: deck.key,
+      title: deck.key === "" ? record.title : deck.title,
+      exam: exams.has(deck.key),
+    }));
+  } catch {
+    // A manifest this build cannot read still names its decks through the stored cards.
+    const keys = query(db, "SELECT DISTINCT deck_key FROM directory_cards WHERE directory_deck_id = ? ORDER BY deck_key", [
+      record.id,
+    ]).map((row) => String(row.deck_key ?? ""));
+    return keys.map((key) => ({ key, title: key === "" ? record.title : `${record.title} › ${key}`, exam: exams.has(key) }));
+  }
+}
+
+/** Working deck ids of an installed package, whichever of its decks they are. */
+export function packageDeckIds(db: RawDatabase, slug: string): string[] {
+  const root = directoryDeckPath(slug);
+  return query(db, "SELECT id FROM decks WHERE filepath = ? OR filepath LIKE ?", [root, `${root}/%`]).map((row) =>
+    String(row.id)
   );
 }
 
@@ -116,7 +172,7 @@ export const TOMBSTONE_DIRECTORY_DECK_SQL =
 
 export interface StoreDirectoryDeckInput {
   manifest: DpkgManifest;
-  content: DirectoryDeckContent;
+  content: DirectoryPackageContent;
   archiveSha256: string;
   now: string;
 }
@@ -127,7 +183,7 @@ export function storeDirectoryDeck(
   input: StoreDirectoryDeckInput
 ): { deckId: string; previous: DirectoryDeckRecord | null } {
   const { manifest, content, archiveSha256, now } = input;
-  if (content.cards.length === 0) throw new DpkgError("invalid_deck", "The package holds no cards");
+  if (packageCards(content).length === 0) throw new DpkgError("invalid_deck", "The package holds no cards");
   ensureDirectoryTables(db);
   const deckId = directoryDeckId(manifest.slug);
   const previous = getDirectoryDeck(db, deckId);
@@ -151,12 +207,12 @@ export function storeDirectoryDeck(
         manifest.description,
         JSON.stringify(manifest),
         archiveSha256,
-        JSON.stringify(content.fileTags),
+        JSON.stringify(Object.fromEntries(content.decks.map((deck) => [deck.key, deck.fileTags]))),
         now,
         now,
       ]
     );
-    writeContent(db, deckId, content.cards, content.templates, now);
+    writeContent(db, deckId, content, now);
     db.run("RELEASE directory_store");
   } catch (error) {
     db.run("ROLLBACK TO directory_store");
@@ -166,25 +222,21 @@ export function storeDirectoryDeck(
   return { deckId, previous };
 }
 
-function writeContent(
-  db: RawDatabase,
-  deckId: string,
-  cards: DirectoryCardContent[],
-  templates: DeckTemplate[],
-  now: string
-): void {
+function writeContent(db: RawDatabase, deckId: string, content: DirectoryPackageContent, now: string): void {
   db.run("DELETE FROM directory_cards WHERE directory_deck_id = ?", [deckId]);
   db.run("DELETE FROM directory_templates WHERE directory_deck_id = ?", [deckId]);
   const insertCard = db.prepare(
-    `INSERT OR REPLACE INTO directory_cards (id, directory_deck_id, position, type, front, back, notes, breadcrumb,
+    `INSERT OR REPLACE INTO directory_cards (id, directory_deck_id, deck_key, position, type, front, back, notes, breadcrumb,
        cloze_text, cloze_order, hint, tags, template_row, content_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const cards = content.decks.flatMap((deck) => deck.cards.map((card) => ({ card, key: deck.key })));
   try {
-    cards.forEach((card, index) => {
+    cards.forEach(({ card, key }, index) => {
       insertCard.run([
         card.id,
         deckId,
+        key,
         index,
         card.type,
         card.front,
@@ -208,7 +260,7 @@ function writeContent(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   try {
-    for (const template of templates) {
+    for (const template of content.templates) {
       insertTemplate.run([
         `${deckId}:${template.id}`,
         deckId,
@@ -233,12 +285,13 @@ function liveProfile(db: RawDatabase, id: string): boolean {
 }
 
 /**
- * The profile a directory deck studies with: a `#directory` tag mapping, else
- * the Exams preset for an exam deck, else the default.
+ * The profile one deck of a package studies with: a `#directory` tag mapping,
+ * else the Exams preset for an exam deck, else the default.
  */
 export function resolveDirectoryProfileId(
   db: RawDatabase,
-  record: Pick<DirectoryDeckRecord, "slug" | "manifestJson">
+  record: Pick<DirectoryDeckRecord, "slug" | "manifestJson">,
+  key = ""
 ): string {
   const mappings: ProfileTagMapping[] = query(
     db,
@@ -249,9 +302,9 @@ export function resolveDirectoryProfileId(
     tag: String(row.tag ?? ""),
     created: String(row.created ?? ""),
   }));
-  const mapped = pickProfileMapping(mappings, [directoryDeckTag(record.slug)]);
+  const mapped = pickProfileMapping(mappings, [directoryDeckTag(record.slug, key)]);
   if (mapped && liveProfile(db, mapped)) return mapped;
-  if (isExamManifest(record.manifestJson) && liveProfile(db, EXAMS_PROFILE_ID)) return EXAMS_PROFILE_ID;
+  if (examDeckKeys(record.manifestJson).has(key) && liveProfile(db, EXAMS_PROFILE_ID)) return EXAMS_PROFILE_ID;
   return DEFAULT_PROFILE_ID;
 }
 
@@ -261,12 +314,24 @@ function materialiseMarker(record: DirectoryDeckRecord): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+function storedCount(db: RawDatabase, record: DirectoryDeckRecord, key: string): SqlJsValue | undefined {
+  return scalar(db, "SELECT COUNT(*) FROM directory_cards WHERE directory_deck_id = ? AND deck_key = ?", [record.id, key]);
+}
+
+function workingCount(db: RawDatabase, deckId: string): SqlJsValue | undefined {
+  return scalar(db, "SELECT COUNT(*) FROM flashcards WHERE deck_id = ?", [deckId]);
+}
+
 export function needsMaterialise(db: RawDatabase, record: DirectoryDeckRecord): boolean {
-  const marker = scalar(db, "SELECT last_synced_mtime FROM decks WHERE id = ?", [record.id]);
-  if (marker === undefined || marker !== materialiseMarker(record)) return true;
-  const working = scalar(db, "SELECT COUNT(*) FROM flashcards WHERE deck_id = ?", [record.id]);
-  const stored = scalar(db, "SELECT COUNT(*) FROM directory_cards WHERE directory_deck_id = ?", [record.id]);
-  return working !== stored;
+  const decks = directoryPackageDecks(db, record);
+  const ids = new Set(decks.map((deck) => directoryDeckId(record.slug, deck.key)));
+  if (packageDeckIds(db, record.slug).some((id) => !ids.has(id))) return true;
+  return decks.some((deck) => {
+    const id = directoryDeckId(record.slug, deck.key);
+    const marker = scalar(db, "SELECT last_synced_mtime FROM decks WHERE id = ?", [id]);
+    if (marker === undefined || marker !== materialiseMarker(record)) return true;
+    return workingCount(db, id) !== storedCount(db, record, deck.key);
+  });
 }
 
 function toParsed(card: DirectoryCardContent): ParsedFlashcard {
@@ -287,43 +352,58 @@ function toParsed(card: DirectoryCardContent): ParsedFlashcard {
   };
 }
 
-/**
- * Build the working deck and card rows from the stored content. Scheduling of
- * cards that already exist is kept; returning cards restore from review_logs.
- */
-export function materialiseDirectoryDeck(db: RawDatabase, record: DirectoryDeckRecord, now: string): SyncResult {
-  const path = directoryDeckPath(record.slug);
-  const tag = directoryDeckTag(record.slug);
-  const fileTags = JSON.stringify(record.fileTags);
-  if (scalar(db, "SELECT 1 FROM decks WHERE id = ?", [record.id]) === undefined) {
+function materialiseOne(db: RawDatabase, record: DirectoryDeckRecord, deck: DirectoryPackageDeck, now: string): SyncResult {
+  const id = directoryDeckId(record.slug, deck.key);
+  const path = directoryDeckPath(record.slug, deck.key);
+  const tag = directoryDeckTag(record.slug, deck.key);
+  const fileTags = JSON.stringify(record.fileTagsByKey[deck.key] ?? []);
+  if (scalar(db, "SELECT 1 FROM decks WHERE id = ?", [id]) === undefined) {
     db.run(
       `INSERT INTO decks (id, name, filepath, tag, last_reviewed, profile_id, created, modified, last_synced_mtime, file_tags)
        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, 0, ?)`,
-      [record.id, record.title, path, tag, resolveDirectoryProfileId(db, record), now, now, fileTags]
+      [id, deck.title, path, tag, resolveDirectoryProfileId(db, record, deck.key), now, now, fileTags]
     );
   } else {
     db.run("UPDATE decks SET name = ?, filepath = ?, tag = ?, file_tags = ? WHERE id = ?", [
-      record.title,
+      deck.title,
       path,
       tag,
       fileTags,
-      record.id,
+      id,
     ]);
   }
 
   const result = new FlashcardSynchronizer(db).syncFlashcardsForDeck({
-    deckId: record.id,
-    deckName: record.title,
+    deckId: id,
+    deckName: deck.title,
     deckFilepath: path,
     fileContent: "",
-    preParsed: loadDirectoryCards(db, record.id).map(toParsed),
+    preParsed: loadDirectoryCards(db, record.id, deck.key).map(toParsed),
     reverseCards: false,
     refuseEmptyResult: true,
   });
   if (!result.skippedEmptyParse) {
-    db.run("UPDATE decks SET last_synced_mtime = ? WHERE id = ?", [materialiseMarker(record), record.id]);
+    db.run("UPDATE decks SET last_synced_mtime = ? WHERE id = ?", [materialiseMarker(record), id]);
   }
   return result;
+}
+
+/**
+ * Build the working decks and card rows of a package from its stored content.
+ * Scheduling of cards that already exist is kept; returning cards restore from review_logs.
+ */
+export function materialiseDirectoryDeck(db: RawDatabase, record: DirectoryDeckRecord, now: string): SyncResult[] {
+  const decks = directoryPackageDecks(db, record);
+  const keep = new Set(decks.map((deck) => directoryDeckId(record.slug, deck.key)));
+  for (const stale of packageDeckIds(db, record.slug)) if (!keep.has(stale)) dropMaterialisedDeck(db, stale);
+  const results = decks.map((deck) => materialiseOne(db, record, deck, now));
+  // A card that moved between two of the package's decks is only free once its old deck let it go.
+  decks.forEach((deck, index) => {
+    if (workingCount(db, directoryDeckId(record.slug, deck.key)) !== storedCount(db, record, deck.key)) {
+      results[index] = materialiseOne(db, record, deck, now);
+    }
+  });
+  return results;
 }
 
 /** Each takes the deck id. Review history is kept, so a re-import restores progress. */
@@ -334,11 +414,19 @@ export const DROP_MATERIALISED_DECK_SQL: readonly string[] = [
   "DELETE FROM decks WHERE id = ?",
 ];
 
-/** Each takes the deck id: a removed deck's stored content, then its working rows. */
+// The working decks of the package whose id is bound; its row outlives removal as a tombstone.
+const PACKAGE_DECKS = `SELECT d.id FROM decks d JOIN directory_decks p
+  ON d.filepath = '${DIRECTORY_PATH_PREFIX}' || p.slug OR d.filepath LIKE '${DIRECTORY_PATH_PREFIX}' || p.slug || '/%'
+  WHERE p.id = ?`;
+
+/** Each takes the package id: a removed package's stored content, then every one of its working decks. */
 export const REMOVE_DIRECTORY_CONTENT_SQL: readonly string[] = [
   "DELETE FROM directory_cards WHERE directory_deck_id = ?",
   "DELETE FROM directory_templates WHERE directory_deck_id = ?",
-  ...DROP_MATERIALISED_DECK_SQL,
+  `DELETE FROM custom_deck_cards WHERE flashcard_id IN (SELECT id FROM flashcards WHERE deck_id IN (${PACKAGE_DECKS}))`,
+  `DELETE FROM cram_cards WHERE flashcard_id IN (SELECT id FROM flashcards WHERE deck_id IN (${PACKAGE_DECKS}))`,
+  `DELETE FROM flashcards WHERE deck_id IN (${PACKAGE_DECKS})`,
+  `DELETE FROM decks WHERE id IN (${PACKAGE_DECKS})`,
 ];
 
 export function dropMaterialisedDeck(db: RawDatabase, deckId: string): void {
@@ -358,11 +446,12 @@ export interface MaterialiseAllResult {
  */
 export function materialiseDirectoryDecks(db: RawDatabase, now: string): MaterialiseAllResult {
   const out: MaterialiseAllResult = { materialised: [], dropped: [], reprofiled: [] };
+  if (hasTable(db, "directory_decks")) ensureDirectoryTables(db);
   for (const record of listDirectoryDecks(db, true)) {
     if (record.removedAt !== null) {
-      if (scalar(db, "SELECT 1 FROM decks WHERE id = ?", [record.id]) !== undefined) {
-        dropMaterialisedDeck(db, record.id);
-        out.dropped.push(record.id);
+      for (const id of packageDeckIds(db, record.slug)) {
+        dropMaterialisedDeck(db, id);
+        out.dropped.push(id);
       }
       continue;
     }
@@ -370,10 +459,13 @@ export function materialiseDirectoryDecks(db: RawDatabase, now: string): Materia
       materialiseDirectoryDeck(db, record, now);
       out.materialised.push(record.id);
     }
-    const profileId = resolveDirectoryProfileId(db, record);
-    if (scalar(db, "SELECT profile_id FROM decks WHERE id = ?", [record.id]) !== profileId) {
-      db.run("UPDATE decks SET profile_id = ? WHERE id = ?", [profileId, record.id]);
-      out.reprofiled.push(record.id);
+    for (const deck of directoryPackageDecks(db, record)) {
+      const id = directoryDeckId(record.slug, deck.key);
+      const profileId = resolveDirectoryProfileId(db, record, deck.key);
+      if (scalar(db, "SELECT profile_id FROM decks WHERE id = ?", [id]) !== profileId) {
+        db.run("UPDATE decks SET profile_id = ? WHERE id = ?", [profileId, id]);
+        out.reprofiled.push(id);
+      }
     }
   }
   return out;

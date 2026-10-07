@@ -44,6 +44,12 @@ export const en = {
     exported: "Saved {path}.",
     exportFailed: "Export failed: {error}",
     notADeck: "Open a deck note to export it.",
+    exportFolderMenu: "Export folder as Decks package",
+    exportDecksName: "Decks",
+    exportDecksDesc: "The package lists them in this order. Each keeps its key between versions, so learners keep their progress.",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    noDecksInFolder: "This folder has no decks to export.",
   },
 
   /** Shown in the release-notes tab and at the top of settings. */

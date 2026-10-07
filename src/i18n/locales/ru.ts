@@ -47,6 +47,12 @@ export const ru: Translations = {
     exported: "Сохранено: {path}.",
     exportFailed: "Не удалось экспортировать: {error}",
     notADeck: "Откройте заметку с колодой, чтобы экспортировать её.",
+    exportFolderMenu: "Экспортировать папку как пакет Decks",
+    exportDecksName: "Колоды",
+    exportDecksDesc: "Пакет показывает их в этом порядке. Каждая колода сохраняет свой ключ между версиями, поэтому прогресс учащихся сохраняется.",
+    moveUp: "Выше",
+    moveDown: "Ниже",
+    noDecksInFolder: "В этой папке нет колод для экспорта.",
   },
 
   mobileApp: {

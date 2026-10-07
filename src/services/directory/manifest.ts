@@ -1,6 +1,6 @@
 import { parseExamSettings, type ExamSettings, type FlashcardType } from "../../database/types";
 import { isJsonObject, isStringList, parseJson, type JsonObject } from "../../utils/json";
-import { isValidDirectorySlug } from "./ids";
+import { isValidDirectoryDeckKey, isValidDirectorySlug } from "./ids";
 
 export const DPKG_FORMAT_VERSION = 1;
 
@@ -10,6 +10,18 @@ export interface DpkgMediaEntry {
   mime: string;
   size: number;
 }
+
+export interface DpkgDeckEntry {
+  /** Empty for a single-deck package; otherwise stable across versions, as progress follows it. */
+  key: string;
+  title: string;
+  cardCount: number;
+  /** Set on exam decks, which need an exam-enabled profile; the settings pre-fill an exam. */
+  exam: ExamSettings | null;
+}
+
+/** Most decks one package may hold. */
+export const MAX_PACKAGE_DECKS = 100;
 
 export interface DpkgManifest {
   formatVersion: number;
@@ -29,8 +41,8 @@ export interface DpkgManifest {
   dbSha256: string;
   createdAt: string;
   generator: string;
-  /** Set on exam decks, which need an exam-enabled profile; their settings pre-fill an exam. */
-  exam: ExamSettings | null;
+  /** The decks in the package, in the order the author arranged them. */
+  decks: DpkgDeckEntry[];
 }
 
 export type DpkgErrorCode =
@@ -138,6 +150,7 @@ export function parseDpkgManifest(json: string): DpkgManifest {
   if (version < 1) fail("manifest.version must be at least 1");
   const title = text(parsed, "title").trim();
   if (title === "") fail("manifest.title is empty");
+  const cardCount = count(parsed, "cardCount");
 
   return {
     formatVersion,
@@ -150,27 +163,58 @@ export function parseDpkgManifest(json: string): DpkgManifest {
     subject: text(parsed, "subject", false),
     tags: stringList(parsed, "tags"),
     license: text(parsed, "license", false),
-    cardCount: count(parsed, "cardCount"),
+    cardCount,
     typeCounts,
     media: entries,
     dbSha256,
     createdAt: text(parsed, "createdAt"),
     generator: text(parsed, "generator", false),
-    exam: examSettings(parsed),
+    decks: deckEntries(parsed, title, cardCount),
   };
 }
 
-function examSettings(obj: JsonObject): ExamSettings | null {
-  const value = obj.exam;
+function examSettings(value: JsonObject[string] | undefined, where: string): ExamSettings | null {
   if (value === undefined || value === null) return null;
-  if (!isJsonObject(value)) fail("manifest.exam must be an object");
+  if (!isJsonObject(value)) fail(`${where} must be an object`);
   return parseExamSettings(JSON.stringify(value));
 }
 
-/** Whether a stored manifest marks an exam deck; unreadable manifests are not. */
-export function isExamManifest(json: string): boolean {
+function deckEntry(value: JsonObject[string]): DpkgDeckEntry {
+  if (!isJsonObject(value)) fail("manifest.decks entries must be objects");
+  const key = text(value, "key", false);
+  if (!isValidDirectoryDeckKey(key)) fail(`manifest.decks key ${JSON.stringify(key)} is malformed`);
+  const title = text(value, "title").trim();
+  if (title === "") fail("manifest.decks title is empty");
+  return { key, title, cardCount: count(value, "cardCount"), exam: examSettings(value.exam, "manifest.decks exam") };
+}
+
+function deckEntries(obj: JsonObject, title: string, cardCount: number): DpkgDeckEntry[] {
+  // Packages written before decks were listed hold one deck, with its exam settings at the top.
+  if (obj.decks === undefined) return [{ key: "", title, cardCount, exam: examSettings(obj.exam, "manifest.exam") }];
+  if (!Array.isArray(obj.decks) || obj.decks.length === 0) fail("manifest.decks must be a non-empty list");
+  if (obj.decks.length > MAX_PACKAGE_DECKS) fail(`manifest.decks lists more than ${MAX_PACKAGE_DECKS} decks`);
+  const entries = obj.decks.map(deckEntry);
+  if (new Set(entries.map((entry) => entry.key)).size !== entries.length) fail("manifest.decks repeats a key");
+  const single = entries.length === 1;
+  if (entries.some((entry) => (entry.key === "") !== single)) {
+    fail("a single deck has an empty key; every deck of a larger package has its own");
+  }
+  if (entries.reduce((sum, entry) => sum + entry.cardCount, 0) !== cardCount) {
+    fail("manifest.decks card counts do not add up to manifest.cardCount");
+  }
+  return entries;
+}
+
+/** Keys of the exam decks a stored manifest lists; an unreadable manifest lists none. */
+export function examDeckKeys(json: string): Set<string> {
   const parsed = parseJson(json);
-  return isJsonObject(parsed) && isJsonObject(parsed.exam);
+  if (!isJsonObject(parsed)) return new Set();
+  if (!Array.isArray(parsed.decks)) return new Set(isJsonObject(parsed.exam) ? [""] : []);
+  return new Set(
+    parsed.decks.flatMap((entry) =>
+      isJsonObject(entry) && isJsonObject(entry.exam) && typeof entry.key === "string" ? [entry.key] : []
+    )
+  );
 }
 
 export function dpkgMediaPath(entry: Pick<DpkgMediaEntry, "sha256" | "ext">): string {

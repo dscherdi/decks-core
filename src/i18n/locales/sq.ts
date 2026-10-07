@@ -47,6 +47,12 @@ export const sq: Translations = {
     exported: "U ruajt {path}.",
     exportFailed: "Eksportimi dështoi: {error}",
     notADeck: "Hap një shënim pakoje për ta eksportuar.",
+    exportFolderMenu: "Eksporto dosjen si paketë Decks",
+    exportDecksName: "Pakot",
+    exportDecksDesc: "Paketa i rendit në këtë radhë. Çdo pako ruan çelësin e vet nga një version në tjetrin, që nxënësit të ruajnë përparimin.",
+    moveUp: "Lëviz lart",
+    moveDown: "Lëviz poshtë",
+    noDecksInFolder: "Kjo dosje nuk ka pako për të eksportuar.",
   },
 
   mobileApp: {

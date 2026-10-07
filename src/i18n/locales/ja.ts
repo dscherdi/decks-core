@@ -47,6 +47,12 @@ export const ja: Translations = {
     exported: "{path} を保存しました。",
     exportFailed: "エクスポートに失敗しました：{error}",
     notADeck: "エクスポートするデッキのノートを開いてください。",
+    exportFolderMenu: "フォルダーを Decks パッケージとしてエクスポート",
+    exportDecksName: "デッキ",
+    exportDecksDesc: "パッケージにはこの順で並びます。各デッキはバージョン間でキーを保つため、学習者の進捗は引き継がれます。",
+    moveUp: "上へ移動",
+    moveDown: "下へ移動",
+    noDecksInFolder: "このフォルダーにはエクスポートできるデッキがありません。",
   },
 
   mobileApp: {

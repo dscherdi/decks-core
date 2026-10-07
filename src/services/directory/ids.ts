@@ -27,16 +27,24 @@ export function slugifyDirectoryTitle(title: string): string {
     .replace(/-+$/g, "");
 }
 
-export function directoryDeckId(slug: string): string {
-  return `deck_dir_${hash64(`dir-deck:${slug}`)}`;
+/**
+ * A package holds one deck or several, each under a key; a single deck's key is
+ * empty, so its id, path and tag are the package's own.
+ */
+export function isValidDirectoryDeckKey(key: string): boolean {
+  return key === "" || isValidDirectorySlug(key);
 }
 
-export function directoryDeckPath(slug: string): string {
-  return `${DIRECTORY_PATH_PREFIX}${slug}`;
+export function directoryDeckId(slug: string, key = ""): string {
+  return `deck_dir_${hash64(key ? `dir-deck:${slug}/${key}` : `dir-deck:${slug}`)}`;
 }
 
-export function directoryDeckTag(slug: string): string {
-  return `${DIRECTORY_TAG_ROOT}/${slug}`;
+export function directoryDeckPath(slug: string, key = ""): string {
+  return `${DIRECTORY_PATH_PREFIX}${slug}${key ? `/${key}` : ""}`;
+}
+
+export function directoryDeckTag(slug: string, key = ""): string {
+  return `${DIRECTORY_TAG_ROOT}/${slug}${key ? `/${key}` : ""}`;
 }
 
 export function isDirectoryDeckPath(path: string | null | undefined): boolean {
@@ -47,8 +55,26 @@ export function isDirectoryDeck(deck: Pick<Deck, "filepath">): boolean {
   return isDirectoryDeckPath(deck.filepath);
 }
 
+/** The package slug of a directory deck path, without the deck key. */
 export function directorySlugFromPath(path: string): string | null {
-  return isDirectoryDeckPath(path) ? path.slice(DIRECTORY_PATH_PREFIX.length) : null;
+  if (!isDirectoryDeckPath(path)) return null;
+  const rest = path.slice(DIRECTORY_PATH_PREFIX.length);
+  const slash = rest.indexOf("/");
+  return slash < 0 ? rest : rest.slice(0, slash);
+}
+
+/** The deck key within its package; empty for a single-deck package. */
+export function directoryDeckKeyFromPath(path: string): string {
+  if (!isDirectoryDeckPath(path)) return "";
+  const rest = path.slice(DIRECTORY_PATH_PREFIX.length);
+  const slash = rest.indexOf("/");
+  return slash < 0 ? "" : rest.slice(slash + 1);
+}
+
+/** The id of the installed package a directory deck belongs to. */
+export function directoryPackageIdFromPath(path: string): string | null {
+  const slug = directorySlugFromPath(path);
+  return slug ? directoryDeckId(slug) : null;
 }
 
 /**

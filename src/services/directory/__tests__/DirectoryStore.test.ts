@@ -3,6 +3,7 @@ import { buildMigrationSQL } from "../../../database/schemas";
 import { unpackDpkg } from "../archive";
 import { importDpkgContent } from "../import";
 import {
+  ensureDirectoryTables,
   getDirectoryDeck,
   listDirectoryDecks,
   materialiseDirectoryDecks,
@@ -10,29 +11,57 @@ import {
   removeDirectoryDeck,
 } from "../DirectoryStore";
 import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "../ids";
-import type { DirectoryDeckContent } from "../deck-db";
-import { buildPackage, card, mainDb, opener, review, rows, sqlJs } from "./helpers";
+import type { DirectoryCardContent, DirectoryPackageContent } from "../deck-db";
+import { buildPackage, card, mainDb, opener, review, rows, singleDeck, sqlJs } from "./helpers";
 import { DEFAULT_EXAM_SETTINGS, DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID } from "../../../database/types";
 
 const SLUG = "capitals";
 const DECK = directoryDeckId(SLUG);
 
-function v1(): DirectoryDeckContent {
+function v1(): { cards: DirectoryCardContent[] } {
   return {
-    name: "World capitals",
-    fileTags: [],
     cards: [
       card(SLUG, "card_fr", "France", "Paris"),
       card(SLUG, "card_de", "Germany", "Berlin"),
       card(SLUG, "card_it", "Italy", "Rome"),
     ],
+  };
+}
+
+async function install(
+  db: Database,
+  content: { cards: DirectoryCardContent[] } | DirectoryPackageContent,
+  version: number,
+  now: string,
+  exams = {}
+) {
+  const pkg = await buildPackage(
+    SLUG,
+    version,
+    "decks" in content ? content : singleDeck("World capitals", content.cards),
+    [],
+    exams,
+    "World capitals"
+  );
+  return importDpkgContent(db, await unpackDpkg(pkg, { includeMedia: false }), `sha-${version}`, await opener(), now);
+}
+
+/** Europe in two decks: west and east of the package. */
+function course(west: DirectoryCardContent[], east: DirectoryCardContent[]): DirectoryPackageContent {
+  return {
+    decks: [
+      { key: "west", name: "Western Europe", fileTags: ["west"], cards: west },
+      { key: "east", name: "Eastern Europe", fileTags: [], cards: east },
+    ],
     templates: [],
   };
 }
 
-async function install(db: Database, content: DirectoryDeckContent, version: number, now: string) {
-  const pkg = await buildPackage(SLUG, version, content);
-  return importDpkgContent(db, await unpackDpkg(pkg, { includeMedia: false }), `sha-${version}`, await opener(), now);
+const WEST = directoryDeckId(SLUG, "west");
+const EAST = directoryDeckId(SLUG, "east");
+
+function deckOf(db: Database, cardId: string) {
+  return rows(db, "SELECT deck_id, state, stability FROM flashcards WHERE id = ?", [cardId])[0];
 }
 
 function cards(db: Database) {
@@ -171,13 +200,11 @@ describe("directory decks in the main database", () => {
   });
 
   it("studies an exam deck with the Exams preset unless #directory is mapped", async () => {
-    const exam: DirectoryDeckContent = {
-      ...v1(),
+    const exam = {
       cards: [...v1().cards, card(SLUG, "qcard_gas", "Noble gas?", "- [ ] Oxygen\n- [x] Argon", { type: "multiple-choice" })],
     };
     const installExam = async (db: Database) => {
-      const pkg = await buildPackage(SLUG, 1, exam, [], { ...DEFAULT_EXAM_SETTINGS, questionCount: 2 });
-      await importDpkgContent(db, await unpackDpkg(pkg, { includeMedia: false }), "sha-exam", await opener(), "2026-10-01T10:00:00.000Z");
+      await install(db, exam, 1, "2026-10-01T10:00:00.000Z", { "": { ...DEFAULT_EXAM_SETTINGS, questionCount: 2 } });
     };
 
     const db = await mainDb();
@@ -204,5 +231,89 @@ describe("directory decks in the main database", () => {
     db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory/capitals', 'x')`, [profileId]);
     expect(materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z").reprofiled).toEqual([DECK]);
     expect(rows(db, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(profileId);
+  });
+
+  it("installs a package of several decks as one deck each, filed under the package", async () => {
+    const db = await mainDb();
+    const [france, germany, italy] = v1().cards;
+    const result = await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z");
+
+    expect(result.deckId).toBe(DECK);
+    expect(result.sync).toHaveLength(2);
+    expect(listDirectoryDecks(db).map((record) => record.id)).toEqual([DECK]);
+    expect(rows(db, "SELECT id, name, filepath, tag, file_tags FROM decks ORDER BY filepath")).toEqual([
+      { id: EAST, name: "Eastern Europe", filepath: directoryDeckPath(SLUG, "east"), tag: directoryDeckTag(SLUG, "east"), file_tags: "[]" },
+      { id: WEST, name: "Western Europe", filepath: directoryDeckPath(SLUG, "west"), tag: directoryDeckTag(SLUG, "west"), file_tags: '["west"]' },
+    ]);
+    expect(deckOf(db, france.id).deck_id).toBe(WEST);
+    expect(deckOf(db, italy.id).deck_id).toBe(EAST);
+    expect(rows(db, "SELECT COUNT(*) AS n FROM flashcards WHERE source_file = ?", [directoryDeckPath(SLUG, "east")])[0].n).toBe(1);
+  });
+
+  it("keeps progress when an update moves a card between its decks, or folds them into one", async () => {
+    const db = await mainDb();
+    const [france, germany, italy] = v1().cards;
+    await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z");
+    review(db, france.id, "2026-10-02T09:00:00.000Z", 12.5);
+
+    await install(db, course([germany], [italy, france]), 2, "2026-10-03T10:00:00.000Z");
+    expect(deckOf(db, france.id)).toMatchObject({ deck_id: EAST, state: "review", stability: 12.5 });
+    expect(materialiseDirectoryDecks(db, "2026-10-03T10:01:00.000Z").materialised).toEqual([]);
+
+    // Shrunk to one deck, the package's deck takes the package's own id, path and tag.
+    await install(db, { cards: [germany, italy, france] }, 3, "2026-10-04T10:00:00.000Z");
+    expect(rows(db, "SELECT id FROM decks ORDER BY id")).toEqual([{ id: DECK }]);
+    expect(deckOf(db, france.id)).toMatchObject({ deck_id: DECK, state: "review", stability: 12.5 });
+  });
+
+  it("removes every deck of the package together", async () => {
+    const db = await mainDb();
+    const [france, germany, italy] = v1().cards;
+    await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z");
+    expect(removeDirectoryDeck(db, DECK, "2026-10-05T10:00:00.000Z")).toBe(true);
+    expect(rows(db, "SELECT id FROM decks")).toEqual([]);
+    expect(rows(db, "SELECT id FROM flashcards")).toEqual([]);
+  });
+
+  it("gives each deck its own profile: the Exams preset for an exam deck, a mapping on the package or one deck", async () => {
+    const [france, germany, italy] = v1().cards;
+    const exams = { east: { ...DEFAULT_EXAM_SETTINGS, passScorePct: 80 } };
+    const profileOf = (db: Database, id: string) => rows(db, "SELECT profile_id FROM decks WHERE id = ?", [id])[0].profile_id;
+
+    const db = await mainDb();
+    await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", exams);
+    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID]);
+
+    const other = rows(db, "SELECT id FROM deckprofiles WHERE id NOT IN (?, ?) LIMIT 1", [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID])[0].id;
+    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, ?, 'x')`, [other, directoryDeckTag(SLUG)]);
+    materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z");
+    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([other, other]);
+
+    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m2', ?, ?, 'x')`, [
+      DEFAULT_PROFILE_ID,
+      directoryDeckTag(SLUG, "west"),
+    ]);
+    materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z");
+    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([DEFAULT_PROFILE_ID, other]);
+  });
+
+  it("arrives on another device with all of its decks", async () => {
+    const SQL = await sqlJs();
+    const phone = await mainDb();
+    const laptop = await mainDb();
+    const [france, germany, italy] = v1().cards;
+    await install(phone, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z");
+
+    mergeDirectoryTables(laptop, new SQL.Database(phone.export()));
+    materialiseDirectoryDecks(laptop, "2026-10-01T11:00:00.000Z");
+    expect(deckOf(laptop, germany.id).deck_id).toBe(WEST);
+    expect(deckOf(laptop, italy.id).deck_id).toBe(EAST);
+  });
+
+  it("adds the deck key column to a table created before it existed", async () => {
+    const db = await mainDb();
+    db.run("ALTER TABLE directory_cards DROP COLUMN deck_key");
+    ensureDirectoryTables(db);
+    expect(rows(db, "SELECT name FROM pragma_table_info('directory_cards') WHERE name = 'deck_key'")).toHaveLength(1);
   });
 });

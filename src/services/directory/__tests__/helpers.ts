@@ -1,8 +1,8 @@
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import { CREATE_TABLES_SQL } from "../../../database/schemas";
-import type { ExamSettings } from "../../../database/types";
+import type { DeckTemplate, ExamSettings } from "../../../database/types";
 import { packDpkg, type DpkgMediaInput } from "../archive";
-import { writeDpkgDeckDb, type DirectoryCardContent, type DirectoryDeckContent } from "../deck-db";
+import { packageCards, writeDpkgDeckDb, type DirectoryCardContent, type DirectoryPackageContent } from "../deck-db";
 import type { ClosableRawDatabase } from "../import";
 import { deriveDirectoryCardId } from "../ids";
 import { generateContentHash } from "../../../utils/hash";
@@ -46,36 +46,54 @@ export function card(slug: string, ownerId: string, front: string, back: string,
   };
 }
 
+/** A package with one deck, the shape most tests need. */
+export function singleDeck(
+  name: string,
+  cards: DirectoryCardContent[],
+  templates: DeckTemplate[] = [],
+  fileTags: string[] = []
+): DirectoryPackageContent {
+  return { decks: [{ key: "", name, fileTags, cards }], templates };
+}
+
+/** Build a package; `exams` sets exam settings by deck key. */
 export async function buildPackage(
   slug: string,
   version: number,
-  content: DirectoryDeckContent,
+  content: DirectoryPackageContent,
   media: DpkgMediaInput[] = [],
-  exam: ExamSettings | null = null
+  exams: Record<string, ExamSettings> = {},
+  title = content.decks[0].name
 ): Promise<Uint8Array> {
   const SQL = await sqlJs();
   const deckDb = new SQL.Database();
   writeDpkgDeckDb(deckDb, slug, content, "2026-10-01T00:00:00.000Z");
   const bytes = deckDb.export();
   deckDb.close();
+  const cards = packageCards(content);
   const { bytes: pkg } = await packDpkg({
     manifest: {
       slug,
       version,
-      title: content.name,
+      title,
       description: "A test deck",
       language: "en",
       subject: "test",
       tags: [],
       license: "personal-use",
-      cardCount: content.cards.length,
+      cardCount: cards.length,
       typeCounts: {},
       createdAt: "2026-10-01T00:00:00.000Z",
       generator: "test",
-      exam,
+      decks: content.decks.map((deck) => ({
+        key: deck.key,
+        title: deck.name,
+        cardCount: deck.cards.length,
+        exam: exams[deck.key] ?? null,
+      })),
     },
     deckDb: bytes,
-    cardsJson: JSON.stringify(content.cards),
+    cardsJson: JSON.stringify(cards),
     media,
   });
   return pkg;

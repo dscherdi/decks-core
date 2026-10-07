@@ -3,8 +3,8 @@ import type { SqlJsValue } from "../../database/sql-types";
 import type { DeckTemplate, FlashcardType, TemplateFaceType, TemplateRow } from "../../database/types";
 import { isJsonObject, isStringList, parseJson } from "../../utils/json";
 import type { RawDatabase } from "../FlashcardSynchronizer";
-import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "./ids";
-import { DpkgError, isFlashcardType } from "./manifest";
+import { directoryDeckId, directoryDeckKeyFromPath, directoryDeckPath, directoryDeckTag, isDirectoryDeckPath } from "./ids";
+import { DpkgError, isFlashcardType, MAX_PACKAGE_DECKS } from "./manifest";
 
 export const MAX_DIRECTORY_CARDS = 50_000;
 
@@ -25,11 +25,23 @@ export interface DirectoryCardContent {
   contentHash: string;
 }
 
+/** One deck of a package; a single-deck package's key is empty. */
 export interface DirectoryDeckContent {
+  key: string;
   name: string;
   fileTags: string[];
   cards: DirectoryCardContent[];
+}
+
+/** A package's decks, in the author's order, and the templates they share. */
+export interface DirectoryPackageContent {
+  decks: DirectoryDeckContent[];
   templates: DeckTemplate[];
+}
+
+/** Every card of a package, deck by deck. */
+export function packageCards(content: DirectoryPackageContent): DirectoryCardContent[] {
+  return content.decks.flatMap((deck) => deck.cards);
 }
 
 type Row = Record<string, SqlJsValue>;
@@ -132,48 +144,59 @@ export function cardContentFromRow(row: Row, position: number): DirectoryCardCon
 }
 
 /** Read a package's deck.db. Columns are read by name, so older and newer layouts both load. */
-export function readDpkgDeckDb(db: RawDatabase): DirectoryDeckContent {
+export function readDpkgDeckDb(db: RawDatabase): DirectoryPackageContent {
   if (!tableExists(db, "decks") || !tableExists(db, "flashcards")) invalid("deck.db has no decks or flashcards table");
-  const decks = rows(db, "SELECT * FROM decks LIMIT 2");
-  if (decks.length !== 1) invalid("deck.db must hold exactly one deck");
+  const deckRows = rows(db, `SELECT * FROM decks ORDER BY rowid LIMIT ${MAX_PACKAGE_DECKS + 1}`);
+  if (deckRows.length === 0) invalid("deck.db holds no deck");
+  if (deckRows.length > MAX_PACKAGE_DECKS) invalid("deck.db holds too many decks");
+  const decks = new Map<string, DirectoryDeckContent>();
+  for (const row of deckRows) {
+    const path = str(row, "filepath");
+    if (!isDirectoryDeckPath(path)) invalid(`Deck ${JSON.stringify(path)} is not a package deck`);
+    decks.set(str(row, "id"), {
+      key: directoryDeckKeyFromPath(path),
+      name: str(row, "name"),
+      fileTags: parseStringList(optStr(row, "file_tags")),
+      cards: [],
+    });
+  }
+  if (decks.size !== deckRows.length) invalid("deck.db repeats a deck id");
 
   const cardRows = rows(db, `SELECT * FROM flashcards ORDER BY rowid LIMIT ${MAX_DIRECTORY_CARDS + 1}`);
   if (cardRows.length === 0) invalid("deck.db holds no cards");
   if (cardRows.length > MAX_DIRECTORY_CARDS) invalid("deck.db holds too many cards");
-  const cards = cardRows.map((row, index) => cardContentFromRow(row, index));
-  if (new Set(cards.map((card) => card.id)).size !== cards.length) invalid("deck.db repeats a card id");
+  const ids = new Set<string>();
+  for (const row of cardRows) {
+    const deck = decks.get(str(row, "deck_id"));
+    if (!deck) invalid(`Card ${JSON.stringify(str(row, "id"))} belongs to no deck in the package`);
+    const card = cardContentFromRow(row, deck.cards.length);
+    if (ids.has(card.id)) invalid("deck.db repeats a card id");
+    ids.add(card.id);
+    deck.cards.push(card);
+  }
 
   const templates = tableExists(db, "deck_templates")
     ? rows(db, "SELECT * FROM deck_templates ORDER BY rowid").map(templateFromRow)
     : [];
 
-  return {
-    name: str(decks[0], "name"),
-    fileTags: parseStringList(optStr(decks[0], "file_tags")),
-    cards,
-    templates,
-  };
+  return { decks: [...decks.values()], templates };
 }
 
 /**
- * Write a deck into an empty database in the full Decks schema. Cards are
+ * Write a package into an empty database in the full Decks schema. Cards are
  * stored as new; ids, paths and tags are the ones every installer will use.
  */
 export function writeDpkgDeckDb(
   db: RawDatabase,
   slug: string,
-  content: DirectoryDeckContent,
+  content: DirectoryPackageContent,
   createdAt: string
 ): void {
   db.run(CREATE_TABLES_SQL);
-  const deckId = directoryDeckId(slug);
-  const path = directoryDeckPath(slug);
-  db.run(
+  const insertDeck = db.prepare(
     `INSERT INTO decks (id, name, filepath, tag, last_reviewed, profile_id, created, modified, last_synced_mtime, file_tags)
-     VALUES (?, ?, ?, ?, NULL, 'profile_default', ?, ?, 0, ?)`,
-    [deckId, content.name, path, directoryDeckTag(slug), createdAt, createdAt, JSON.stringify(content.fileTags)]
+     VALUES (?, ?, ?, ?, NULL, 'profile_default', ?, ?, 0, ?)`
   );
-
   const insertCard = db.prepare(
     `INSERT INTO flashcards (
        id, deck_id, front, back, type, source_file, content_hash, breadcrumb, notes,
@@ -183,28 +206,42 @@ export function writeDpkgDeckDb(
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 'new', ?, 0, 0, 5.0, 0, 0, NULL, ?, ?, ?, NULL, NULL, ?, NULL)`
   );
   try {
-    for (const card of [...content.cards].sort((a, b) => a.position - b.position)) {
-      insertCard.run([
-        card.id,
+    for (const deck of content.decks) {
+      const deckId = directoryDeckId(slug, deck.key);
+      const path = directoryDeckPath(slug, deck.key);
+      insertDeck.run([
         deckId,
-        card.front,
-        card.back,
-        card.type,
+        deck.name,
         path,
-        card.contentHash,
-        card.breadcrumb,
-        card.notes,
-        card.clozeText,
-        card.clozeOrder,
-        card.hint,
+        directoryDeckTag(slug, deck.key),
         createdAt,
         createdAt,
-        createdAt,
-        card.tags.join(","),
-        card.templateRow ? JSON.stringify(card.templateRow) : null,
+        JSON.stringify(deck.fileTags),
       ]);
+      for (const card of [...deck.cards].sort((a, b) => a.position - b.position)) {
+        insertCard.run([
+          card.id,
+          deckId,
+          card.front,
+          card.back,
+          card.type,
+          path,
+          card.contentHash,
+          card.breadcrumb,
+          card.notes,
+          card.clozeText,
+          card.clozeOrder,
+          card.hint,
+          createdAt,
+          createdAt,
+          createdAt,
+          card.tags.join(","),
+          card.templateRow ? JSON.stringify(card.templateRow) : null,
+        ]);
+      }
     }
   } finally {
+    insertDeck.free();
     insertCard.free();
   }
 
@@ -218,7 +255,7 @@ export function writeDpkgDeckDb(
     for (const template of content.templates) {
       insertTemplate.run([
         template.id,
-        path,
+        directoryDeckPath(slug),
         JSON.stringify(template.tags),
         template.frontTemplate,
         template.frontType,

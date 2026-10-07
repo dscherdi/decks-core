@@ -79,6 +79,7 @@ export const DIRECTORY_TABLES_SQL = `
   CREATE TABLE IF NOT EXISTS directory_cards (
     id TEXT PRIMARY KEY,
     directory_deck_id TEXT NOT NULL,
+    deck_key TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL,
     type TEXT NOT NULL,
     front TEXT NOT NULL,
