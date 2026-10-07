@@ -105,6 +105,8 @@ export {
 } from "./services/ExamGrading";
 export type { TypeInGradability } from "./services/ExamGrading";
 export { shuffleInPlace, sampleWithoutReplacement } from "./utils/sampling";
+export { applyDeckDailyLimits, limitDeckStatRows } from "./utils/daily-limits";
+export type { DailyLimitProfile, DayCounts, StudiedToday } from "./utils/daily-limits";
 export {
   ExamAttempt,
   buildExamPool,
