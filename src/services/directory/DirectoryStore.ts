@@ -284,10 +284,24 @@ function liveProfile(db: RawDatabase, id: string): boolean {
   return scalar(db, "SELECT 1 FROM deckprofiles WHERE id = ? AND deleted_at IS NULL", [id]) !== undefined;
 }
 
+/** Ids of the package decks that study with the Exams preset unless a tag mapping says otherwise. */
+export function directoryExamDeckIds(records: readonly Pick<DirectoryDeckRecord, "slug" | "manifestJson">[]): Set<string> {
+  const ids = new Set<string>();
+  for (const record of records) {
+    for (const key of examDeckKeys(record.manifestJson)) ids.add(directoryDeckId(record.slug, key));
+  }
+  return ids;
+}
+
 /**
- * The profile one deck of a package studies with: a `#directory` tag mapping,
- * else the Exams preset for an exam deck, else the default.
+ * A package deck's profile: a mapping on its deck tag or an ancestor, else the
+ * Exams preset for an exam deck, else the default. Flat tags never apply.
  */
+export function pickDirectoryProfile(mappings: readonly ProfileTagMapping[], deckTag: string, examDeck: boolean): string {
+  return pickProfileMapping(mappings, [deckTag]) ?? (examDeck ? EXAMS_PROFILE_ID : DEFAULT_PROFILE_ID);
+}
+
+/** The profile one deck of a package studies with, from the live mappings and profiles. */
 export function resolveDirectoryProfileId(
   db: RawDatabase,
   record: Pick<DirectoryDeckRecord, "slug" | "manifestJson">,
@@ -295,17 +309,17 @@ export function resolveDirectoryProfileId(
 ): string {
   const mappings: ProfileTagMapping[] = query(
     db,
-    "SELECT id, profile_id, tag, created FROM profile_tag_mappings WHERE deleted_at IS NULL"
+    `SELECT m.id, m.profile_id, m.tag, m.created FROM profile_tag_mappings m
+       JOIN deckprofiles p ON p.id = m.profile_id AND p.deleted_at IS NULL
+      WHERE m.deleted_at IS NULL`
   ).map((row) => ({
     id: String(row.id ?? ""),
     profileId: String(row.profile_id ?? ""),
     tag: String(row.tag ?? ""),
     created: String(row.created ?? ""),
   }));
-  const mapped = pickProfileMapping(mappings, [directoryDeckTag(record.slug, key)]);
-  if (mapped && liveProfile(db, mapped)) return mapped;
-  if (examDeckKeys(record.manifestJson).has(key) && liveProfile(db, EXAMS_PROFILE_ID)) return EXAMS_PROFILE_ID;
-  return DEFAULT_PROFILE_ID;
+  const examDeck = examDeckKeys(record.manifestJson).has(key) && liveProfile(db, EXAMS_PROFILE_ID);
+  return pickDirectoryProfile(mappings, directoryDeckTag(record.slug, key), examDeck);
 }
 
 /** Marker stored in the per-device `last_synced_mtime` once a version is materialised. */

@@ -3,11 +3,13 @@ import { buildMigrationSQL } from "../../../database/schemas";
 import { unpackDpkg } from "../archive";
 import { importDpkgContent } from "../import";
 import {
+  directoryExamDeckIds,
   ensureDirectoryTables,
   getDirectoryDeck,
   listDirectoryDecks,
   materialiseDirectoryDecks,
   mergeDirectoryTables,
+  pickDirectoryProfile,
   removeDirectoryDeck,
 } from "../DirectoryStore";
 import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "../ids";
@@ -295,6 +297,36 @@ describe("directory decks in the main database", () => {
     ]);
     materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z");
     expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([DEFAULT_PROFILE_ID, other]);
+  });
+
+  it("picks a package deck's profile from its deck tag, never from a flat tag", () => {
+    const mapping = (profileId: string, tag: string) => ({ id: tag, profileId, tag, created: "x" });
+    const tag = directoryDeckTag(SLUG, "east");
+    expect(pickDirectoryProfile([], tag, false)).toBe(DEFAULT_PROFILE_ID);
+    expect(pickDirectoryProfile([], tag, true)).toBe(EXAMS_PROFILE_ID);
+    expect(pickDirectoryProfile([mapping("p1", "#directory")], tag, true)).toBe("p1");
+    expect(pickDirectoryProfile([mapping("p1", "#german")], tag, true)).toBe(EXAMS_PROFILE_ID);
+  });
+
+  it("names every exam deck, and passes over a mapping whose profile was deleted", async () => {
+    const [france, germany, italy] = v1().cards;
+    const profileOf = (db: Database, id: string) => rows(db, "SELECT profile_id FROM decks WHERE id = ?", [id])[0].profile_id;
+    const db = await mainDb();
+    await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", { east: DEFAULT_EXAM_SETTINGS });
+    expect(directoryExamDeckIds(listDirectoryDecks(db))).toEqual(new Set([EAST]));
+
+    const [first, second] = rows(db, "SELECT id FROM deckprofiles WHERE id NOT IN (?, ?) LIMIT 2", [
+      DEFAULT_PROFILE_ID,
+      EXAMS_PROFILE_ID,
+    ]).map((row) => String(row.id));
+    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory', 'x'), ('m2', ?, ?, 'x')`, [
+      first,
+      second,
+      directoryDeckTag(SLUG),
+    ]);
+    db.run("UPDATE deckprofiles SET deleted_at = 'x' WHERE id = ?", [second]);
+    materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z");
+    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([first, first]);
   });
 
   it("arrives on another device with all of its decks", async () => {
