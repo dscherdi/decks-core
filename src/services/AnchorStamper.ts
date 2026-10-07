@@ -29,6 +29,7 @@ import { splitTableLine, unescapeTableCell } from "../utils/markdown-table";
 import { parseHeaderLevels } from "../database/types";
 import { findFlashcardSegment } from "../utils/source-navigator";
 import { wantsReverseCards } from "../utils/frontmatter";
+import { isDirectoryDeckPath } from "./directory/ids";
 
 export type StampOutcome =
   | { ok: true; anchorKey: string; adopted: boolean }
@@ -122,6 +123,8 @@ export class AnchorStamper {
   }
 
   private async stamp(card: Flashcard): Promise<StampOutcome> {
+    // Packaged cards have no note to write into; their ids are already fixed.
+    if (isDirectoryDeckPath(card.sourceFile)) return { ok: false, reason: "not_stampable" };
     if (card.edgeId) {
       const key = edgeBindingKey(
         card.edgeId,
@@ -185,6 +188,10 @@ export class AnchorStamper {
     cards: Flashcard[],
     titleMode = false
   ): Promise<{ stamped: number; skipped: number; outcomes: StampOutcome[] }> {
+    if (isDirectoryDeckPath(path)) {
+      const fixed: StampOutcome = { ok: false, reason: "not_stampable" };
+      return { stamped: 0, skipped: cards.length, outcomes: cards.map(() => fixed) };
+    }
     const content = await this.notes.read(path);
     if (content === null) {
       const missing: StampOutcome = { ok: false, reason: "file_missing" };

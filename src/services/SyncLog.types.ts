@@ -49,6 +49,7 @@ export type SyncOpV1 =
   | AiSessionUpsertOp
   | AiStagedCardsUpsertOp
   | AiConceptsSaveOp
+  | DirectoryDeckRemoveOp
   | ClientHelloOp;
 
 export type SyncLogEntry = SyncLogEntryHeader & SyncOpV1;
@@ -92,6 +93,15 @@ export interface RateUndoOp {
  * cards belong to the deck locally — no need to enumerate ids in the
  * payload.
  */
+/** A directory deck was removed on the origin device as of `at`. */
+export interface DirectoryDeckRemoveOp {
+  o: "directory_deck_remove";
+  p: {
+    deckId: string;
+    at: string;
+  };
+}
+
 export interface DeckResetOp {
   o: "deck_reset";
   p: {
@@ -436,5 +446,6 @@ export const KNOWN_OP_TYPES_V1: ReadonlySet<SyncOpV1["o"]> = new Set([
   "ai_session_upsert",
   "ai_staged_cards_upsert",
   "ai_concepts_save",
+  "directory_deck_remove",
   "client_hello",
 ]);

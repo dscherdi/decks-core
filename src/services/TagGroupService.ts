@@ -12,6 +12,7 @@ import {
   studyTagsFor,
   type TagScopeOptions,
 } from "../utils/deck-tags";
+import { isDirectoryDeckPath } from "./directory/ids";
 
 const DEFAULT_SCOPE: TagScopeOptions = { baseTag: "#decks", ignore: [] };
 
@@ -36,7 +37,8 @@ export class TagGroupService {
    * is a real group rather than an empty folder that only sums its children.
    * Membership is intentionally overlapping: a deck tagged `#decks/spanish` and
    * `#math` appears under both, and callers that total a section do so over
-   * unique deck ids.
+   * unique deck ids. Directory decks have a section of their own and never
+   * appear here.
    */
   async aggregateByTag(decks: DeckWithProfile[]): Promise<DeckGroup[]> {
     const tagMap = new Map<string, DeckWithProfile[]>();
@@ -56,6 +58,7 @@ export class TagGroupService {
 
     const scope = this.scopeOf();
     for (const deck of decks) {
+      if (isDirectoryDeckPath(deck.filepath)) continue;
       for (const tag of studyTagsFor(deck, scope)) {
         for (const ancestor of ancestorTags(tag)) add(ancestor, deck);
       }

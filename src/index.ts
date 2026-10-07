@@ -9,6 +9,7 @@ export * from "./database/types";
 export {
   SQL_QUERIES,
   CREATE_TABLES_SQL,
+  DIRECTORY_TABLES_SQL,
   CURRENT_SCHEMA_VERSION,
   BACKUP_TABLES_SQL,
   buildMigrationSQL,
@@ -30,6 +31,11 @@ export type {
   QueryConfig,
   JournalStateRow,
 } from "./database/DatabaseService.interface";
+
+// Deck directory: .dpkg packages and the decks installed from them.
+export * from "./services/directory";
+export { sha256Hex } from "./utils/sha256";
+export type { JsonValue, JsonObject } from "./utils/json";
 
 // Services
 export { FlashcardParser } from "./services/FlashcardParser";
@@ -230,6 +236,7 @@ export type {
   AiSessionUpsertOp,
   AiStagedCardsUpsertOp,
   AiConceptsSaveOp,
+  DirectoryDeckRemoveOp,
   ClientHelloOp,
 } from "./services/SyncLog.types";
 export { KNOWN_OP_TYPES_V1 } from "./services/SyncLog.types";
@@ -686,7 +693,7 @@ export type {
   BuildDeckTreeInput,
 } from "./utils/deck-tree";
 export { MinHeap } from "./utils/min-heap";
-export { formatTime, formatPace } from "./utils/formatting";
+export { formatTime, formatPace, formatByteSize } from "./utils/formatting";
 export {
   splitTableLine,
   escapeTableCell,

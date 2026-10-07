@@ -48,6 +48,10 @@ export interface ParsedFlashcard {
   // Cloze cards: index of this cloze within its own line (binding keys only;
   // clozeOrder stays body-scoped and feeds card ids).
   clozeLineIndex?: number;
+  // Cards that arrive already identified (from a .dpkg package): id and
+  // content hash are taken as given instead of derived from the content.
+  fixedId?: string;
+  fixedContentHash?: string;
 }
 
 /**

@@ -18,6 +18,7 @@
 import type { IDatabaseService } from "../database/DatabaseService.interface";
 import type { ILogger as Logger } from "../database/DatabaseService.interface";
 import type { SyncLogEntry } from "./SyncLog.types";
+import { REMOVE_DIRECTORY_CONTENT_SQL } from "./directory/DirectoryStore";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
 import type { ReviewLog } from "../database/types";
 import {
@@ -80,6 +81,7 @@ const HANDLERS: Partial<Record<SyncLogEntry["o"], OpHandler>> = {
   ai_session_upsert: handleAiSessionUpsert,
   ai_staged_cards_upsert: handleAiStagedCardsUpsert,
   ai_concepts_save: handleAiConceptsSave,
+  directory_deck_remove: handleDirectoryDeckRemove,
   client_hello: async () => {},
 };
 
@@ -257,6 +259,33 @@ async function handleRateUndo(
  * The receiver doesn't need a card-id list — it looks up its own
  * flashcards-for-deck and applies the cutoff filter locally.
  */
+/**
+ * Apply a remote directory-deck removal. An import made after `at` on this
+ * device wins; otherwise the deck is tombstoned and its rows dropped.
+ */
+async function handleDirectoryDeckRemove(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  logger: Logger
+): Promise<void> {
+  if (entry.o !== "directory_deck_remove") return;
+  const { deckId, at } = entry.p;
+  try {
+    const rows = await db.querySql<{ modified: string; removed_at: string | null }>(
+      "SELECT modified, removed_at FROM directory_decks WHERE id = ?",
+      [deckId],
+      { asObject: true }
+    );
+    const current = rows[0];
+    if (!current || current.removed_at !== null || current.modified >= at) return;
+    await db.executeSql("UPDATE directory_decks SET removed_at = ?, modified = ? WHERE id = ?", [at, at, deckId]);
+    for (const sql of REMOVE_DIRECTORY_CONTENT_SQL) await db.executeSql(sql, [deckId]);
+  } catch (error) {
+    logger.debug(`SyncLog: directory_deck_remove for ${deckId} not applied`, error);
+  }
+}
+
 async function handleDeckReset(
   db: IDatabaseService,
   _sourceDeviceId: string,

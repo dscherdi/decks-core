@@ -27,6 +27,8 @@ import type { SessionCounts } from "../services/ai/hub";
 import type { SyncData, SyncResult } from "../services/FlashcardSynchronizer";
 import type { FilterCompileOptions } from "../services/FilterEngine";
 import type { SyncOpV1 } from "../services/SyncLog.types";
+import type { DirectoryDeckRecord, MaterialiseAllResult } from "../services/directory/DirectoryStore";
+import type { DpkgImportResult } from "../services/directory/import";
 
 export interface QueryConfig {
   asObject?: boolean;
@@ -99,6 +101,16 @@ export interface IDatabaseService {
     template: Omit<DeckTemplate, "created" | "modified">
   ): Promise<void>;
   deleteDeckTemplateByFile(sourceFile: string): Promise<void>;
+
+  // Deck directory: decks installed from .dpkg packages
+  /** Store a package's deck and build its rows; saves straight away. */
+  importDirectoryPackage(bytes: Uint8Array): Promise<DpkgImportResult>;
+  materialiseDirectoryDecks(): Promise<MaterialiseAllResult>;
+  listDirectoryDecks(): Promise<DirectoryDeckRecord[]>;
+  /** Templates that bind only within this directory deck. */
+  getDirectoryTemplates(deckId: string): Promise<DeckTemplate[]>;
+  /** Tombstone the deck, drop its rows and tell other devices; saves straight away. */
+  removeDirectoryDeck(deckId: string): Promise<void>;
   renameDeckTemplate(
     oldSourceFile: string,
     newSourceFile: string,

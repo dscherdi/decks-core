@@ -486,3 +486,28 @@ describe("flattenDeckTree & allBranchIds", () => {
     expect(allBranchIds(tree)).not.toContain("fa");
   });
 });
+
+// --- Deck directory -----------------------------------------------------------
+
+describe("buildDeckTree — Deck directory", () => {
+  const installed = fileDeck("deck_dir_x", "World capitals", "decks-directory:capitals");
+  installed.tag = "#directory/capitals";
+
+  it("lists installed decks in their own section, never under Files", () => {
+    const tree = build({ fileDecks: [fileDeck("fa", "Own", "Notes/Own.md"), installed] });
+    const section = tree.sections.find((s) => s.section === "directory");
+    expect(section?.children.map((c) => c.id)).toEqual(["deck_dir_x"]);
+    const files = tree.sections.find((s) => s.section === "files");
+    expect(findNode({ pinned: tree.pinned, sections: files ? [files] : [] }, "deck_dir_x")).toBeUndefined();
+  });
+
+  it("has no section until a deck is installed", () => {
+    const tree = build({ fileDecks: [fileDeck("fa", "Own", "Notes/Own.md")] });
+    expect(tree.sections.map((s) => s.section)).toEqual(["files", "tags", "custom"]);
+  });
+
+  it("is not hidden by the minimum card count", () => {
+    const tree = build({ fileDecks: [installed], minDeckCardCount: 50, getStats: () => ({ newCount: 1, dueCount: 0, totalCount: 3 }) });
+    expect(findNode(tree, "deck_dir_x")).toBeDefined();
+  });
+});

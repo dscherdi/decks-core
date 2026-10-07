@@ -58,6 +58,57 @@ export const SEED_PRESET_PROFILES_SQL = [
   }),
 ].join("\n");
 
+// Content of decks installed from .dpkg packages. Preserved across migrations; the working
+// decks/flashcards rows are rebuilt from it. No enum CHECKs, so newer rows still load.
+export const DIRECTORY_TABLES_SQL = `
+  CREATE TABLE IF NOT EXISTS directory_decks (
+    id TEXT PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    version INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    manifest TEXT NOT NULL,
+    archive_sha256 TEXT NOT NULL,
+    file_tags TEXT,
+    imported_at TEXT NOT NULL,
+    modified TEXT NOT NULL,
+    removed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS directory_cards (
+    id TEXT PRIMARY KEY,
+    directory_deck_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    front TEXT NOT NULL,
+    back TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    breadcrumb TEXT NOT NULL DEFAULT '',
+    cloze_text TEXT,
+    cloze_order INTEGER,
+    hint TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '',
+    template_row TEXT,
+    content_hash TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_directory_cards_deck ON directory_cards(directory_deck_id, position);
+
+  CREATE TABLE IF NOT EXISTS directory_templates (
+    id TEXT PRIMARY KEY,
+    directory_deck_id TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    front_template TEXT NOT NULL DEFAULT '',
+    front_type TEXT NOT NULL DEFAULT 'md',
+    back_template TEXT NOT NULL DEFAULT '',
+    back_type TEXT NOT NULL DEFAULT 'md',
+    notes_template TEXT,
+    notes_type TEXT,
+    created TEXT NOT NULL,
+    modified TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_directory_templates_deck ON directory_templates(directory_deck_id);
+`;
+
 // SQL Table Creation Schema - Used when database file doesn't exist
 export const CREATE_TABLES_SQL = `
   PRAGMA foreign_keys = OFF;
@@ -549,6 +600,8 @@ export const CREATE_TABLES_SQL = `
   -- Trained weight set indexes (active = newest live by trained_at)
   CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_live ON fsrs_weight_sets(deleted_at);
   CREATE INDEX IF NOT EXISTS idx_fsrs_weight_sets_trained_at ON fsrs_weight_sets(trained_at);
+
+  ${DIRECTORY_TABLES_SQL}
 
   -- Set schema version
   PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};
@@ -1297,6 +1350,8 @@ export function buildMigrationSQL(db: Database): string {
       PRIMARY KEY (source_hash, page)
     );
     CREATE INDEX IF NOT EXISTS idx_ai_concepts_source ON ai_source_concepts(source_hash, page);
+
+    ${DIRECTORY_TABLES_SQL}
 
     -- Set schema version
     PRAGMA user_version = ${CURRENT_SCHEMA_VERSION};

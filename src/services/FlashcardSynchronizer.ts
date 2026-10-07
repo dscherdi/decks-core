@@ -1,4 +1,4 @@
-import { FlashcardParser } from "./FlashcardParser";
+import { FlashcardParser, type ParsedFlashcard } from "./FlashcardParser";
 import { CanvasFlashcardExtractor } from "./CanvasFlashcardExtractor";
 import type { Flashcard, FlashcardType, DeckProfile, TemplateRow } from "../database/types";
 import { parseHeaderLevels } from "../database/types";
@@ -106,8 +106,11 @@ export interface SyncData {
   deckId: string;
   deckName: string;
   deckFilepath: string;
-  deckConfig: DeckProfile;
+  /** Needed to parse `fileContent`; unused when `preParsed` is given. */
+  deckConfig?: DeckProfile;
   fileContent: string;
+  /** Cards that need no parsing. `fileContent` is then ignored. */
+  preParsed?: ParsedFlashcard[];
   fileTitle?: string;
   reverseCards?: boolean;
   clozeEnabled?: boolean;
@@ -491,6 +494,26 @@ export class FlashcardSynchronizer {
     }
   }
 
+  private parseContent(data: SyncData): ParsedFlashcard[] {
+    if (!data.deckConfig) throw new Error("A deck profile is required to parse cards");
+    const headerLevels = parseHeaderLevels(data.deckConfig);
+    if (data.deckFilepath.toLowerCase().endsWith(".canvas")) {
+      return CanvasFlashcardExtractor.extract(
+        data.fileContent,
+        headerLevels,
+        data.fileTitle,
+        data.clozeEnabled,
+      );
+    }
+    return FlashcardParser.parseFlashcardsFromContent(
+      data.fileContent,
+      headerLevels,
+      data.fileTitle,
+      data.clozeEnabled,
+      data.examEnabled,
+    );
+  }
+
   /**
    * Sync flashcards for a deck
    */
@@ -504,22 +527,7 @@ export class FlashcardSynchronizer {
       // let CanvasFlashcardExtractor stamp each parsed card with its source
       // text-node id.
       progressCallback?.(10, "Parsing flashcards from file content...");
-      const isCanvas = data.deckFilepath.toLowerCase().endsWith(".canvas");
-      const headerLevels = parseHeaderLevels(data.deckConfig);
-      const parsedCards = isCanvas
-        ? CanvasFlashcardExtractor.extract(
-            data.fileContent,
-            headerLevels,
-            data.fileTitle,
-            data.clozeEnabled,
-          )
-        : FlashcardParser.parseFlashcardsFromContent(
-            data.fileContent,
-            headerLevels,
-            data.fileTitle,
-            data.clozeEnabled,
-            data.examEnabled,
-          );
+      const parsedCards = data.preParsed ?? this.parseContent(data);
 
       // Expand with reverse cards if enabled. Cloze, image-occlusion, spatial
       // and multiple-choice cards never reverse — spatial edges are
@@ -636,7 +644,7 @@ export class FlashcardSynchronizer {
        */
       if (
         wouldEmptyDeck(expandedCards.length, existingFlashcards.length, {
-          contentEmpty: data.fileContent.trim() === "",
+          contentEmpty: !data.preParsed && data.fileContent.trim() === "",
           refuseEmptyResult: data.refuseEmptyResult,
         })
       ) {
@@ -718,7 +726,9 @@ export class FlashcardSynchronizer {
         const isSpatial = parsed.type === "spatial";
         const hasEdge = !!parsed.edgeId;
         let flashcardId: string;
-        if (isOcclusionV2) {
+        if (parsed.fixedId) {
+          flashcardId = parsed.fixedId;
+        } else if (isOcclusionV2) {
           // Identity keyed on the heading + stable mask id, so moving/editing a
           // box (or relocating the image) keeps the card's FSRS history.
           flashcardId = generateOcclusionV2FlashcardId(
@@ -744,8 +754,9 @@ export class FlashcardSynchronizer {
         }
         // Anchor-first matching: the token's id (or a minted token's binding)
         // overrides content-derived identity, so an edit keeps the card's id.
-        let anchored = false;
-        if (parsed.anchorKey && isIdKey(parsed.anchorKey)) {
+        // A fixed id counts as anchored; tokens and bindings never override it.
+        let anchored = !!parsed.fixedId;
+        if (!anchored && parsed.anchorKey && isIdKey(parsed.anchorKey)) {
           const carried = cardIdForKey(parsed.anchorKey);
           if (carried && processedIds.has(carried)) {
             // A copied token: the first card in the note keeps the id, the copy
@@ -755,7 +766,7 @@ export class FlashcardSynchronizer {
             flashcardId = carried;
             anchored = true;
           }
-        } else if (parsed.anchorKey) {
+        } else if (!anchored && parsed.anchorKey) {
           const boundId = bindings.get(parsed.anchorKey);
           if (boundId) {
             flashcardId = boundId;
@@ -766,7 +777,9 @@ export class FlashcardSynchronizer {
         // (even ones only a template reads) triggers a re-sync of the card.
         // V2 occlusion hashes only the active mask, so editing one box never
         // churns its siblings.
-        const contentHash = parsed.templateRow
+        const contentHash = parsed.fixedContentHash
+          ? parsed.fixedContentHash
+          : parsed.templateRow
           ? generateContentHash(parsed.back + "::row::" + JSON.stringify(parsed.templateRow.cells))
           : isOcclusionV2
           ? generateContentHash(occlusionV2HashInput(parsed.back, parsed.maskId!))

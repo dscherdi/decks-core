@@ -3,13 +3,16 @@ import type { FileDeck, DeckGroup, CustomDeckGroup } from "../database/types";
 import { generateDeckGroupId } from "./hash";
 import { naturalCompare } from "./string";
 import { I18n } from "../i18n/I18n";
+import { isDirectoryDeckPath } from "../services/directory/ids";
 
 /**
- * View-model for the unified Decks tree. Three top-level `section` nodes
- * (Files / Tags / Custom) plus a `Pinned` section; inside each, decks nest
- * into `folder` nodes with `leaf` decks at the bottom.
+ * View-model for the unified Decks tree. Top-level `section` nodes
+ * (Files / Tags / Custom, plus Deck directory once one is installed) and a
+ * `Pinned` section; inside each, decks nest into `folder` nodes with `leaf`
+ * decks at the bottom.
  *
  * - Files nest by the deck note's vault folder path (`filepath`).
+ * - Directory decks (installed packages) are a flat list of their own.
  * - Tags nest by nested-tag path (`#a/b/c`). A node at a group's exact tag is
  *   "backed" (`group` set); intermediate paths with no exact group are virtual
  *   folders whose counts/ids are summed from children.
@@ -19,7 +22,7 @@ import { I18n } from "../i18n/I18n";
  */
 export type TreeKind = "section" | "folder" | "leaf";
 
-export type TreeSection = "files" | "tags" | "custom" | "pinned";
+export type TreeSection = "files" | "tags" | "custom" | "directory" | "pinned";
 
 export interface TreeNode {
   /** Stable, unique id. section: "sec:files". folder: "dir:<path>" /
@@ -114,6 +117,7 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   const filesSection = makeNode({ id: "sec:files", kind: "section", section: "files", name: t.tabFiles, depth: 0 });
   const tagsSection = makeNode({ id: "sec:tags", kind: "section", section: "tags", name: t.tabTags, depth: 0 });
   const customSection = makeNode({ id: "sec:custom", kind: "section", section: "custom", name: t.tabCustom, depth: 0 });
+  const directorySection = makeNode({ id: "sec:directory", kind: "section", section: "directory", name: t.tabDirectory, depth: 0 });
 
   // --- Files: nest by vault folder path (tree) or flat leaves ---------------
   const folderByPath = new Map<string, TreeNode>();
@@ -135,6 +139,13 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
 
   for (const deck of fileDecks) {
     const pinned = pinnedIds.has(deck.id);
+    // Installed explicitly, so the minimum-size filter never hides one.
+    if (isDirectoryDeckPath(deck.filepath)) {
+      directorySection.children.push(
+        makeNode({ id: deck.id, kind: "leaf", name: deck.name, depth: 1, fileDeck: deck, pinned })
+      );
+      continue;
+    }
     if (minCount > 0 && !pinned && (getStats(deck.id)?.totalCount ?? 0) < minCount) continue;
     const parent = flat ? filesSection : ensureFolder(dirSegments(deck.filepath));
     parent.children.push(
@@ -193,6 +204,7 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
   }
 
   const sections = [filesSection, tagsSection, customSection];
+  if (directorySection.children.length > 0) sections.push(directorySection);
 
   // Roll up counts / ids / limit flags over the FULL tree (pinned included).
   for (const section of sections) rollup(section, getStats, pinnedIds);
