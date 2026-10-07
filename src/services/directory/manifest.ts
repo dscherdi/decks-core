@@ -1,4 +1,13 @@
-import { parseExamSettings, type ExamSettings, type FlashcardType } from "../../database/types";
+import { REQUEST_RETENTION_MAX, REQUEST_RETENTION_MIN } from "../../algorithm/fsrs-weights";
+import {
+  DEFAULT_DECK_PROFILE,
+  parseExamSettings,
+  type ClozeShowContext,
+  type ExamSettings,
+  type FlashcardType,
+  type ReviewOrder,
+} from "../../database/types";
+import { parseSteps } from "../../utils/step-parser";
 import { isJsonObject, isStringList, parseJson, type JsonObject } from "../../utils/json";
 import { isValidDirectoryDeckKey, isValidDirectorySlug } from "./ids";
 
@@ -18,6 +27,34 @@ export interface DpkgDeckEntry {
   cardCount: number;
   /** Set on exam decks, which need an exam-enabled profile; the settings pre-fill an exam. */
   exam: ExamSettings | null;
+  /** Key of the package profile this deck studies with; null on packages that carry none. */
+  profile: string | null;
+}
+
+/** The study settings of an author's profile, carried so the decks review the way they were made. */
+export interface DpkgProfile {
+  /** Stable across versions, so an installed copy keeps the same profile. */
+  key: string;
+  /** Null when the author set no daily limit. */
+  newCardsPerDay: number | null;
+  reviewCardsPerDay: number | null;
+  reviewOrder: ReviewOrder;
+  learningSteps: string;
+  relearningSteps: string;
+  requestRetention: number;
+  clozeShowContext: ClozeShowContext;
+  ttsLang: string | null;
+  ttsRate: number | null;
+}
+
+export const DPKG_DAILY_LIMIT_MAX = 9999;
+const PROFILE_KEY_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const TTS_LANG_PATTERN = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/;
+const TTS_RATE_MIN = 0.1;
+const TTS_RATE_MAX = 10;
+
+export function isValidDpkgProfileKey(key: string): boolean {
+  return PROFILE_KEY_PATTERN.test(key);
 }
 
 /** Most decks one package may hold. */
@@ -43,6 +80,8 @@ export interface DpkgManifest {
   generator: string;
   /** The decks in the package, in the order the author arranged them. */
   decks: DpkgDeckEntry[];
+  /** The profiles the decks study with; empty on packages written before profiles travelled. */
+  profiles: DpkgProfile[];
 }
 
 export type DpkgErrorCode =
@@ -169,7 +208,7 @@ export function parseDpkgManifest(json: string): DpkgManifest {
     dbSha256,
     createdAt: text(parsed, "createdAt"),
     generator: text(parsed, "generator", false),
-    decks: deckEntries(parsed, title, cardCount),
+    ...decksAndProfiles(parsed, title, cardCount),
   };
 }
 
@@ -185,12 +224,21 @@ function deckEntry(value: JsonObject[string]): DpkgDeckEntry {
   if (!isValidDirectoryDeckKey(key)) fail(`manifest.decks key ${JSON.stringify(key)} is malformed`);
   const title = text(value, "title").trim();
   if (title === "") fail("manifest.decks title is empty");
-  return { key, title, cardCount: count(value, "cardCount"), exam: examSettings(value.exam, "manifest.decks exam") };
+  const profile = value.profile === undefined || value.profile === null ? null : text(value, "profile");
+  return {
+    key,
+    title,
+    cardCount: count(value, "cardCount"),
+    exam: examSettings(value.exam, "manifest.decks exam"),
+    profile,
+  };
 }
 
 function deckEntries(obj: JsonObject, title: string, cardCount: number): DpkgDeckEntry[] {
   // Packages written before decks were listed hold one deck, with its exam settings at the top.
-  if (obj.decks === undefined) return [{ key: "", title, cardCount, exam: examSettings(obj.exam, "manifest.exam") }];
+  if (obj.decks === undefined) {
+    return [{ key: "", title, cardCount, exam: examSettings(obj.exam, "manifest.exam"), profile: null }];
+  }
   if (!Array.isArray(obj.decks) || obj.decks.length === 0) fail("manifest.decks must be a non-empty list");
   if (obj.decks.length > MAX_PACKAGE_DECKS) fail(`manifest.decks lists more than ${MAX_PACKAGE_DECKS} decks`);
   const entries = obj.decks.map(deckEntry);
@@ -203,6 +251,75 @@ function deckEntries(obj: JsonObject, title: string, cardCount: number): DpkgDec
     fail("manifest.decks card counts do not add up to manifest.cardCount");
   }
   return entries;
+}
+
+function dailyLimit(obj: JsonObject, key: string): number | null {
+  const value = obj[key];
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > DPKG_DAILY_LIMIT_MAX) {
+    fail(`manifest.profiles ${key} must be a whole number from 0 to ${DPKG_DAILY_LIMIT_MAX}`);
+  }
+  return value;
+}
+
+function steps(obj: JsonObject, key: string, fallback: string): string {
+  const value = obj[key];
+  if (value === undefined) return fallback;
+  if (typeof value !== "string" || value.length > 200) fail(`manifest.profiles ${key} must be a string`);
+  if (value.trim() !== "" && parseSteps(value).length === 0) fail(`manifest.profiles ${key} is malformed`);
+  return value.trim();
+}
+
+function profileEntry(value: JsonObject[string]): DpkgProfile {
+  if (!isJsonObject(value)) fail("manifest.profiles entries must be objects");
+  const key = text(value, "key");
+  if (!isValidDpkgProfileKey(key)) fail(`manifest.profiles key ${JSON.stringify(key)} is malformed`);
+  const retention = value.requestRetention ?? DEFAULT_DECK_PROFILE.fsrs.requestRetention;
+  if (typeof retention !== "number" || retention < REQUEST_RETENTION_MIN || retention > REQUEST_RETENTION_MAX) {
+    fail(`manifest.profiles requestRetention must be from ${REQUEST_RETENTION_MIN} to ${REQUEST_RETENTION_MAX}`);
+  }
+  const ttsLang = value.ttsLang === undefined || value.ttsLang === null ? null : text(value, "ttsLang");
+  if (ttsLang !== null && !TTS_LANG_PATTERN.test(ttsLang)) fail("manifest.profiles ttsLang is malformed");
+  const ttsRate = value.ttsRate ?? null;
+  if (ttsRate !== null && (typeof ttsRate !== "number" || ttsRate < TTS_RATE_MIN || ttsRate > TTS_RATE_MAX)) {
+    fail("manifest.profiles ttsRate is out of range");
+  }
+  return {
+    key,
+    newCardsPerDay: dailyLimit(value, "newCardsPerDay"),
+    reviewCardsPerDay: dailyLimit(value, "reviewCardsPerDay"),
+    reviewOrder: value.reviewOrder === "random" ? "random" : "due-date",
+    learningSteps: steps(value, "learningSteps", DEFAULT_DECK_PROFILE.learningSteps),
+    relearningSteps: steps(value, "relearningSteps", DEFAULT_DECK_PROFILE.relearningSteps),
+    requestRetention: retention,
+    clozeShowContext: value.clozeShowContext === "open" ? "open" : "hidden",
+    ttsLang,
+    ttsRate,
+  };
+}
+
+function decksAndProfiles(
+  obj: JsonObject,
+  title: string,
+  cardCount: number
+): Pick<DpkgManifest, "decks" | "profiles"> {
+  const decks = deckEntries(obj, title, cardCount);
+  if (obj.profiles !== undefined && !Array.isArray(obj.profiles)) fail("manifest.profiles must be a list");
+  const profiles = (obj.profiles ?? []).map(profileEntry);
+  if (profiles.length > MAX_PACKAGE_DECKS) fail(`manifest.profiles lists more than ${MAX_PACKAGE_DECKS} profiles`);
+  const keys = new Set(profiles.map((profile) => profile.key));
+  if (keys.size !== profiles.length) fail("manifest.profiles repeats a key");
+  // A profile is an exam profile or not, so the decks sharing one agree on their exam.
+  const examByProfile = new Map<string, string>();
+  for (const deck of decks) {
+    if (deck.profile === null) continue;
+    if (!keys.has(deck.profile)) fail(`manifest.decks profile ${JSON.stringify(deck.profile)} is not listed`);
+    const exam = JSON.stringify(deck.exam);
+    const seen = examByProfile.get(deck.profile);
+    if (seen !== undefined && seen !== exam) fail("decks sharing a profile have different exam settings");
+    examByProfile.set(deck.profile, exam);
+  }
+  return { decks, profiles };
 }
 
 /** Keys of the exam decks a stored manifest lists; an unreadable manifest lists none. */

@@ -2,7 +2,7 @@ import { strToU8, unzipSync, zipSync } from "fflate";
 import { unpackDpkg } from "../archive";
 import { DpkgError, parseDpkgManifest } from "../manifest";
 import { readDpkgContent } from "../import";
-import { buildPackage, card, opener, singleDeck } from "./helpers";
+import { buildPackage, card, opener, packageProfile, singleDeck } from "./helpers";
 import { DEFAULT_EXAM_SETTINGS } from "../../../database/types";
 
 const SLUG = "spanish-basics";
@@ -94,8 +94,36 @@ describe(".dpkg packages", () => {
     const { decks, ...rest } = unpacked.manifest;
     const legacy = parseDpkgManifest(JSON.stringify({ ...rest, exam: { passScorePct: 90 } }));
     expect(legacy.decks).toEqual([
-      { key: "", title: decks[0].title, cardCount: 3, exam: { ...DEFAULT_EXAM_SETTINGS, passScorePct: 90 } },
+      { key: "", title: decks[0].title, cardCount: 3, exam: { ...DEFAULT_EXAM_SETTINGS, passScorePct: 90 }, profile: null },
     ]);
+    expect(legacy.profiles).toEqual([]);
+  });
+
+  it("refuses profiles a deck cannot study with", async () => {
+    const { manifest } = await unpackDpkg(await buildPackage(SLUG, 1, course()), { includeMedia: false });
+    const [vocabulary, grammar] = manifest.decks;
+    const steady = packageProfile("steady");
+    const variants = [
+      { decks: [{ ...vocabulary, profile: "missing" }, grammar], profiles: [steady] },
+      { decks: [{ ...vocabulary, profile: "steady" }, grammar], profiles: [steady, steady] },
+      {
+        decks: [
+          { ...vocabulary, profile: "steady", exam: DEFAULT_EXAM_SETTINGS },
+          { ...grammar, profile: "steady", exam: null },
+        ],
+        profiles: [steady],
+      },
+      { decks: [{ ...vocabulary, profile: "steady" }, grammar], profiles: [{ ...steady, requestRetention: 1.2 }] },
+      { decks: [{ ...vocabulary, profile: "steady" }, grammar], profiles: [{ ...steady, learningSteps: "soon" }] },
+      { decks: [{ ...vocabulary, profile: "steady" }, grammar], profiles: [{ ...steady, newCardsPerDay: -1 }] },
+    ];
+    for (const variant of variants) {
+      expect(() => parseDpkgManifest(JSON.stringify({ ...manifest, ...variant }))).toThrow(DpkgError);
+    }
+    const shared = parseDpkgManifest(
+      JSON.stringify({ ...manifest, decks: [vocabulary, grammar].map((deck) => ({ ...deck, profile: "steady" })), profiles: [steady] })
+    );
+    expect(shared.decks.map((deck) => deck.profile)).toEqual(["steady", "steady"]);
   });
 
   it("refuses a deck list that names a deck twice, misses a key or miscounts", async () => {

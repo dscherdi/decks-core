@@ -1,6 +1,6 @@
 import { DIRECTORY_TABLES_SQL } from "../../database/schemas";
 import type { SqlJsValue } from "../../database/sql-types";
-import { DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID, type DeckTemplate, type ProfileTagMapping } from "../../database/types";
+import { DEFAULT_PROFILE_ID, type DeckTemplate, type ProfileTagMapping } from "../../database/types";
 import { pickProfileMapping } from "../../utils/deck-tags";
 import { isJsonObject, isStringList, parseJson } from "../../utils/json";
 import type { ParsedFlashcard } from "../FlashcardParser";
@@ -15,6 +15,7 @@ import {
 } from "./deck-db";
 import { DIRECTORY_PATH_PREFIX, directoryDeckId, directoryDeckPath, directoryDeckTag } from "./ids";
 import { DpkgError, examDeckKeys, parseDpkgManifest, type DpkgManifest } from "./manifest";
+import { directoryDeckProfileIds, directoryPackageProfiles, type DirectoryPackageProfile } from "./profiles";
 
 export interface DirectoryDeckRecord {
   id: string;
@@ -284,21 +285,46 @@ function liveProfile(db: RawDatabase, id: string): boolean {
   return scalar(db, "SELECT 1 FROM deckprofiles WHERE id = ? AND deleted_at IS NULL", [id]) !== undefined;
 }
 
-/** Ids of the package decks that study with the Exams preset unless a tag mapping says otherwise. */
-export function directoryExamDeckIds(records: readonly Pick<DirectoryDeckRecord, "slug" | "manifestJson">[]): Set<string> {
-  const ids = new Set<string>();
-  for (const record of records) {
-    for (const key of examDeckKeys(record.manifestJson)) ids.add(directoryDeckId(record.slug, key));
+function manifestOf(record: Pick<DirectoryDeckRecord, "manifestJson">): DpkgManifest | null {
+  try {
+    return parseDpkgManifest(record.manifestJson);
+  } catch {
+    return null;
   }
-  return ids;
+}
+
+/** The package profile each deck of the given packages studies with, by deck id. */
+export function directoryDeckProfiles(records: readonly Pick<DirectoryDeckRecord, "manifestJson">[]): Map<string, string> {
+  return directoryDeckProfileIds(records.flatMap((record) => manifestOf(record) ?? []));
+}
+
+/** The deck whose profile an exam on a whole package starts from: its first exam deck, as on the website. */
+export function packageExamDeckId(records: readonly Pick<DirectoryDeckRecord, "slug" | "manifestJson">[], slug: string): string | null {
+  const record = records.find((candidate) => candidate.slug === slug);
+  const deck = record ? manifestOf(record)?.decks.find((entry) => entry.exam !== null) : undefined;
+  return record && deck ? directoryDeckId(record.slug, deck.key) : null;
+}
+
+/** A deck's package profile, when it has one that is still live. */
+export function livePackageProfile(
+  byDeck: ReadonlyMap<string, string>,
+  live: ReadonlySet<string>,
+  deckId: string
+): string | null {
+  const id = byDeck.get(deckId);
+  return id !== undefined && live.has(id) ? id : null;
 }
 
 /**
- * A package deck's profile: a mapping on its deck tag or an ancestor, else the
- * Exams preset for an exam deck, else the default. Flat tags never apply.
+ * A package deck's profile: a mapping on its deck tag or an ancestor, else its
+ * package's own profile, else the default. Flat tags never apply.
  */
-export function pickDirectoryProfile(mappings: readonly ProfileTagMapping[], deckTag: string, examDeck: boolean): string {
-  return pickProfileMapping(mappings, [deckTag]) ?? (examDeck ? EXAMS_PROFILE_ID : DEFAULT_PROFILE_ID);
+export function pickDirectoryProfile(
+  mappings: readonly ProfileTagMapping[],
+  deckTag: string,
+  packageProfileId: string | null
+): string {
+  return pickProfileMapping(mappings, [deckTag]) ?? packageProfileId ?? DEFAULT_PROFILE_ID;
 }
 
 /** The profile one deck of a package studies with, from the live mappings and profiles. */
@@ -318,8 +344,106 @@ export function resolveDirectoryProfileId(
     tag: String(row.tag ?? ""),
     created: String(row.created ?? ""),
   }));
-  const examDeck = examDeckKeys(record.manifestJson).has(key) && liveProfile(db, EXAMS_PROFILE_ID);
-  return pickDirectoryProfile(mappings, directoryDeckTag(record.slug, key), examDeck);
+  const own = directoryDeckProfiles([record]).get(directoryDeckId(record.slug, key)) ?? null;
+  return pickDirectoryProfile(mappings, directoryDeckTag(record.slug, key), own && liveProfile(db, own) ? own : null);
+}
+
+/** The first of the candidate names no other profile holds, removed ones included. */
+function freeProfileName(db: RawDatabase, profile: DirectoryPackageProfile, slug: string): string {
+  const candidates = [profile.name, `${profile.name} (${slug})`, `${profile.name} (${profile.id.slice(-8)})`];
+  for (const name of candidates) {
+    if (scalar(db, "SELECT 1 FROM deckprofiles WHERE name = ? AND id <> ?", [name, profile.id]) === undefined) return name;
+  }
+  return `${profile.name} (${profile.id})`;
+}
+
+function writePackageProfile(db: RawDatabase, profile: DirectoryPackageProfile, slug: string, stamp: string): void {
+  const s = profile.settings;
+  db.run(
+    `INSERT INTO deckprofiles (
+       id, name, has_new_cards_limit_enabled, new_cards_per_day,
+       has_review_cards_limit_enabled, review_cards_per_day,
+       header_level, extra_header_levels, review_order, learning_steps, relearning_steps,
+       fsrs_request_retention, fsrs_profile, cloze_enabled, cloze_show_context,
+       exam_enabled, exam_settings, tts_voice, tts_rate, tts_lang,
+       is_default, created, modified, deleted_at
+     ) VALUES (?, ?, ?, ?, ?, ?, 2, '[]', ?, ?, ?, ?, 'STANDARD', 1, ?, ?, ?, NULL, ?, ?, 0, ?, ?, NULL)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
+       new_cards_per_day = excluded.new_cards_per_day,
+       has_review_cards_limit_enabled = excluded.has_review_cards_limit_enabled,
+       review_cards_per_day = excluded.review_cards_per_day,
+       review_order = excluded.review_order,
+       learning_steps = excluded.learning_steps,
+       relearning_steps = excluded.relearning_steps,
+       fsrs_request_retention = excluded.fsrs_request_retention,
+       cloze_show_context = excluded.cloze_show_context,
+       exam_enabled = excluded.exam_enabled,
+       exam_settings = excluded.exam_settings,
+       tts_rate = excluded.tts_rate,
+       tts_lang = excluded.tts_lang,
+       created = excluded.created,
+       modified = excluded.modified,
+       deleted_at = NULL`,
+    [
+      profile.id,
+      freeProfileName(db, profile, slug),
+      s.newCardsPerDay === null ? 0 : 1,
+      s.newCardsPerDay ?? DEFAULT_NEW_CARDS_PER_DAY,
+      s.reviewCardsPerDay === null ? 0 : 1,
+      s.reviewCardsPerDay ?? DEFAULT_REVIEW_CARDS_PER_DAY,
+      s.reviewOrder,
+      s.learningSteps,
+      s.relearningSteps,
+      s.requestRetention,
+      s.clozeShowContext,
+      profile.exam ? 1 : 0,
+      profile.exam ? JSON.stringify(profile.exam) : "{}",
+      s.ttsRate,
+      s.ttsLang,
+      stamp,
+      stamp,
+    ]
+  );
+}
+
+const DEFAULT_NEW_CARDS_PER_DAY = 20;
+const DEFAULT_REVIEW_CARDS_PER_DAY = 100;
+
+/**
+ * Give a live package its own profiles, stamped with the install: one never edited (created = modified)
+ * follows a newer version; an edited one is kept, and one removed after the install stays removed.
+ */
+export function ensurePackageProfiles(db: RawDatabase, record: DirectoryDeckRecord): string[] {
+  const manifest = manifestOf(record);
+  if (!manifest || record.removedAt !== null) return [];
+  const written: string[] = [];
+  for (const profile of directoryPackageProfiles(manifest)) {
+    const row = query(db, "SELECT created, modified, deleted_at FROM deckprofiles WHERE id = ?", [profile.id])[0];
+    const stamp = record.modified;
+    const write =
+      row === undefined ||
+      (row.deleted_at !== null ? String(row.deleted_at) < stamp : row.created === row.modified && String(row.created) < stamp);
+    if (!write) continue;
+    writePackageProfile(db, profile, record.slug, stamp);
+    written.push(profile.id);
+  }
+  return written;
+}
+
+/** Remove a removed package's profiles that nothing else studies with. */
+export function retirePackageProfiles(db: RawDatabase, record: DirectoryDeckRecord, at: string): void {
+  const manifest = manifestOf(record);
+  if (!manifest) return;
+  for (const profile of directoryPackageProfiles(manifest)) {
+    db.run(
+      `UPDATE deckprofiles SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM decks WHERE profile_id = ?)
+         AND NOT EXISTS (SELECT 1 FROM profile_tag_mappings WHERE profile_id = ? AND deleted_at IS NULL)`,
+      [at, profile.id, profile.id, profile.id]
+    );
+  }
 }
 
 /** Marker stored in the per-device `last_synced_mtime` once a version is materialised. */
@@ -407,6 +531,7 @@ function materialiseOne(db: RawDatabase, record: DirectoryDeckRecord, deck: Dire
  * Scheduling of cards that already exist is kept; returning cards restore from review_logs.
  */
 export function materialiseDirectoryDeck(db: RawDatabase, record: DirectoryDeckRecord, now: string): SyncResult[] {
+  ensurePackageProfiles(db, record);
   const decks = directoryPackageDecks(db, record);
   const keep = new Set(decks.map((deck) => directoryDeckId(record.slug, deck.key)));
   for (const stale of packageDeckIds(db, record.slug)) if (!keep.has(stale)) dropMaterialisedDeck(db, stale);
@@ -452,6 +577,12 @@ export interface MaterialiseAllResult {
   dropped: string[];
   /** Decks whose profile followed a changed `#directory` tag mapping. */
   reprofiled: string[];
+  /** Package profiles created, refreshed or restored. */
+  profiles: string[];
+}
+
+export function materialiseChangedAnything(result: MaterialiseAllResult): boolean {
+  return result.materialised.length + result.dropped.length + result.reprofiled.length + result.profiles.length > 0;
 }
 
 /**
@@ -459,7 +590,7 @@ export interface MaterialiseAllResult {
  * after a migration, a merge, an import or a removal on another device.
  */
 export function materialiseDirectoryDecks(db: RawDatabase, now: string): MaterialiseAllResult {
-  const out: MaterialiseAllResult = { materialised: [], dropped: [], reprofiled: [] };
+  const out: MaterialiseAllResult = { materialised: [], dropped: [], reprofiled: [], profiles: [] };
   if (hasTable(db, "directory_decks")) ensureDirectoryTables(db);
   for (const record of listDirectoryDecks(db, true)) {
     if (record.removedAt !== null) {
@@ -467,8 +598,10 @@ export function materialiseDirectoryDecks(db: RawDatabase, now: string): Materia
         dropMaterialisedDeck(db, id);
         out.dropped.push(id);
       }
+      retirePackageProfiles(db, record, record.removedAt);
       continue;
     }
+    out.profiles.push(...ensurePackageProfiles(db, record));
     if (needsMaterialise(db, record)) {
       materialiseDirectoryDeck(db, record, now);
       out.materialised.push(record.id);
@@ -495,6 +628,7 @@ export function removeDirectoryDeck(db: RawDatabase, deckId: string, at: string)
   if (!current || current.removedAt !== null || current.modified >= at) return false;
   db.run("UPDATE directory_decks SET removed_at = ?, modified = ? WHERE id = ?", [at, at, deckId]);
   for (const sql of REMOVE_DIRECTORY_CONTENT_SQL) db.run(sql, [deckId]);
+  retirePackageProfiles(db, current, at);
   return true;
 }
 

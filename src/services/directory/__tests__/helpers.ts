@@ -6,6 +6,7 @@ import { packageCards, writeDpkgDeckDb, type DirectoryCardContent, type Director
 import type { ClosableRawDatabase } from "../import";
 import { deriveDirectoryCardId } from "../ids";
 import { generateContentHash } from "../../../utils/hash";
+import type { DpkgProfile } from "../manifest";
 
 let sql: SqlJsStatic | null = null;
 
@@ -57,13 +58,37 @@ export function singleDeck(
 }
 
 /** Build a package; `exams` sets exam settings by deck key. */
+/** The profiles a test package carries, and which deck studies with which. */
+export interface PackageProfiles {
+  list: DpkgProfile[];
+  byDeck: Record<string, string>;
+}
+
+/** A carried profile with the shipped defaults, changed where given. */
+export function packageProfile(key: string, changes: Partial<DpkgProfile> = {}): DpkgProfile {
+  return {
+    key,
+    newCardsPerDay: null,
+    reviewCardsPerDay: null,
+    reviewOrder: "due-date",
+    learningSteps: "1m",
+    relearningSteps: "10m",
+    requestRetention: 0.9,
+    clozeShowContext: "hidden",
+    ttsLang: null,
+    ttsRate: null,
+    ...changes,
+  };
+}
+
 export async function buildPackage(
   slug: string,
   version: number,
   content: DirectoryPackageContent,
   media: DpkgMediaInput[] = [],
   exams: Record<string, ExamSettings> = {},
-  title = content.decks[0].name
+  title = content.decks[0].name,
+  profiles: PackageProfiles = { list: [], byDeck: {} }
 ): Promise<Uint8Array> {
   const SQL = await sqlJs();
   const deckDb = new SQL.Database();
@@ -90,7 +115,9 @@ export async function buildPackage(
         title: deck.name,
         cardCount: deck.cards.length,
         exam: exams[deck.key] ?? null,
+        profile: profiles.byDeck[deck.key] ?? null,
       })),
+      profiles: profiles.list,
     },
     deckDb: bytes,
     cardsJson: JSON.stringify(cards),

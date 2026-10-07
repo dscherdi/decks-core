@@ -6,8 +6,10 @@ import {
   DpkgError,
   dpkgMediaPath,
   parseDpkgManifest,
+  type DpkgDeckEntry,
   type DpkgManifest,
   type DpkgMediaEntry,
+  type DpkgProfile,
 } from "./manifest";
 
 export const DPKG_MANIFEST_PATH = "manifest.json";
@@ -133,7 +135,12 @@ export interface DpkgMediaInput {
   mime: string;
 }
 
-export type DpkgManifestDraft = Omit<DpkgManifest, "formatVersion" | "schemaVersion" | "media" | "dbSha256">;
+export type DpkgDeckDraft = Omit<DpkgDeckEntry, "profile"> & { profile?: string | null };
+
+export type DpkgManifestDraft = Omit<
+  DpkgManifest,
+  "formatVersion" | "schemaVersion" | "media" | "dbSha256" | "decks" | "profiles"
+> & { decks: DpkgDeckDraft[]; profiles?: DpkgProfile[] };
 
 export interface PackDpkgInput {
   manifest: DpkgManifestDraft;
@@ -158,6 +165,8 @@ export async function packDpkg(input: PackDpkgInput): Promise<{ bytes: Uint8Arra
 
   const manifest: DpkgManifest = {
     ...input.manifest,
+    decks: input.manifest.decks.map((deck) => ({ ...deck, profile: deck.profile ?? null })),
+    profiles: input.manifest.profiles ?? [],
     formatVersion: DPKG_FORMAT_VERSION,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     media: mediaEntries,
