@@ -15,6 +15,21 @@ export function isDirectoryProfileId(id: string): boolean {
   return id.startsWith(DIRECTORY_PROFILE_PREFIX);
 }
 
+/** Selects the user's own profiles; package profiles are built on each device from the package, never copied. */
+export const OWN_PROFILES_WHERE = `id NOT LIKE '${DIRECTORY_PROFILE_PREFIX}%'`;
+
+/** Drops package profiles from a database about to be merged in. */
+export const DROP_DIRECTORY_PROFILES_SQL = `DELETE FROM deckprofiles WHERE NOT (${OWN_PROFILES_WHERE})`;
+
+/** `base`, or `base 2`, `base 3`… whichever no profile holds yet. */
+export function uniqueProfileName(base: string, taken: Iterable<string>): string {
+  const names = new Set(taken);
+  if (!names.has(base)) return base;
+  let n = 2;
+  while (names.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
+}
+
 /** A profile a package installs for its own decks, apart from every profile the user has. */
 export interface DirectoryPackageProfile {
   id: string;

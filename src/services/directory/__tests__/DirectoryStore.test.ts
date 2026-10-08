@@ -4,6 +4,7 @@ import { unpackDpkg } from "../archive";
 import { importDpkgContent } from "../import";
 import {
   directoryDeckProfiles,
+  directoryProfileOwner,
   ensureDirectoryTables,
   getDirectoryDeck,
   listDirectoryDecks,
@@ -16,7 +17,7 @@ import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "../ids";
 import type { DirectoryCardContent, DirectoryPackageContent } from "../deck-db";
 import { buildPackage, card, mainDb, opener, packageProfile, review, rows, singleDeck, sqlJs, type PackageProfiles } from "./helpers";
 import { DEFAULT_EXAM_SETTINGS, DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID } from "../../../database/types";
-import { directoryProfileId } from "../profiles";
+import { DROP_DIRECTORY_PROFILES_SQL, OWN_PROFILES_WHERE, directoryProfileId } from "../profiles";
 
 const SLUG = "capitals";
 const DECK = directoryDeckId(SLUG);
@@ -406,7 +407,7 @@ describe("directory decks in the main database", () => {
     expect(rows(db, "SELECT name FROM deckprofiles WHERE id = 'profile_mine'")[0].name).toBe("World capitals");
   });
 
-  it("brings an untouched profile up to a new version and keeps one the user edited", async () => {
+  it("keeps its profiles as the package sets them: a change is put back, and a new version applies", async () => {
     const [france, germany, italy] = v1().cards;
     const carried = (westNew: number, eastNew: number): PackageProfiles => ({
       list: [packageProfile("a", { newCardsPerDay: westNew }), packageProfile("b", { newCardsPerDay: eastNew })],
@@ -415,13 +416,16 @@ describe("directory decks in the main database", () => {
     const db = await mainDb();
     await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", {}, carried(10, 10));
     const [a, b] = [directoryProfileId(SLUG, "a"), directoryProfileId(SLUG, "b")];
-    db.run("UPDATE deckprofiles SET new_cards_per_day = 3, modified = '2026-10-02T09:00:00.000Z' WHERE id = ?", [b]);
+    db.run("UPDATE deckprofiles SET new_cards_per_day = 3, exam_enabled = 1, modified = '2026-10-02T09:00:00.000Z' WHERE id = ?", [b]);
+    expect(materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z").profiles).toEqual([b]);
+    expect(profileRow(db, b)).toMatchObject({ newPerDay: 10, examEnabled: 0 });
+    expect(materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z").profiles).toEqual([]);
 
     await install(db, course([france, germany], [italy]), 2, "2026-10-03T10:00:00.000Z", {}, carried(25, 30));
-    expect([profileRow(db, a).newPerDay, profileRow(db, b).newPerDay]).toEqual([25, 3]);
+    expect([profileRow(db, a).newPerDay, profileRow(db, b).newPerDay]).toEqual([25, 30]);
   });
 
-  it("removes its profiles with it and brings them back on a new install; a profile the user removed stays removed", async () => {
+  it("removes its profiles with it, and has them back while it is installed", async () => {
     const db = await mainDb();
     await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
     removeDirectoryDeck(db, DECK, "2026-10-02T10:00:00.000Z");
@@ -429,15 +433,46 @@ describe("directory decks in the main database", () => {
 
     await install(db, v1(), 1, "2026-10-03T10:00:00.000Z");
     expect(profileRow(db, STUDY_PROFILE).deletedAt).toBeNull();
-    expect(profileOf(db, DECK)).toBe(STUDY_PROFILE);
 
-    // Deleting a profile moves its decks to the default, as the profile screen does.
     db.run("UPDATE deckprofiles SET deleted_at = '2026-10-04T10:00:00.000Z' WHERE id = ?", [STUDY_PROFILE]);
-    db.run("UPDATE decks SET profile_id = ? WHERE profile_id = ?", [DEFAULT_PROFILE_ID, STUDY_PROFILE]);
+    db.run("DELETE FROM deckprofiles WHERE id = ?", [STUDY_PROFILE]);
     materialiseDirectoryDecks(db, "2026-10-04T11:00:00.000Z");
-    expect(profileRow(db, STUDY_PROFILE).deletedAt).toBe("2026-10-04T10:00:00.000Z");
-    expect(profileOf(db, DECK)).toBe(DEFAULT_PROFILE_ID);
+    expect(profileRow(db, STUDY_PROFILE)).toMatchObject({ name: "World capitals", deletedAt: null });
+    expect(profileOf(db, DECK)).toBe(STUDY_PROFILE);
   });
+
+  it("gives way to a profile of the user's that arrives with the same name", async () => {
+    const db = await mainDb();
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
+    // A merge writes rows with INSERT OR REPLACE, which evicts a same-named row.
+    db.run("INSERT OR REPLACE INTO deckprofiles (id, name, created, modified) VALUES ('profile_mine', 'World capitals', 'x', 'x')");
+    materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z");
+    expect(profileRow(db, STUDY_PROFILE).name).toBe("World capitals (capitals)");
+    expect(rows(db, "SELECT name FROM deckprofiles WHERE id = 'profile_mine'")[0].name).toBe("World capitals");
+    expect(profileOf(db, DECK)).toBe(STUDY_PROFILE);
+  });
+
+  it("leaves only the user's own profiles in a copy about to be merged in", async () => {
+    const db = await mainDb();
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
+    const before = rows(db, "SELECT COUNT(*) AS n FROM deckprofiles WHERE id NOT LIKE 'profile_dir_%'")[0].n;
+    db.run(DROP_DIRECTORY_PROFILES_SQL);
+    expect(rows(db, "SELECT COUNT(*) AS n FROM deckprofiles WHERE id LIKE 'profile_dir_%'")[0].n).toBe(0);
+    expect(rows(db, "SELECT COUNT(*) AS n FROM deckprofiles")[0].n).toBe(before);
+    expect(rows(db, `SELECT COUNT(*) AS n FROM deckprofiles WHERE ${OWN_PROFILES_WHERE}`)[0].n).toBe(before);
+  });
+
+  it("names the package and decks behind a package profile", async () => {
+    const [france, germany, italy] = v1().cards;
+    const db = await mainDb();
+    await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", { east: DEFAULT_EXAM_SETTINGS });
+    expect(directoryProfileOwner(listDirectoryDecks(db), STUDY_PROFILE)).toEqual({
+      title: "World capitals",
+      deckTags: [directoryDeckTag(SLUG, "west")],
+    });
+    expect(directoryProfileOwner(listDirectoryDecks(db), DEFAULT_PROFILE_ID)).toBeNull();
+  });
+
 
   it("arrives on another device with all of its decks", async () => {
     const SQL = await sqlJs();

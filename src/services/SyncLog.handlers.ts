@@ -19,6 +19,7 @@ import type { IDatabaseService } from "../database/DatabaseService.interface";
 import type { ILogger as Logger } from "../database/DatabaseService.interface";
 import type { SyncLogEntry } from "./SyncLog.types";
 import { REMOVE_DIRECTORY_CONTENT_SQL } from "./directory/DirectoryStore";
+import { isDirectoryProfileId } from "./directory/profiles";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
 import type { ReviewLog } from "../database/types";
 import {
@@ -417,6 +418,8 @@ async function handleProfileUpsert(
 ): Promise<void> {
   if (entry.o !== "profile_upsert") return;
   const p = entry.p;
+  // Package profiles are built on each device from the package, never synced.
+  if (isDirectoryProfileId(p.id)) return;
   await db.executeSql(
     `INSERT INTO deckprofiles (
        id, name,
@@ -489,6 +492,7 @@ async function handleProfileDelete(
   _logger: Logger
 ): Promise<void> {
   if (entry.o !== "profile_delete") return;
+  if (isDirectoryProfileId(entry.p.id)) return;
   // is_default = 0 guard mirrors the public deleteProfile rule: the DEFAULT
   // profile is never tombstoned, even if a remote op claims to delete it.
   await db.executeSql(

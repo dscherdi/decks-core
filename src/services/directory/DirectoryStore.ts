@@ -341,6 +341,20 @@ export function directoryPackageGroup(
   };
 }
 
+/** The installed package a profile belongs to, and the tags of the decks that study with it. */
+export function directoryProfileOwner(
+  records: readonly Pick<DirectoryDeckRecord, "slug" | "title" | "manifestJson" | "removedAt">[],
+  profileId: string
+): { title: string; deckTags: string[] } | null {
+  for (const record of records) {
+    if (record.removedAt !== null) continue;
+    const manifest = manifestOf(record);
+    const profile = manifest ? directoryPackageProfiles(manifest).find((candidate) => candidate.id === profileId) : undefined;
+    if (profile) return { title: record.title, deckTags: profile.deckKeys.map((key) => directoryDeckTag(record.slug, key)) };
+  }
+  return null;
+}
+
 /** A deck's package profile, when it has one that is still live. */
 export function livePackageProfile(
   byDeck: ReadonlyMap<string, string>,
@@ -393,76 +407,63 @@ function freeProfileName(db: RawDatabase, profile: DirectoryPackageProfile, slug
   return `${profile.name} (${profile.id})`;
 }
 
-function writePackageProfile(db: RawDatabase, profile: DirectoryPackageProfile, slug: string, stamp: string): void {
-  const s = profile.settings;
-  db.run(
-    `INSERT INTO deckprofiles (
-       id, name, has_new_cards_limit_enabled, new_cards_per_day,
-       has_review_cards_limit_enabled, review_cards_per_day,
-       header_level, extra_header_levels, review_order, learning_steps, relearning_steps,
-       fsrs_request_retention, fsrs_profile, cloze_enabled, cloze_show_context,
-       exam_enabled, exam_settings, tts_voice, tts_rate, tts_lang,
-       is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, 2, '[]', ?, ?, ?, ?, 'STANDARD', 1, ?, ?, ?, NULL, ?, ?, 0, ?, ?, NULL)
-     ON CONFLICT(id) DO UPDATE SET
-       name = excluded.name,
-       has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
-       new_cards_per_day = excluded.new_cards_per_day,
-       has_review_cards_limit_enabled = excluded.has_review_cards_limit_enabled,
-       review_cards_per_day = excluded.review_cards_per_day,
-       review_order = excluded.review_order,
-       learning_steps = excluded.learning_steps,
-       relearning_steps = excluded.relearning_steps,
-       fsrs_request_retention = excluded.fsrs_request_retention,
-       cloze_show_context = excluded.cloze_show_context,
-       exam_enabled = excluded.exam_enabled,
-       exam_settings = excluded.exam_settings,
-       tts_rate = excluded.tts_rate,
-       tts_lang = excluded.tts_lang,
-       created = excluded.created,
-       modified = excluded.modified,
-       deleted_at = NULL`,
-    [
-      profile.id,
-      freeProfileName(db, profile, slug),
-      s.newCardsPerDay === null ? 0 : 1,
-      s.newCardsPerDay ?? DEFAULT_NEW_CARDS_PER_DAY,
-      s.reviewCardsPerDay === null ? 0 : 1,
-      s.reviewCardsPerDay ?? DEFAULT_REVIEW_CARDS_PER_DAY,
-      s.reviewOrder,
-      s.learningSteps,
-      s.relearningSteps,
-      s.requestRetention,
-      s.clozeShowContext,
-      profile.exam ? 1 : 0,
-      profile.exam ? JSON.stringify(profile.exam) : "{}",
-      s.ttsRate,
-      s.ttsLang,
-      stamp,
-      stamp,
-    ]
-  );
-}
-
 const DEFAULT_NEW_CARDS_PER_DAY = 20;
 const DEFAULT_REVIEW_CARDS_PER_DAY = 100;
 
+/** The columns of a package profile, as the package sets them; name and timestamps aside. */
+function packageProfileColumns(profile: DirectoryPackageProfile): Record<string, SqlJsValue> {
+  const s = profile.settings;
+  return {
+    has_new_cards_limit_enabled: s.newCardsPerDay === null ? 0 : 1,
+    new_cards_per_day: s.newCardsPerDay ?? DEFAULT_NEW_CARDS_PER_DAY,
+    has_review_cards_limit_enabled: s.reviewCardsPerDay === null ? 0 : 1,
+    review_cards_per_day: s.reviewCardsPerDay ?? DEFAULT_REVIEW_CARDS_PER_DAY,
+    header_level: 2,
+    extra_header_levels: "[]",
+    review_order: s.reviewOrder,
+    learning_steps: s.learningSteps,
+    relearning_steps: s.relearningSteps,
+    fsrs_request_retention: s.requestRetention,
+    fsrs_profile: "STANDARD",
+    cloze_enabled: 1,
+    cloze_show_context: s.clozeShowContext,
+    exam_enabled: profile.exam ? 1 : 0,
+    exam_settings: profile.exam ? JSON.stringify(profile.exam) : "{}",
+    tts_voice: null,
+    tts_rate: s.ttsRate,
+    tts_lang: s.ttsLang,
+    is_default: 0,
+  };
+}
+
+function writePackageProfile(db: RawDatabase, profile: DirectoryPackageProfile, name: string, stamp: string): void {
+  const columns = packageProfileColumns(profile);
+  const names = Object.keys(columns);
+  db.run(
+    `INSERT INTO deckprofiles (id, name, ${names.join(", ")}, created, modified, deleted_at)
+     VALUES (?, ?, ${names.map(() => "?").join(", ")}, ?, ?, NULL)
+     ON CONFLICT(id) DO UPDATE SET name = excluded.name, ${names.map((n) => `${n} = excluded.${n}`).join(", ")},
+       created = excluded.created, modified = excluded.modified, deleted_at = NULL`,
+    [profile.id, name, ...names.map((n) => columns[n]), stamp, stamp]
+  );
+}
+
 /**
- * Give a live package its own profiles, stamped with the install: one never edited (created = modified)
- * follows a newer version; an edited one is kept, and one removed after the install stays removed.
+ * Keep a live package's own profiles exactly as the package sets them: created, restored
+ * and put back after any change. They stay out of merges, so each device builds its own.
  */
 export function ensurePackageProfiles(db: RawDatabase, record: DirectoryDeckRecord): string[] {
   const manifest = manifestOf(record);
   if (!manifest || record.removedAt !== null) return [];
   const written: string[] = [];
   for (const profile of directoryPackageProfiles(manifest)) {
-    const row = query(db, "SELECT created, modified, deleted_at FROM deckprofiles WHERE id = ?", [profile.id])[0];
-    const stamp = record.modified;
-    const write =
-      row === undefined ||
-      (row.deleted_at !== null ? String(row.deleted_at) < stamp : row.created === row.modified && String(row.created) < stamp);
-    if (!write) continue;
-    writePackageProfile(db, profile, record.slug, stamp);
+    const columns = packageProfileColumns(profile);
+    const row = query(db, `SELECT name, deleted_at, ${Object.keys(columns).join(", ")} FROM deckprofiles WHERE id = ?`, [
+      profile.id,
+    ])[0];
+    const live = row !== undefined && row.deleted_at === null;
+    if (live && Object.entries(columns).every(([column, value]) => row[column] === value)) continue;
+    writePackageProfile(db, profile, live ? String(row.name) : freeProfileName(db, profile, record.slug), record.modified);
     written.push(profile.id);
   }
   return written;

@@ -1,6 +1,14 @@
 import { DEFAULT_DECK_PROFILE, DEFAULT_EXAM_SETTINGS, type DeckProfile } from "../../../database/types";
 import type { DpkgDeckEntry } from "../manifest";
-import { carriedProfiles, directoryPackageProfiles, directoryProfileId, dpkgProfileFrom, dpkgProfileKey } from "../profiles";
+import {
+  carriedProfiles,
+  directoryPackageProfiles,
+  directoryProfileId,
+  dpkgProfileFrom,
+  dpkgProfileKey,
+  uniqueProfileName,
+} from "../profiles";
+import { isDirectoryTag } from "../ids";
 import { packageProfile } from "./helpers";
 
 const author: DeckProfile = {
@@ -61,6 +69,16 @@ describe("package profiles", () => {
       ["verbs", "profile_spanish"],
       ["final", "profile_exams"],
     ]);
+  });
+
+  it("names a customized copy so it never takes a name a profile holds", () => {
+    expect(uniqueProfileName("German A1 copy", ["DEFAULT"])).toBe("German A1 copy");
+    expect(uniqueProfileName("German A1 copy", ["German A1 copy", "German A1 copy 2"])).toBe("German A1 copy 3");
+  });
+
+  it("tells directory tags from the rest", () => {
+    expect([isDirectoryTag("#directory"), isDirectoryTag("#Directory/german-a1/verbs")]).toEqual([true, true]);
+    expect([isDirectoryTag("#directoryish"), isDirectoryTag("#decks/directory")]).toEqual([false, false]);
   });
 
   it("keys an author's profile by its id, hashing one the manifest would refuse", () => {

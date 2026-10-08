@@ -43,6 +43,12 @@ export function directoryDeckPath(slug: string, key = ""): string {
   return `${DIRECTORY_PATH_PREFIX}${slug}${key ? `/${key}` : ""}`;
 }
 
+/** A tag under `#directory`; a package's decks carry these, and only Customize maps them. */
+export function isDirectoryTag(tag: string): boolean {
+  const lower = tag.toLowerCase();
+  return lower === DIRECTORY_TAG_ROOT || lower.startsWith(`${DIRECTORY_TAG_ROOT}/`);
+}
+
 export function directoryDeckTag(slug: string, key = ""): string {
   return `${DIRECTORY_TAG_ROOT}/${slug}${key ? `/${key}` : ""}`;
 }
