@@ -44,6 +44,7 @@ export const zh: Translations = {
     publisherHandleDesc: "属于每个包的身份，因此每个版本都应保持一致。小写字母、数字和连字符。",
     titleName: "标题",
     descriptionName: "描述",
+    descriptionDesc: "与包一起显示。支持 Markdown：标题、列表、粗体和链接。",
     languageName: "语言",
     subjectName: "学科",
     versionName: "版本",

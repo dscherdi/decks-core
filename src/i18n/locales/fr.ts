@@ -44,6 +44,7 @@ export const fr: Translations = {
     publisherHandleDesc: "Fait partie de l’identité de chaque paquet : gardez-le identique à chaque version. Minuscules, chiffres et tirets.",
     titleName: "Titre",
     descriptionName: "Description",
+    descriptionDesc: "Affichée avec le paquet. Le Markdown fonctionne : titres, listes, gras et liens.",
     languageName: "Langue",
     subjectName: "Matière",
     versionName: "Version",

@@ -44,6 +44,7 @@ export const sq: Translations = {
     publisherHandleDesc: "Pjesë e identitetit të çdo pakete, ndaj mbaje të njëjtë në çdo version. Shkronja të vogla, shifra dhe viza.",
     titleName: "Titulli",
     descriptionName: "Përshkrimi",
+    descriptionDesc: "Shfaqet bashkë me paketën. Funksionon Markdown: tituj, lista, shkronja të theksuara dhe lidhje.",
     languageName: "Gjuha",
     subjectName: "Lënda",
     versionName: "Versioni",

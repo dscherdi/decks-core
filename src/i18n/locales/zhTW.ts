@@ -44,6 +44,7 @@ export const zhTW: Translations = {
     publisherHandleDesc: "屬於每個套件的身分，因此每個版本都應保持一致。小寫字母、數字和連字號。",
     titleName: "標題",
     descriptionName: "描述",
+    descriptionDesc: "與套件一起顯示。支援 Markdown：標題、清單、粗體和連結。",
     languageName: "語言",
     subjectName: "學科",
     versionName: "版本",

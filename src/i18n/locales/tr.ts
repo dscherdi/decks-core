@@ -44,6 +44,7 @@ export const tr: Translations = {
     publisherHandleDesc: "Her paketin kimliğinin parçasıdır, bu yüzden her sürümde aynı tutun. Küçük harfler, rakamlar ve kısa çizgiler.",
     titleName: "Başlık",
     descriptionName: "Açıklama",
+    descriptionDesc: "Paketle birlikte gösterilir. Markdown desteklenir: başlıklar, listeler, kalın yazı ve bağlantılar.",
     languageName: "Dil",
     subjectName: "Konu",
     versionName: "Sürüm",

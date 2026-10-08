@@ -44,6 +44,7 @@ export const ru: Translations = {
     publisherHandleDesc: "Часть идентичности каждого пакета, поэтому не меняйте его между версиями. Строчные буквы, цифры и дефисы.",
     titleName: "Название",
     descriptionName: "Описание",
+    descriptionDesc: "Показывается вместе с пакетом. Поддерживается Markdown: заголовки, списки, жирный текст и ссылки.",
     languageName: "Язык",
     subjectName: "Предмет",
     versionName: "Версия",

@@ -41,6 +41,7 @@ export const en = {
     publisherHandleDesc: "Part of every package’s identity, so keep it the same for every version. Lowercase letters, digits and hyphens.",
     titleName: "Title",
     descriptionName: "Description",
+    descriptionDesc: "Shown with the package. Markdown works: headings, lists, bold and links.",
     languageName: "Language",
     subjectName: "Subject",
     versionName: "Version",

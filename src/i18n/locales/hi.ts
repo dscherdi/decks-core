@@ -44,6 +44,7 @@ export const hi: Translations = {
     publisherHandleDesc: "हर पैकेज की पहचान का हिस्सा है, इसलिए हर संस्करण में इसे एक जैसा रखें। छोटे अक्षर, अंक और हाइफ़न।",
     titleName: "शीर्षक",
     descriptionName: "विवरण",
+    descriptionDesc: "पैकेज के साथ दिखाया जाता है। Markdown काम करता है: शीर्षक, सूचियाँ, बोल्ड और लिंक।",
     languageName: "भाषा",
     subjectName: "विषय",
     versionName: "संस्करण",

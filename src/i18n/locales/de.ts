@@ -44,6 +44,7 @@ export const de: Translations = {
     publisherHandleDesc: "Teil der Identität jedes Pakets, also für jede Version gleich lassen. Kleinbuchstaben, Ziffern und Bindestriche.",
     titleName: "Titel",
     descriptionName: "Beschreibung",
+    descriptionDesc: "Wird mit dem Paket angezeigt. Markdown funktioniert: Überschriften, Listen, Fettdruck und Links.",
     languageName: "Sprache",
     subjectName: "Fach",
     versionName: "Version",

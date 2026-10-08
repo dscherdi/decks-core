@@ -44,6 +44,7 @@ export const ar: Translations = {
     publisherHandleDesc: "جزء من هوية كل حزمة، لذا أبقه نفسه في كل إصدار. أحرف صغيرة وأرقام وشرطات.",
     titleName: "العنوان",
     descriptionName: "الوصف",
+    descriptionDesc: "يظهر مع الحزمة. يدعم Markdown: العناوين والقوائم والخط العريض والروابط.",
     languageName: "اللغة",
     subjectName: "المادة",
     versionName: "الإصدار",

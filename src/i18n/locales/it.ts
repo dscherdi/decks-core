@@ -44,6 +44,7 @@ export const it: Translations = {
     publisherHandleDesc: "Fa parte dell’identità di ogni pacchetto: mantienilo uguale in ogni versione. Lettere minuscole, cifre e trattini.",
     titleName: "Titolo",
     descriptionName: "Descrizione",
+    descriptionDesc: "Mostrata con il pacchetto. Supporta Markdown: titoli, elenchi, grassetto e link.",
     languageName: "Lingua",
     subjectName: "Materia",
     versionName: "Versione",

@@ -44,6 +44,7 @@ export const ja: Translations = {
     publisherHandleDesc: "各パッケージの識別の一部なので、どのバージョンでも同じにしてください。小文字、数字、ハイフン。",
     titleName: "タイトル",
     descriptionName: "説明",
+    descriptionDesc: "パッケージと一緒に表示されます。Markdown（見出し、リスト、太字、リンク）が使えます。",
     languageName: "言語",
     subjectName: "分野",
     versionName: "バージョン",
