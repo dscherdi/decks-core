@@ -555,6 +555,8 @@ export const it: Translations = {
     invalidReasonMixedList: "Elenco misto sotto l'intestazione",
     invalidReasonNested: "Gli elenchi di attività annidati non sono supportati",
     invalidReasonEmptyOption: "Testo dell'opzione vuoto",
+    invalidReasonEmptyQuestion: "Un elenco di opzioni senza domanda sopra",
+    invalidReasonEmptyAnswer: "Un titolo di domanda senza risposta sotto",
     answerTooLongTooltip: "Risposta troppo lunga per la valutazione testuale — accorciala o cambia la modalità di valutazione del mazzo",
     examEnabledSetting: "Domande d'esame",
     examEnabledDesc: "Un elenco di attività sotto un'intestazione crea una scheda a scelta multipla",
@@ -1870,6 +1872,8 @@ export const it: Translations = {
         "mixed-list": "elenco misto",
         "nested-task-list": "opzioni annidate",
         "empty-option": "opzione vuota",
+        "empty-question": "elenco senza domanda",
+        "empty-answer": "domanda senza risposta",
         "not-a-question": "non è una domanda",
       },
       hub: {

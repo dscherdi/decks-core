@@ -557,6 +557,8 @@ export const tr: Translations = {
     invalidReasonMixedList: "Başlığın altında karışık liste",
     invalidReasonNested: "İç içe görev listeleri desteklenmiyor",
     invalidReasonEmptyOption: "Seçenek metni boş",
+    invalidReasonEmptyQuestion: "Üstünde soru olmayan bir seçenek listesi",
+    invalidReasonEmptyAnswer: "Altında cevap olmayan bir soru başlığı",
     answerTooLongTooltip: "Cevap, metin olarak notlandırılamayacak kadar uzun — kısaltın veya destenin notlandırma modunu değiştirin",
     examEnabledSetting: "Sınav soruları",
     examEnabledDesc: "Bir başlığın altındaki görev listesi çoktan seçmeli bir kart oluşturur",
@@ -1876,6 +1878,8 @@ export const tr: Translations = {
         "mixed-list": "karışık liste",
         "nested-task-list": "iç içe seçenekler",
         "empty-option": "boş seçenek",
+        "empty-question": "sorusuz liste",
+        "empty-answer": "cevapsız soru",
         "not-a-question": "soru değil",
       },
       hub: {

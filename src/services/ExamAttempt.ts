@@ -14,7 +14,7 @@ import type {
   Flashcard,
   TypedGradingMode,
 } from "../database/types";
-import { classifyExamBody, type ExamOption } from "./ExamClassifier";
+import { classifyExamBody, type ExamBodyClassification, type ExamOption } from "./ExamClassifier";
 import {
   checkTypeInGradability,
   getTypeInAnswerLine,
@@ -25,7 +25,7 @@ import {
   stripInlineMarkdown,
 } from "./ExamGrading";
 import { sampleWithoutReplacement, shuffleInPlace } from "../utils/sampling";
-import { scanLineDeletions } from "../utils/cloze-scanner";
+import { scanClozeDeletions, scanLineDeletions } from "../utils/cloze-scanner";
 
 const PROMPT_SNAPSHOT_LENGTH = 200;
 
@@ -36,8 +36,17 @@ export const EXAM_INERT_BLANK = "____";
 // The target blank where a question is shown as text, as review masks a deletion.
 const EXAM_TEXT_BLANK = "[...]";
 
+/** An exercise's title and the text its questions share. */
+export interface ExamMaterial {
+  key: string;
+  heading: string;
+  body: string;
+}
+
 export interface ExamQuestion {
   card: Flashcard;
+  /** Unique within a pool: the card id, with the sub-question number for an exercise. */
+  key: string;
   kind: ExamQuestionType;
   stem: string;
   options: ExamOption[] | null; // file order — grading indices
@@ -45,6 +54,11 @@ export interface ExamQuestion {
   expectedAnswer: string | null;
   isCloze: boolean;
   clozeContext: string | null; // cloze body (the front when there is no back), blanked, target = sentinel
+  notes: string;
+  /** Questions with the same key are drawn together and in order; null stands alone. */
+  exerciseKey: string | null;
+  /** The exercise's title and text; null for a question that stands alone. */
+  material: ExamMaterial | null;
 }
 
 export type ExamGivenAnswer =
@@ -118,25 +132,99 @@ function buildClozeContext(
   return showContext ? lines.join("\n") : lines[targetLineIndex];
 }
 
-function buildQuestion(
+/** A typed answer that string grading cannot judge honestly is left out. */
+function typedAnswerFits(answer: string, typedGrading: TypedGradingMode): boolean {
+  if (typedGrading === "self") return true;
+  const maxLength = typedGrading === "meaning" ? MAX_MEANING_ANSWER_LENGTH : undefined;
+  return checkTypeInGradability(answer, maxLength).gradable;
+}
+
+type ExerciseDraft = Pick<
+  ExamQuestion,
+  "kind" | "stem" | "options" | "expectedAnswer" | "isCloze" | "clozeContext" | "notes"
+>;
+
+/** An exercise card as its questions: one per checklist or typed answer, one per blank. */
+function exerciseQuestions(
+  card: Flashcard,
+  exercise: Extract<ExamBodyClassification, { kind: "exercise" }>,
+  typedGrading: TypedGradingMode,
+  showClozeContext: boolean
+): { questions: ExamQuestion[]; skip?: ExamSkipReason } {
+  const own: ExamMaterial = { key: `card:${card.id}`, heading: card.front, body: exercise.shared };
+  const drafts: ExerciseDraft[] = [];
+  let tooLong = false;
+  for (const item of exercise.items) {
+    const typed = { kind: "type-in" as const, options: null, notes: item.notes };
+    if (item.kind === "choice") {
+      drafts.push({ kind: "multiple-choice", stem: item.stem, options: item.options, expectedAnswer: null, isCloze: false, clozeContext: null, notes: item.notes });
+    } else if (item.kind === "typed") {
+      const answer = getTypeInAnswerLine(item.answer, null);
+      if (typedAnswerFits(answer, typedGrading)) {
+        drafts.push({ ...typed, stem: item.stem, expectedAnswer: answer, isCloze: false, clozeContext: null });
+      } else {
+        tooLong = true;
+      }
+    } else {
+      for (const deletion of scanClozeDeletions(item.text)) {
+        const answer = getTypeInAnswerLine(item.text, deletion.text);
+        if (!typedAnswerFits(answer, typedGrading)) {
+          tooLong = true;
+          continue;
+        }
+        drafts.push({
+          ...typed,
+          stem: item.stem,
+          expectedAnswer: answer,
+          isCloze: true,
+          clozeContext: buildClozeContext(item.text, deletion.order, showClozeContext),
+        });
+      }
+    }
+  }
+  const last = drafts.length - 1;
+  const questions = drafts.map((draft, index) => ({
+    ...draft,
+    card,
+    key: `${card.id}#${index}`,
+    displayOrder: null,
+    // The exercise's own note follows its last question.
+    notes: index === last ? [draft.notes, card.notes].filter((n) => n.trim() !== "").join("\n\n") : draft.notes,
+    exerciseKey: own.key,
+    material: own,
+  }));
+  return tooLong ? { questions, skip: "answer-too-long" } : { questions };
+}
+
+function buildQuestions(
   card: Flashcard,
   typedGrading: TypedGradingMode,
   showClozeContext: boolean
-): { question: ExamQuestion } | { skip: ExamSkipReason } {
+): { questions: ExamQuestion[]; skip?: ExamSkipReason } {
+  const base = {
+    card,
+    key: card.id,
+    displayOrder: null,
+    notes: card.notes,
+    exerciseKey: null,
+    material: null,
+  };
   if (card.type === "multiple-choice") {
     const classified = classifyExamBody(card.back);
-    if (classified.kind !== "mcq") return { skip: "invalid-question" };
+    if (classified.kind === "exercise") {
+      return exerciseQuestions(card, classified, typedGrading, showClozeContext);
+    }
+    if (classified.kind !== "mcq") return { questions: [], skip: "invalid-question" };
     return {
-      question: {
-        card,
+      questions: [{
+        ...base,
         kind: "multiple-choice",
         stem: classified.stem ? `${card.front}\n\n${classified.stem}` : card.front,
         options: classified.options,
-        displayOrder: null,
         expectedAnswer: null,
         isCloze: false,
         clozeContext: null,
-      },
+      }],
     };
   }
 
@@ -151,7 +239,7 @@ function buildQuestion(
       card.type === "header-paragraph" &&
       classifyExamBody(card.back).kind !== "plain"
     ) {
-      return { skip: "invalid-question" };
+      return { questions: [], skip: "invalid-question" };
     }
     const isCloze = card.type === "cloze";
     // A cloze written in the front has no back; the front is the sentence to blank.
@@ -160,15 +248,14 @@ function buildQuestion(
     if (typedGrading !== "self") {
       const maxLength = typedGrading === "meaning" ? MAX_MEANING_ANSWER_LENGTH : undefined;
       const gradability = checkTypeInGradability(answerLine, maxLength);
-      if (!gradability.gradable) return { skip: "answer-too-long" };
+      if (!gradability.gradable) return { questions: [], skip: "answer-too-long" };
     }
     return {
-      question: {
-        card,
+      questions: [{
+        ...base,
         kind: "type-in",
         stem: frontCloze ? "" : card.front,
         options: null,
-        displayOrder: null,
         expectedAnswer: answerLine,
         isCloze,
         clozeContext: isCloze
@@ -178,11 +265,11 @@ function buildQuestion(
               showClozeContext
             )
           : null,
-      },
+      }],
     };
   }
 
-  return { skip: "unsupported-type" };
+  return { questions: [], skip: "unsupported-type" };
 }
 
 /** The question as text: its stem, or for a front cloze the sentence with a visible blank. */
@@ -205,22 +292,70 @@ export function buildExamPool(
       skipped.push({ card, reason: "not-exam-deck" });
       continue;
     }
-    const built = buildQuestion(card, typedGrading, showClozeContext);
-    if ("skip" in built) {
-      skipped.push({ card, reason: built.skip });
-    } else {
-      eligible.push(built.question);
-    }
+    const built = buildQuestions(card, typedGrading, showClozeContext);
+    eligible.push(...built.questions);
+    if (built.skip) skipped.push({ card, reason: built.skip });
   }
   return { eligible, skipped };
 }
 
-function inPoolOrder(
-  pool: readonly ExamQuestion[],
-  picked: readonly ExamQuestion[]
-): ExamQuestion[] {
+function inPoolOrder<T>(pool: readonly T[], picked: readonly T[]): T[] {
   const chosen = new Set(picked);
-  return pool.filter((question) => chosen.has(question));
+  return pool.filter((item) => chosen.has(item));
+}
+
+/** The pool as drawable units: an exercise's questions together, every other question alone. */
+export function examUnits(pool: readonly ExamQuestion[]): ExamQuestion[][] {
+  const units: ExamQuestion[][] = [];
+  const byKey = new Map<string, ExamQuestion[]>();
+  for (const question of pool) {
+    const unit = question.exerciseKey === null ? undefined : byKey.get(question.exerciseKey);
+    if (unit) {
+      unit.push(question);
+      continue;
+    }
+    const created = [question];
+    if (question.exerciseKey !== null) byKey.set(question.exerciseKey, created);
+    units.push(created);
+  }
+  return units;
+}
+
+/**
+ * Whole units, at random or in order, until `limit` questions are reached;
+ * the last unit may run over. Picked units keep the pool's order.
+ */
+export function sampleExamUnits(
+  units: readonly ExamQuestion[][],
+  limit: number,
+  random: boolean,
+  rng: () => number = Math.random
+): ExamQuestion[][] {
+  const candidates = random ? shuffleInPlace([...units], rng) : [...units];
+  const picked: ExamQuestion[][] = [];
+  let total = 0;
+  for (const unit of candidates) {
+    if (total >= limit) break;
+    picked.push(unit);
+    total += unit.length;
+  }
+  return inPoolOrder(units, picked);
+}
+
+function withDisplayOrder(
+  questions: ExamQuestion[],
+  settings: ExamSettings,
+  rng: () => number
+): ExamQuestion[] {
+  return questions.map((q) => ({
+    ...q,
+    displayOrder:
+      q.options === null
+        ? null
+        : settings.shuffleOptions
+          ? shuffleInPlace(q.options.map((_o, i) => i), rng)
+          : q.options.map((_o, i) => i),
+  }));
 }
 
 /** Draw and order the attempt's questions per the settings. */
@@ -233,6 +368,12 @@ export function drawExamQuestions(
     settings.questionCount > 0
       ? Math.min(settings.questionCount, pool.length)
       : pool.length;
+  const units = examUnits(pool);
+  if (units.some((unit) => unit.length > 1)) {
+    let drawn = sampleExamUnits(units, count, settings.selectionMode === "random" && count < pool.length, rng);
+    if (settings.shuffleQuestions) drawn = shuffleInPlace([...drawn], rng);
+    return withDisplayOrder(drawn.flat(), settings, rng);
+  }
   // Random selection picks which questions; only the shuffle setting decides
   // their order, so with it off they keep the note's order.
   let drawn =
@@ -240,15 +381,34 @@ export function drawExamQuestions(
       ? inPoolOrder(pool, sampleWithoutReplacement(pool, count, rng))
       : pool.slice(0, count);
   if (settings.shuffleQuestions) drawn = shuffleInPlace([...drawn], rng);
-  return drawn.map((q) => ({
-    ...q,
-    displayOrder:
-      q.options === null
-        ? null
-        : settings.shuffleOptions
-          ? shuffleInPlace(q.options.map((_o, i) => i), rng)
-          : q.options.map((_o, i) => i),
-  }));
+  return withDisplayOrder(drawn, settings, rng);
+}
+
+/** An attempt's questions as the screens show them: one entry per exercise or lone question. */
+export interface ExamExercise {
+  key: string;
+  /** Indices into the attempt's questions, in order. */
+  indices: number[];
+  /** The exercise's title and text; null for a lone question. */
+  material: ExamMaterial | null;
+}
+
+/** Group consecutive questions of the same exercise. */
+export function groupExamExercises(questions: readonly ExamQuestion[]): ExamExercise[] {
+  const exercises: ExamExercise[] = [];
+  questions.forEach((question, index) => {
+    const last = exercises[exercises.length - 1];
+    if (question.exerciseKey !== null && last?.key === question.exerciseKey) {
+      last.indices.push(index);
+      return;
+    }
+    exercises.push({
+      key: question.exerciseKey ?? `question:${question.key}`,
+      indices: [index],
+      material: question.material,
+    });
+  });
+  return exercises;
 }
 
 export class ExamAttempt {
@@ -390,7 +550,7 @@ export class ExamAttempt {
         .join("[____]");
       return { prompt: `${question.stem}\n\n${sentence}`.trim(), expected };
     }
-    const rest = stripInlineMarkdown(question.card.back)
+    const rest = stripInlineMarkdown(question.material ? question.material.body : question.card.back)
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l !== "" && l !== expected)

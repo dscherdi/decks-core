@@ -566,6 +566,8 @@ export const de: Translations = {
     invalidReasonMixedList: "Gemischte Liste unter der Überschrift",
     invalidReasonNested: "Verschachtelte Aufgabenlisten werden nicht unterstützt",
     invalidReasonEmptyOption: "Leerer Optionstext",
+    invalidReasonEmptyQuestion: "Eine Checkliste ohne Frage darüber",
+    invalidReasonEmptyAnswer: "Eine Frage-Überschrift ohne Antwort darunter",
     answerTooLongTooltip: "Antwort zu lang für die Textbewertung — kürze sie oder ändere den Bewertungsmodus des Stapels",
     examEnabledSetting: "Prüfungsfragen",
     examEnabledDesc: "Eine Aufgabenliste unter einer Überschrift erzeugt eine Multiple-Choice-Karte",
@@ -1893,6 +1895,8 @@ export const de: Translations = {
         "mixed-list": "gemischte Liste",
         "nested-task-list": "verschachtelte Optionen",
         "empty-option": "leere Option",
+        "empty-question": "Liste ohne Frage",
+        "empty-answer": "Frage ohne Antwort",
         "not-a-question": "keine Frage",
       },
       hub: {

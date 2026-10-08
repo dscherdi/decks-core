@@ -552,6 +552,8 @@ export const ru: Translations = {
     invalidReasonMixedList: "Смешанный список под заголовком",
     invalidReasonNested: "Вложенные списки задач не поддерживаются",
     invalidReasonEmptyOption: "Пустой текст варианта",
+    invalidReasonEmptyQuestion: "Список вариантов без вопроса над ним",
+    invalidReasonEmptyAnswer: "Заголовок вопроса без ответа под ним",
     answerTooLongTooltip: "Ответ слишком длинный для текстовой оценки — сократите его или измените режим оценки колоды",
     examEnabledSetting: "Экзаменационные вопросы",
     examEnabledDesc: "Список задач под заголовком создаёт карточку с выбором ответа",
@@ -1860,6 +1862,8 @@ export const ru: Translations = {
         "mixed-list": "смешанный список",
         "nested-task-list": "вложенные варианты",
         "empty-option": "пустой вариант",
+        "empty-question": "список без вопроса",
+        "empty-answer": "вопрос без ответа",
         "not-a-question": "не вопрос",
       },
       hub: {

@@ -558,6 +558,8 @@ export const hi: Translations = {
     invalidReasonMixedList: "हैडिंग के नीचे मिश्रित सूची",
     invalidReasonNested: "नेस्टेड टास्क सूचियाँ समर्थित नहीं हैं",
     invalidReasonEmptyOption: "विकल्प का टेक्स्ट खाली है",
+    invalidReasonEmptyQuestion: "चेकलिस्ट के ऊपर कोई प्रश्न नहीं है",
+    invalidReasonEmptyAnswer: "प्रश्न शीर्षक के नीचे कोई उत्तर नहीं है",
     answerTooLongTooltip: "उत्तर टेक्स्ट के रूप में ग्रेड करने के लिए बहुत लंबा है — इसे छोटा करें या डेक का ग्रेडिंग मोड बदलें",
     examEnabledSetting: "परीक्षा प्रश्न",
     examEnabledDesc: "हैडिंग के नीचे टास्क सूची एक बहुविकल्पीय कार्ड बनाती है",
@@ -1874,6 +1876,8 @@ export const hi: Translations = {
         "mixed-list": "मिश्रित सूची",
         "nested-task-list": "नेस्टेड विकल्प",
         "empty-option": "खाली विकल्प",
+        "empty-question": "बिना प्रश्न की सूची",
+        "empty-answer": "बिना उत्तर का प्रश्न",
         "not-a-question": "प्रश्न नहीं",
       },
       hub: {

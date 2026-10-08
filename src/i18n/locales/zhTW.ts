@@ -539,6 +539,8 @@ export const zhTW: Translations = {
     invalidReasonMixedList: "標題下混合了任務列表與其他列表項目",
     invalidReasonNested: "不支援巢狀任務列表",
     invalidReasonEmptyOption: "選項文字為空",
+    invalidReasonEmptyQuestion: "選項清單上方沒有問題",
+    invalidReasonEmptyAnswer: "問題標題下方沒有答案",
     answerTooLongTooltip: "答案太長，無法以文字方式評分。請縮短答案，或切換該牌組的評分模式",
     examEnabledSetting: "考試題目",
     examEnabledDesc: "標題下的任務列表會建立一張選擇題卡片",
@@ -1822,6 +1824,8 @@ export const zhTW: Translations = {
         "mixed-list": "列表混雜",
         "nested-task-list": "選項巢狀",
         "empty-option": "空選項",
+        "empty-question": "缺少問題的清單",
+        "empty-answer": "缺少答案的問題",
         "not-a-question": "不是問題",
       },
       hub: {

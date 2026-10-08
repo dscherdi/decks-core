@@ -63,3 +63,19 @@ export function scanClozeDeletions(source: string): ClozeDeletion[] {
 export function hasClozeDeletion(source: string): boolean {
   return source.split("\n").some((line) => scanLineDeletions(line).length > 0);
 }
+
+/** The source with every deletion swapped for `blank`, as a question shows it. */
+export function blankClozeDeletions(source: string, blank: string): string {
+  return source
+    .split("\n")
+    .map((line) => {
+      let out = "";
+      let at = 0;
+      for (const deletion of scanLineDeletions(line)) {
+        out += line.slice(at, deletion.start) + blank;
+        at = deletion.end;
+      }
+      return out + line.slice(at);
+    })
+    .join("\n");
+}

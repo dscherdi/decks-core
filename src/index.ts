@@ -84,11 +84,12 @@ export type {
   ExamHealthContext,
   ExamHealthIssue,
 } from "./services/CardHealth";
-export { classifyExamBody } from "./services/ExamClassifier";
+export { classifyExamBody, examQuestionCount, exerciseItemQuestionCount } from "./services/ExamClassifier";
 export type {
   ExamOption,
   ExamInvalidReason,
   ExamBodyClassification,
+  ExamExerciseItem,
 } from "./services/ExamClassifier";
 export {
   stripInlineMarkdown,
@@ -112,10 +113,15 @@ export {
   buildExamPool,
   drawExamQuestions,
   examQuestionText,
+  examUnits,
+  sampleExamUnits,
+  groupExamExercises,
   EXAM_TARGET_BLANK,
   EXAM_INERT_BLANK,
 } from "./services/ExamAttempt";
 export type {
+  ExamExercise,
+  ExamMaterial,
   ExamQuestion,
   ExamGivenAnswer,
   ExamQuestionOutcome,
@@ -562,6 +568,7 @@ export {
   cardIdForKey,
 } from "./utils/anchors";
 export {
+  blankClozeDeletions,
   scanClozeDeletions,
   scanLineDeletions,
   hasClozeDeletion,

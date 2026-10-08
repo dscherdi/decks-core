@@ -553,6 +553,8 @@ export const ja: Translations = {
     invalidReasonMixedList: "見出しの下にタスクリスト以外のリスト項目が混在しています",
     invalidReasonNested: "入れ子のタスクリストはサポートされていません",
     invalidReasonEmptyOption: "選択肢のテキストが空です",
+    invalidReasonEmptyQuestion: "上に問題文がないチェックリスト",
+    invalidReasonEmptyAnswer: "下に答えがない問題見出し",
     answerTooLongTooltip: "解答が長すぎてテキストとして採点できません。短くするか、デッキの採点モードを切り替えてください",
     examEnabledSetting: "試験問題",
     examEnabledDesc: "見出しの下のタスクリストが選択式カードになります",
@@ -1847,6 +1849,8 @@ export const ja: Translations = {
         "mixed-list": "混在した箇条書き",
         "nested-task-list": "入れ子の選択肢",
         "empty-option": "空の選択肢",
+        "empty-question": "問題文のないリスト",
+        "empty-answer": "答えのない問題",
         "not-a-question": "問題ではない",
       },
       hub: {

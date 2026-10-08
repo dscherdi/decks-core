@@ -561,6 +561,8 @@ export const sq: Translations = {
     invalidReasonMixedList: "Listë e përzier poshtë titullit",
     invalidReasonNested: "Listat e detyrave të ndërfutura nuk mbështeten",
     invalidReasonEmptyOption: "Tekst opsioni bosh",
+    invalidReasonEmptyQuestion: "Një listë pa pyetje sipër saj",
+    invalidReasonEmptyAnswer: "Një titull pyetjeje pa përgjigje poshtë",
     answerTooLongTooltip: "Përgjigjja është shumë e gjatë për t'u vlerësuar si tekst — shkurtoje ose ndrysho mënyrën e vlerësimit të pakos",
     examEnabledSetting: "Pyetje provimi",
     examEnabledDesc: "Një listë detyrash poshtë një titulli krijon një kartë me zgjedhje të shumëfishta",
@@ -1886,6 +1888,8 @@ export const sq: Translations = {
         "mixed-list": "listë e përzier",
         "nested-task-list": "opsione të ndërthurura",
         "empty-option": "opsion bosh",
+        "empty-question": "listë pa pyetje",
+        "empty-answer": "pyetje pa përgjigje",
         "not-a-question": "nuk është pyetje",
       },
       hub: {

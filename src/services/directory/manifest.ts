@@ -12,7 +12,9 @@ import { isJsonObject, isStringList, parseJson, type JsonObject } from "../../ut
 import { directoryPackageRef, isValidDirectoryDeckKey, isValidDirectoryPublisherId, isValidDirectorySlug } from "./ids";
 
 // 2: packages name their publisher, part of their identity; earlier ones were never released.
-export const DPKG_FORMAT_VERSION = 2;
+// 3: exam cards may hold exercises and section text; written only by packages that use them.
+export const DPKG_FORMAT_VERSION = 3;
+export const DPKG_MIN_FORMAT_VERSION = 2;
 
 export interface DpkgMediaEntry {
   sha256: string;
@@ -173,7 +175,7 @@ export function parseDpkgManifest(json: string): DpkgManifest {
   if (formatVersion > DPKG_FORMAT_VERSION) {
     throw new DpkgError("newer_format", `Package format ${formatVersion} is newer than this version reads`);
   }
-  if (formatVersion < DPKG_FORMAT_VERSION) {
+  if (formatVersion < DPKG_MIN_FORMAT_VERSION) {
     throw new DpkgError("older_format", `Package format ${formatVersion} is no longer read; export it again`);
   }
   const publisher = publisherEntry(parsed.publisher);

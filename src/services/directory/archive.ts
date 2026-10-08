@@ -2,7 +2,7 @@ import { strFromU8, strToU8, unzipSync, zipSync, type UnzipFileInfo, type Zippab
 import { CURRENT_SCHEMA_VERSION } from "../../database/schema-version";
 import { sha256Hex } from "../../utils/sha256";
 import {
-  DPKG_FORMAT_VERSION,
+  DPKG_MIN_FORMAT_VERSION,
   DpkgError,
   dpkgMediaPath,
   parseDpkgManifest,
@@ -147,6 +147,8 @@ export interface PackDpkgInput {
   deckDb: Uint8Array;
   cardsJson: string;
   media: DpkgMediaInput[];
+  /** From `dpkgFormatVersion`; the oldest format otherwise. */
+  formatVersion?: number;
 }
 
 /** Write a package. Media is stored uncompressed (already-compressed formats) and deduplicated. */
@@ -167,7 +169,7 @@ export async function packDpkg(input: PackDpkgInput): Promise<{ bytes: Uint8Arra
     ...input.manifest,
     decks: input.manifest.decks.map((deck) => ({ ...deck, profile: deck.profile ?? null })),
     profiles: input.manifest.profiles ?? [],
-    formatVersion: DPKG_FORMAT_VERSION,
+    formatVersion: input.formatVersion ?? DPKG_MIN_FORMAT_VERSION,
     schemaVersion: CURRENT_SCHEMA_VERSION,
     media: mediaEntries,
     dbSha256: await sha256Hex(input.deckDb),

@@ -525,6 +525,8 @@ export const en = {
     invalidReasonMixedList: "Mixed list under the heading",
     invalidReasonNested: "Nested task lists are not supported",
     invalidReasonEmptyOption: "Empty option text",
+    invalidReasonEmptyQuestion: "A checklist with no question above it",
+    invalidReasonEmptyAnswer: "A question heading with no answer under it",
     answerTooLongTooltip: "Answer too long to grade as text — shorten it or switch the deck's grading mode",
     examEnabledSetting: "Exam questions",
     examEnabledDesc: "A task list under a heading creates a multiple-choice card",
@@ -1790,6 +1792,8 @@ export const en = {
         "mixed-list": "mixed bullets",
         "nested-task-list": "nested options",
         "empty-option": "empty option",
+        "empty-question": "list without a question",
+        "empty-answer": "question without an answer",
         "not-a-question": "not a question",
       },
       hub: {

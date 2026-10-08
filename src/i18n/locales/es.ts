@@ -560,6 +560,8 @@ export const es: Translations = {
     invalidReasonMixedList: "Lista mixta bajo el encabezado",
     invalidReasonNested: "Las listas de tareas anidadas no son compatibles",
     invalidReasonEmptyOption: "Texto de opción vacío",
+    invalidReasonEmptyQuestion: "Una lista de opciones sin pregunta encima",
+    invalidReasonEmptyAnswer: "Un encabezado de pregunta sin respuesta debajo",
     answerTooLongTooltip: "Respuesta demasiado larga para calificarla como texto — acórtala o cambia el modo de calificación del mazo",
     examEnabledSetting: "Preguntas de examen",
     examEnabledDesc: "Una lista de tareas bajo un encabezado crea una tarjeta de opción múltiple",
@@ -1885,6 +1887,8 @@ export const es: Translations = {
         "mixed-list": "lista mixta",
         "nested-task-list": "opciones anidadas",
         "empty-option": "opción vacía",
+        "empty-question": "lista sin pregunta",
+        "empty-answer": "pregunta sin respuesta",
         "not-a-question": "no es una pregunta",
       },
       hub: {

@@ -1,3 +1,4 @@
+import { dpkgFormatVersion } from "../deck-db";
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import { CREATE_TABLES_SQL } from "../../../database/schemas";
 import type { DeckTemplate, ExamSettings } from "../../../database/types";
@@ -123,6 +124,7 @@ export async function buildPackage(
       profiles: profiles.list,
     },
     deckDb: bytes,
+    formatVersion: dpkgFormatVersion(content),
     cardsJson: JSON.stringify(cards),
     media,
   });

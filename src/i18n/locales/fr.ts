@@ -558,6 +558,8 @@ export const fr: Translations = {
     invalidReasonMixedList: "Liste mixte sous l'en-tête",
     invalidReasonNested: "Les listes de tâches imbriquées ne sont pas prises en charge",
     invalidReasonEmptyOption: "Texte d'option vide",
+    invalidReasonEmptyQuestion: "Une liste de cases sans question au-dessus",
+    invalidReasonEmptyAnswer: "Un titre de question sans réponse en dessous",
     answerTooLongTooltip: "Réponse trop longue pour une notation textuelle — raccourcissez-la ou changez le mode de notation du paquet",
     examEnabledSetting: "Questions d'examen",
     examEnabledDesc: "Une liste de tâches sous un en-tête crée une carte à choix multiple",
@@ -1882,6 +1884,8 @@ export const fr: Translations = {
         "mixed-list": "liste mixte",
         "nested-task-list": "options imbriquées",
         "empty-option": "option vide",
+        "empty-question": "liste sans question",
+        "empty-answer": "question sans réponse",
         "not-a-question": "pas une question",
       },
       hub: {

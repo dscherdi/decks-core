@@ -536,6 +536,8 @@ export const zh: Translations = {
     invalidReasonMixedList: "标题下混合了任务列表与其他列表项",
     invalidReasonNested: "不支持嵌套任务列表",
     invalidReasonEmptyOption: "选项内容为空",
+    invalidReasonEmptyQuestion: "选项列表上方没有问题",
+    invalidReasonEmptyAnswer: "问题标题下方没有答案",
     answerTooLongTooltip: "答案过长，无法按文本判分。请缩短答案，或切换该牌组的判分模式",
     examEnabledSetting: "考试题目",
     examEnabledDesc: "标题下的任务列表会创建一张选择题卡片",
@@ -1802,6 +1804,8 @@ export const zh: Translations = {
         "mixed-list": "列表混杂",
         "nested-task-list": "选项嵌套",
         "empty-option": "空选项",
+        "empty-question": "缺少问题的列表",
+        "empty-answer": "缺少答案的问题",
         "not-a-question": "不是问题",
       },
       hub: {

@@ -548,6 +548,8 @@ export const ar: Translations = {
     invalidReasonMixedList: "قائمة مختلطة تحت العنوان",
     invalidReasonNested: "قوائم المهام المتداخلة غير مدعومة",
     invalidReasonEmptyOption: "نص الخيار فارغ",
+    invalidReasonEmptyQuestion: "قائمة اختيارات بلا سؤال فوقها",
+    invalidReasonEmptyAnswer: "عنوان سؤال بلا إجابة تحته",
     answerTooLongTooltip: "الإجابة أطول من أن تُقيَّم كنص — اختصرها أو غيّر وضع التقييم للرزمة",
     examEnabledSetting: "أسئلة الامتحان",
     examEnabledDesc: "قائمة مهام تحت عنوان تنشئ بطاقة اختيار من متعدد",
@@ -1837,6 +1839,8 @@ export const ar: Translations = {
         "mixed-list": "قائمة مختلطة",
         "nested-task-list": "خيارات متداخلة",
         "empty-option": "خيار فارغ",
+        "empty-question": "قائمة بلا سؤال",
+        "empty-answer": "سؤال بلا إجابة",
         "not-a-question": "ليست سؤالاً",
       },
       hub: {

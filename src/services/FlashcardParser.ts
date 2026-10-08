@@ -366,6 +366,10 @@ export class FlashcardParser {
 
     // Header stack for breadcrumb tracking (text is already tag-stripped)
     const headerStack: Array<{ text: string; level: number; tags: string[] }> = [];
+    // Exam decks: deeper headings that are an exercise's questions stay in its card.
+    const subQuestionLines = examEnabled
+      ? FlashcardParser.exerciseSubHeadings(lines, levelSet)
+      : new Set<number>();
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -516,7 +520,9 @@ export class FlashcardParser {
         }
 
         // Check for headers
-        const headerMatch = FlashcardParser.HEADER_REGEX.exec(line);
+        const headerMatch = subQuestionLines.has(i)
+          ? null
+          : FlashcardParser.HEADER_REGEX.exec(line);
         if (headerMatch) {
           const currentHeaderLevel = headerMatch[1].length;
           const rawHeaderText = stripAnchorTokens(
@@ -594,7 +600,7 @@ export class FlashcardParser {
             tags: headerTags,
           };
           currentContent = [];
-          sectionIsTableOnly = FlashcardParser.isSectionTableOnly(lines, i + 1);
+          sectionIsTableOnly = FlashcardParser.isSectionTableOnly(lines, i + 1, subQuestionLines);
           skipNextParagraph = false;
         } else if (skipNextParagraph) {
           if (trimmedLine === "") {
@@ -755,6 +761,53 @@ export class FlashcardParser {
   }
 
   /**
+   * Lines of headings below a card heading (and not themselves a card level)
+   * whose section reads as an exercise with those headings as its questions.
+   */
+  private static exerciseSubHeadings(lines: string[], levelSet: Set<number>): Set<number> {
+    const found = new Set<number>();
+    const headings: Array<{ index: number; level: number }> = [];
+    let inFrontmatter = false;
+    let inCodeBlock = false;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (i === 0 && trimmed === "---") {
+        inFrontmatter = true;
+        continue;
+      }
+      if (inFrontmatter) {
+        if (trimmed === "---") inFrontmatter = false;
+        continue;
+      }
+      if (FlashcardParser.CODE_FENCE_REGEX.test(trimmed)) {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      if (inCodeBlock) continue;
+      const match = FlashcardParser.HEADER_REGEX.exec(lines[i]);
+      if (match) headings.push({ index: i, level: match[1].length });
+    }
+    headings.forEach((card, n) => {
+      if (!levelSet.has(card.level)) return;
+      const subs: number[] = [];
+      let end = lines.length;
+      for (const next of headings.slice(n + 1)) {
+        if (next.level <= card.level || levelSet.has(next.level)) {
+          end = next.index;
+          break;
+        }
+        subs.push(next.index);
+      }
+      if (subs.length === 0) return;
+      const { lines: body } = extractLineAnchors(lines.slice(card.index + 1, end));
+      if (classifyExamBody(body.join("\n").trim()).kind === "exercise") {
+        for (const index of subs) found.add(index);
+      }
+    });
+    return found;
+  }
+
+  /**
    * Helper to finalize current header flashcard
    */
   /**
@@ -766,7 +819,8 @@ export class FlashcardParser {
    */
   private static isSectionTableOnly(
     lines: string[],
-    startIndex: number
+    startIndex: number,
+    subQuestionLines: ReadonlySet<number> = new Set()
   ): boolean {
     let sawTable = false;
     let sawProse = false;
@@ -780,6 +834,10 @@ export class FlashcardParser {
       }
       if (inCodeBlock) {
         if (trimmed !== "") sawProse = true;
+        continue;
+      }
+      if (subQuestionLines.has(i)) {
+        sawProse = true;
         continue;
       }
       if (FlashcardParser.HEADER_REGEX.test(lines[i])) break;
@@ -864,6 +922,25 @@ export class FlashcardParser {
       const headerKey = headerAnchor
         ? headerBindingKey(headerAnchor.id)
         : undefined;
+
+      // An exercise keeps its comments in the body: each one below a checklist
+      // is that question's note.
+      const asExercise = examEnabled ? classifyExamBody(back) : null;
+      if (asExercise?.kind === "exercise") {
+        const questionAnchor = anchors.find((a) => a.role === "q");
+        flashcards.push({
+          front,
+          back,
+          notes: asExercise.notes,
+          type: "multiple-choice",
+          breadcrumb,
+          tags,
+          ...(questionAnchor
+            ? { anchorKey: questionBindingKey(questionAnchor.id) }
+            : {}),
+        });
+        return;
+      }
 
       const { back: cleanBack, notes } =
         FlashcardParser.extractHeaderParagraphNotes(back);

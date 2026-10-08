@@ -193,3 +193,30 @@ describe(".dpkg packages", () => {
     expect(() => readDpkgContent(unpacked, opened)).toThrow(expect.objectContaining({ code: "invalid_deck" }));
   });
 });
+
+describe(".dpkg exercises", () => {
+  const exerciseBack = ["Shared text", "", "Q1", "- [x] A", "- [ ] B", "", "Q2", "- [x] C", "- [ ] D"].join("\n");
+
+  it("writes the oldest format unless a card holds an exercise", async () => {
+    const plain = await unpackDpkg(await buildPackage(REF, 1, content()), { includeMedia: false });
+    expect(plain.manifest.formatVersion).toBe(2);
+
+    const exercise = singleDeck("Exam", [card(REF, "card_ex", "Exercise", exerciseBack, { type: "multiple-choice" })]);
+    const unpacked = await unpackDpkg(await buildPackage(REF, 1, exercise), { includeMedia: false });
+    expect(unpacked.manifest.formatVersion).toBe(3);
+    expect(readDpkgContent(unpacked, await opener()).decks[0].cards[0].back).toBe(exerciseBack);
+  });
+
+  it("reads formats 2 and 3 and refuses newer or older ones", async () => {
+    const { manifest } = await unpackDpkg(await buildPackage(REF, 1, content()), { includeMedia: false });
+    for (const formatVersion of [2, 3]) {
+      expect(parseDpkgManifest(JSON.stringify({ ...manifest, formatVersion })).formatVersion).toBe(formatVersion);
+    }
+    expect(() => parseDpkgManifest(JSON.stringify({ ...manifest, formatVersion: 4 }))).toThrow(
+      expect.objectContaining({ code: "newer_format" })
+    );
+    expect(() => parseDpkgManifest(JSON.stringify({ ...manifest, formatVersion: 1 }))).toThrow(
+      expect.objectContaining({ code: "older_format" })
+    );
+  });
+});

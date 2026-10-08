@@ -33,6 +33,10 @@ export function checkGeneratedMcq(card: GeneratedCard): McqCheck {
   if (classified.kind === "invalid") {
     return { valid: false, reason: classified.reason };
   }
+  // A generated card is one question; several checklists are not one.
+  if (classified.kind === "exercise") {
+    return { valid: false, reason: "mixed-list" };
+  }
   const stem = classified.stem
     ? `${card.front}\n\n${classified.stem}`
     : card.front;

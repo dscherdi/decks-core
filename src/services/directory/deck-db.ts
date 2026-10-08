@@ -4,7 +4,8 @@ import type { DeckTemplate, FlashcardType, TemplateFaceType, TemplateRow } from 
 import { isJsonObject, isStringList, parseJson } from "../../utils/json";
 import type { RawDatabase } from "../FlashcardSynchronizer";
 import { directoryDeckId, directoryDeckKeyFromPath, directoryDeckPath, directoryDeckTag, isDirectoryDeckPath } from "./ids";
-import { DpkgError, isFlashcardType, MAX_PACKAGE_DECKS } from "./manifest";
+import { DPKG_MIN_FORMAT_VERSION, DpkgError, isFlashcardType, MAX_PACKAGE_DECKS } from "./manifest";
+import { classifyExamBody } from "../ExamClassifier";
 
 export const MAX_DIRECTORY_CARDS = 50_000;
 
@@ -37,6 +38,14 @@ export interface DirectoryDeckContent {
 export interface DirectoryPackageContent {
   decks: DirectoryDeckContent[];
   templates: DeckTemplate[];
+}
+
+/** The oldest format that holds this content, so older apps still install what they can show. */
+export function dpkgFormatVersion(content: DirectoryPackageContent): number {
+  const usesExercises = packageCards(content).some(
+    (card) => card.type === "multiple-choice" && classifyExamBody(card.back).kind === "exercise"
+  );
+  return usesExercises ? 3 : DPKG_MIN_FORMAT_VERSION;
 }
 
 /** Every card of a package, deck by deck. */
