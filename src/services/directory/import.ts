@@ -8,7 +8,7 @@ import {
   type DirectoryDeckRecord,
 } from "./DirectoryStore";
 import { directoryDeckId, directoryDeckPath } from "./ids";
-import { DpkgError, type DpkgManifest } from "./manifest";
+import { DpkgError, type DpkgManifest, manifestPackageRef } from "./manifest";
 
 export interface ClosableRawDatabase extends RawDatabase {
   close(): void;
@@ -48,8 +48,8 @@ export function readDpkgContent(contents: DpkgContents, open: OpenRawDatabase): 
 }
 
 /** Card ids in the package that already belong to a deck outside it. */
-export function findForeignCardIds(db: RawDatabase, slug: string, ids: string[]): string[] {
-  const root = directoryDeckPath(slug);
+export function findForeignCardIds(db: RawDatabase, ref: string, ids: string[]): string[] {
+  const root = directoryDeckPath(ref);
   const out: string[] = [];
   for (let i = 0; i < ids.length; i += 400) {
     const chunk = ids.slice(i, i + 400);
@@ -86,8 +86,9 @@ export function importDpkgContent(
   now: string
 ): DpkgImportResult {
   const content = readDpkgContent(contents, open);
-  const deckId = directoryDeckId(contents.manifest.slug);
-  const foreign = findForeignCardIds(db, contents.manifest.slug, packageCards(content).map((card) => card.id));
+  const ref = manifestPackageRef(contents.manifest);
+  const deckId = directoryDeckId(ref);
+  const foreign = findForeignCardIds(db, ref, packageCards(content).map((card) => card.id));
   if (foreign.length > 0) {
     throw new DpkgError("invalid_deck", `The package reuses ${foreign.length} card id(s) of another deck`);
   }

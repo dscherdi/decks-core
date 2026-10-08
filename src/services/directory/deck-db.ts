@@ -188,7 +188,7 @@ export function readDpkgDeckDb(db: RawDatabase): DirectoryPackageContent {
  */
 export function writeDpkgDeckDb(
   db: RawDatabase,
-  slug: string,
+  ref: string,
   content: DirectoryPackageContent,
   createdAt: string
 ): void {
@@ -207,13 +207,13 @@ export function writeDpkgDeckDb(
   );
   try {
     for (const deck of content.decks) {
-      const deckId = directoryDeckId(slug, deck.key);
-      const path = directoryDeckPath(slug, deck.key);
+      const deckId = directoryDeckId(ref, deck.key);
+      const path = directoryDeckPath(ref, deck.key);
       insertDeck.run([
         deckId,
         deck.name,
         path,
-        directoryDeckTag(slug, deck.key),
+        directoryDeckTag(ref, deck.key),
         createdAt,
         createdAt,
         JSON.stringify(deck.fileTags),
@@ -255,7 +255,7 @@ export function writeDpkgDeckDb(
     for (const template of content.templates) {
       insertTemplate.run([
         template.id,
-        directoryDeckPath(slug),
+        directoryDeckPath(ref),
         JSON.stringify(template.tags),
         template.frontTemplate,
         template.frontType,

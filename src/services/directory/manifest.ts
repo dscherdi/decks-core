@@ -9,9 +9,10 @@ import {
 } from "../../database/types";
 import { parseSteps } from "../../utils/step-parser";
 import { isJsonObject, isStringList, parseJson, type JsonObject } from "../../utils/json";
-import { isValidDirectoryDeckKey, isValidDirectorySlug } from "./ids";
+import { directoryPackageRef, isValidDirectoryDeckKey, isValidDirectoryPublisherId, isValidDirectorySlug } from "./ids";
 
-export const DPKG_FORMAT_VERSION = 1;
+// 2: packages name their publisher, part of their identity; earlier ones were never released.
+export const DPKG_FORMAT_VERSION = 2;
 
 export interface DpkgMediaEntry {
   sha256: string;
@@ -60,9 +61,16 @@ export function isValidDpkgProfileKey(key: string): boolean {
 /** Most decks one package may hold. */
 export const MAX_PACKAGE_DECKS = 100;
 
+/** Who made a package: a handle that is part of its identity, and a name to show. */
+export interface DpkgPublisher {
+  id: string;
+  name: string;
+}
+
 export interface DpkgManifest {
   formatVersion: number;
   schemaVersion: number;
+  publisher: DpkgPublisher;
   slug: string;
   /** Monotonic per slug; a higher version replaces an installed lower one. */
   version: number;
@@ -87,6 +95,7 @@ export interface DpkgManifest {
 export type DpkgErrorCode =
   | "not_a_package"
   | "newer_format"
+  | "older_format"
   | "invalid_manifest"
   | "too_large"
   | "hash_mismatch"
@@ -164,6 +173,10 @@ export function parseDpkgManifest(json: string): DpkgManifest {
   if (formatVersion > DPKG_FORMAT_VERSION) {
     throw new DpkgError("newer_format", `Package format ${formatVersion} is newer than this version reads`);
   }
+  if (formatVersion < DPKG_FORMAT_VERSION) {
+    throw new DpkgError("older_format", `Package format ${formatVersion} is no longer read; export it again`);
+  }
+  const publisher = publisherEntry(parsed.publisher);
 
   const slug = text(parsed, "slug");
   if (!isValidDirectorySlug(slug)) fail("manifest.slug is malformed");
@@ -194,6 +207,7 @@ export function parseDpkgManifest(json: string): DpkgManifest {
   return {
     formatVersion,
     schemaVersion: count(parsed, "schemaVersion"),
+    publisher,
     slug,
     version,
     title,
@@ -210,6 +224,20 @@ export function parseDpkgManifest(json: string): DpkgManifest {
     generator: text(parsed, "generator", false),
     ...decksAndProfiles(parsed, title, cardCount),
   };
+}
+
+function publisherEntry(value: JsonObject[string] | undefined): DpkgPublisher {
+  if (!isJsonObject(value)) fail("manifest.publisher must be an object");
+  const id = text(value, "id");
+  if (!isValidDirectoryPublisherId(id)) fail("manifest.publisher id is malformed");
+  const name = text(value, "name", false).trim();
+  if (name.length > 100) fail("manifest.publisher name is too long");
+  return { id, name };
+}
+
+/** The package ref of a manifest: its publisher and slug. */
+export function manifestPackageRef(manifest: Pick<DpkgManifest, "publisher" | "slug">): string {
+  return directoryPackageRef(manifest.publisher.id, manifest.slug);
 }
 
 function examSettings(value: JsonObject[string] | undefined, where: string): ExamSettings | null {

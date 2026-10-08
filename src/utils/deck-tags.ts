@@ -1,4 +1,5 @@
 import type { Deck, ProfileTagMapping } from "../database/types";
+import { DIRECTORY_TAG_ROOT } from "../services/directory/ids";
 
 /**
  * The tag vocabulary shared by both surfaces.
@@ -101,6 +102,8 @@ export function flatTagsFor(deck: Pick<Deck, "fileTags">, options: TagScopeOptio
     const tag = normalizeTag(raw);
     if (tag === "#") continue;
     if (isUnderTag(tag, options.baseTag)) continue;
+    // Installed packages' decks own #directory; a note can't join them.
+    if (isUnderTag(tag, DIRECTORY_TAG_ROOT)) continue;
     if (matchesIgnore(tag, options.ignore)) continue;
     out.add(tag);
   }

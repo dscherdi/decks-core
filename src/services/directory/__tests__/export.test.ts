@@ -58,13 +58,13 @@ describe("exporting a deck's cards", () => {
   });
 
   it("derives ids, leaves scheduling behind and skips canvas-only types", () => {
-    const result = buildDirectoryCards("french", [
+    const result = buildDirectoryCards("someone/french", [
       card({ id: "card_fr", front: "France", back: "![[fr.png]] Paris" }),
       card({ id: "scard_edge", type: "spatial", edgeId: "e1" }),
     ], resolve);
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0]).toMatchObject({
-      id: deriveDirectoryCardId("french", "card_fr"),
+      id: deriveDirectoryCardId("someone/french", "card_fr"),
       back: `![[media/${FLAG.sha256}.png]] Paris`,
     });
     expect(result.cards[0]).not.toHaveProperty("stability");
@@ -83,13 +83,13 @@ describe("exporting a deck's cards", () => {
     const back = serializeOcclusionBack({ __v: 2, image: "![[flags/fr.png]]", masks: [] });
     const occlusion = card({ id: "ocard_1", type: "image-occlusion-v2", back });
     expect(collectCardEmbeds([occlusion])).toEqual(["flags/fr.png"]);
-    const [built] = buildDirectoryCards("french", [occlusion], resolve).cards;
+    const [built] = buildDirectoryCards("someone/french", [occlusion], resolve).cards;
     expect(parseOcclusionBack(built.back)?.image).toBe(`media/${FLAG.sha256}.png`);
   });
 
   it("gives the same card the same id in every export", () => {
-    const a = buildDirectoryCards("french", [card({ id: "card_fr", front: "France", back: "Paris" })], resolve);
-    const b = buildDirectoryCards("french", [card({ id: "card_fr", front: "France", back: "Paris!" })], resolve);
+    const a = buildDirectoryCards("someone/french", [card({ id: "card_fr", front: "France", back: "Paris" })], resolve);
+    const b = buildDirectoryCards("someone/french", [card({ id: "card_fr", front: "France", back: "Paris!" })], resolve);
     expect(a.cards[0].id).toBe(b.cards[0].id);
     expect(a.cards[0].contentHash).not.toBe(b.cards[0].contentHash);
   });
@@ -107,13 +107,13 @@ describe("author to learner round trip", () => {
       card({ id: "card_fr", front: "France", back: "![[flags/fr.png]] Paris" }),
       card({ id: "ccard_c1", type: "cloze", front: "La {{c1::tour}}", back: "La tour", clozeText: "tour", clozeOrder: 0 }),
     ];
-    const built = buildDirectoryCards("french", authored, resolve);
+    const built = buildDirectoryCards("someone/french", authored, resolve);
     const SQL = await sqlJs();
     const deckDb = new SQL.Database();
-    writeDpkgDeckDb(deckDb, "french", singleDeck("French", built.cards), "2026-10-01T00:00:00.000Z");
+    writeDpkgDeckDb(deckDb, "someone/french", singleDeck("French", built.cards), "2026-10-01T00:00:00.000Z");
     const { bytes } = await packDpkg({
       manifest: {
-        slug: "french", version: 1, title: "French", description: "", language: "fr", subject: "",
+        publisher: { id: "someone", name: "Someone" }, slug: "french", version: 1, title: "French", description: "", language: "fr", subject: "",
         tags: [], license: "", cardCount: built.cards.length, typeCounts: {}, createdAt: "2026-10-01T00:00:00.000Z", generator: "test",
         decks: [{ key: "", title: "French", cardCount: built.cards.length, exam: null }],
       },
@@ -126,9 +126,9 @@ describe("author to learner round trip", () => {
     const learner = await mainDb();
     const contents = await unpackDpkg(bytes);
     importDpkgContent(learner, contents, "sha", await opener(), "2026-10-02T00:00:00.000Z");
-    const installed = rows(learner, "SELECT id, back, state, repetitions, last_reviewed FROM flashcards WHERE deck_id = ? ORDER BY id", [directoryDeckId("french")]);
+    const installed = rows(learner, "SELECT id, back, state, repetitions, last_reviewed FROM flashcards WHERE deck_id = ? ORDER BY id", [directoryDeckId("someone/french")]);
     expect(installed.map((r) => r.id)).toEqual(built.cards.map((c) => c.id).sort());
     expect(installed.every((r) => r.state === "new" && r.repetitions === 0 && r.last_reviewed === null)).toBe(true);
-    expect(installed.find((r) => r.id === deriveDirectoryCardId("french", "card_fr"))?.back).toContain(`media/`);
+    expect(installed.find((r) => r.id === deriveDirectoryCardId("someone/french", "card_fr"))?.back).toContain(`media/`);
   });
 });

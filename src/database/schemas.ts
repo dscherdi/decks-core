@@ -64,7 +64,8 @@ export const SEED_PRESET_PROFILES_SQL = [
 export const DIRECTORY_TABLES_SQL = `
   CREATE TABLE IF NOT EXISTS directory_decks (
     id TEXT PRIMARY KEY,
-    slug TEXT NOT NULL UNIQUE,
+    publisher TEXT NOT NULL DEFAULT '',
+    slug TEXT NOT NULL,
     version INTEGER NOT NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -94,6 +95,13 @@ export const DIRECTORY_TABLES_SQL = `
     content_hash TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_directory_cards_deck ON directory_cards(directory_deck_id, position);
+
+  -- A learner's own study settings on a package's profile, only those that differ from the package.
+  CREATE TABLE IF NOT EXISTS directory_profile_settings (
+    profile_id TEXT PRIMARY KEY,
+    settings TEXT NOT NULL DEFAULT '{}',
+    modified TEXT NOT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS directory_templates (
     id TEXT PRIMARY KEY,

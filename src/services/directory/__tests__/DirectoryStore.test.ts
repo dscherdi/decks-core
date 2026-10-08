@@ -4,14 +4,14 @@ import { unpackDpkg } from "../archive";
 import { importDpkgContent } from "../import";
 import {
   directoryDeckProfiles,
-  directoryProfileOwner,
+  directoryPackageProfileOf,
   ensureDirectoryTables,
   getDirectoryDeck,
   listDirectoryDecks,
   materialiseDirectoryDecks,
   mergeDirectoryTables,
-  pickDirectoryProfile,
   removeDirectoryDeck,
+  UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL,
 } from "../DirectoryStore";
 import { directoryDeckId, directoryDeckPath, directoryDeckTag } from "../ids";
 import type { DirectoryCardContent, DirectoryPackageContent } from "../deck-db";
@@ -19,15 +19,15 @@ import { buildPackage, card, mainDb, opener, packageProfile, review, rows, singl
 import { DEFAULT_EXAM_SETTINGS, DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID } from "../../../database/types";
 import { DROP_DIRECTORY_PROFILES_SQL, OWN_PROFILES_WHERE, directoryProfileId } from "../profiles";
 
-const SLUG = "capitals";
-const DECK = directoryDeckId(SLUG);
+const REF = "decksmd/capitals";
+const DECK = directoryDeckId(REF);
 
 function v1(): { cards: DirectoryCardContent[] } {
   return {
     cards: [
-      card(SLUG, "card_fr", "France", "Paris"),
-      card(SLUG, "card_de", "Germany", "Berlin"),
-      card(SLUG, "card_it", "Italy", "Rome"),
+      card(REF, "card_fr", "France", "Paris"),
+      card(REF, "card_de", "Germany", "Berlin"),
+      card(REF, "card_it", "Italy", "Rome"),
     ],
   };
 }
@@ -41,7 +41,7 @@ async function install(
   profiles?: PackageProfiles
 ) {
   const pkg = await buildPackage(
-    SLUG,
+    REF,
     version,
     "decks" in content ? content : singleDeck("World capitals", content.cards),
     [],
@@ -63,11 +63,11 @@ function course(west: DirectoryCardContent[], east: DirectoryCardContent[]): Dir
   };
 }
 
-const WEST = directoryDeckId(SLUG, "west");
-const EAST = directoryDeckId(SLUG, "east");
+const WEST = directoryDeckId(REF, "west");
+const EAST = directoryDeckId(REF, "east");
 // The profiles a package that carries none studies with.
-const STUDY_PROFILE = directoryProfileId(SLUG, "preset:study");
-const examPresetProfile = (key: string) => directoryProfileId(SLUG, `preset:exam:${key}`);
+const STUDY_PROFILE = directoryProfileId(REF, "preset:study");
+const examPresetProfile = (key: string) => directoryProfileId(REF, `preset:exam:${key}`);
 // A profile the user has, which is neither the default nor a package's.
 const USER_PROFILE_SQL = "SELECT id FROM deckprofiles WHERE id NOT IN (?, ?) AND id NOT LIKE 'profile_dir_%' LIMIT 2";
 
@@ -101,10 +101,10 @@ describe("directory decks in the main database", () => {
 
     expect(result.deckId).toBe(DECK);
     const deck = rows(db, "SELECT filepath, tag, profile_id FROM decks WHERE id = ?", [DECK])[0];
-    expect(deck).toEqual({ filepath: directoryDeckPath(SLUG), tag: directoryDeckTag(SLUG), profile_id: STUDY_PROFILE });
+    expect(deck).toEqual({ filepath: directoryDeckPath(REF), tag: directoryDeckTag(REF), profile_id: STUDY_PROFILE });
     expect(profileRow(db, STUDY_PROFILE)).toMatchObject({ name: "World capitals", newLimit: 0, examEnabled: 0, deletedAt: null });
     expect(cards(db).map((c) => c.id).sort()).toEqual(v1().cards.map((c) => c.id).sort());
-    expect(cards(db).every((c) => c.state === "new" && c.source_file === directoryDeckPath(SLUG))).toBe(true);
+    expect(cards(db).every((c) => c.state === "new" && c.source_file === directoryDeckPath(REF))).toBe(true);
   });
 
   it("keeps progress across an update and drops only the cards the update removed", async () => {
@@ -118,7 +118,7 @@ describe("directory decks in the main database", () => {
     updated.cards = [
       { ...france, back: "Paris (capital since 987)", contentHash: "edited" },
       germany,
-      card(SLUG, "card_es", "Spain", "Madrid"),
+      card(REF, "card_es", "Spain", "Madrid"),
     ];
     const result = await install(db, updated, 2, "2026-10-03T10:00:00.000Z");
 
@@ -136,7 +136,7 @@ describe("directory decks in the main database", () => {
     review(db, italy.id, "2026-10-02T09:00:00.000Z", 20);
 
     const updated = v1();
-    const roman = card(SLUG, "card_roma", "Capital of the Roman Empire", "Rome");
+    const roman = card(REF, "card_roma", "Capital of the Roman Empire", "Rome");
     updated.cards = [france, germany, roman];
     await install(db, updated, 2, "2026-10-03T10:00:00.000Z");
 
@@ -215,49 +215,21 @@ describe("directory decks in the main database", () => {
     expect(rows(db, "SELECT deck_id FROM flashcards WHERE id = ?", [stolenId])[0].deck_id).toBe("deck_own");
   });
 
-  it("studies with the profile mapped to #directory", async () => {
-    const db = await mainDb();
-    const profileId = rows(db, USER_PROFILE_SQL, [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID])[0].id;
-    db.run(
-      `INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory', 'x')`,
-      [profileId]
-    );
-    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
-    expect(rows(db, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(profileId);
-  });
 
-  it("studies an exam deck with its own exam profile, carrying the package's exam settings, unless #directory is mapped", async () => {
+  it("studies an exam deck with its own exam profile, carrying the package's exam settings", async () => {
     const exam = {
-      cards: [...v1().cards, card(SLUG, "qcard_gas", "Noble gas?", "- [ ] Oxygen\n- [x] Argon", { type: "multiple-choice" })],
+      cards: [...v1().cards, card(REF, "qcard_gas", "Noble gas?", "- [ ] Oxygen\n- [x] Argon", { type: "multiple-choice" })],
     };
     const settings = { ...DEFAULT_EXAM_SETTINGS, questionCount: 2 };
-    const installExam = async (db: Database) => {
-      await install(db, exam, 1, "2026-10-01T10:00:00.000Z", { "": settings });
-    };
-
     const db = await mainDb();
-    await installExam(db);
+    await install(db, exam, 1, "2026-10-01T10:00:00.000Z", { "": settings });
     expect(profileOf(db, DECK)).toBe(examPresetProfile(""));
     const own = profileRow(db, examPresetProfile(""));
     expect(own).toMatchObject({ examEnabled: 1, newLimit: 1, newPerDay: 0 });
     expect(JSON.parse(String(own.examSettings))).toEqual(settings);
     expect(rows(db, "SELECT type FROM flashcards WHERE deck_id = ? AND front = 'Noble gas?'", [DECK])[0].type).toBe("multiple-choice");
-
-    const mappedDb = await mainDb();
-    const profileId = rows(mappedDb, USER_PROFILE_SQL, [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID])[0].id;
-    mappedDb.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory', 'x')`, [profileId]);
-    await installExam(mappedDb);
-    expect(profileOf(mappedDb, DECK)).toBe(profileId);
   });
 
-  it("follows a #directory mapping made after it was installed", async () => {
-    const db = await mainDb();
-    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
-    const profileId = rows(db, USER_PROFILE_SQL, [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID])[0].id;
-    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory/capitals', 'x')`, [profileId]);
-    expect(materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z").reprofiled).toEqual([DECK]);
-    expect(rows(db, "SELECT profile_id FROM decks WHERE id = ?", [DECK])[0].profile_id).toBe(profileId);
-  });
 
   it("installs a package of several decks as one deck each, filed under the package", async () => {
     const db = await mainDb();
@@ -268,12 +240,12 @@ describe("directory decks in the main database", () => {
     expect(result.sync).toHaveLength(2);
     expect(listDirectoryDecks(db).map((record) => record.id)).toEqual([DECK]);
     expect(rows(db, "SELECT id, name, filepath, tag, file_tags FROM decks ORDER BY filepath")).toEqual([
-      { id: EAST, name: "Eastern Europe", filepath: directoryDeckPath(SLUG, "east"), tag: directoryDeckTag(SLUG, "east"), file_tags: "[]" },
-      { id: WEST, name: "Western Europe", filepath: directoryDeckPath(SLUG, "west"), tag: directoryDeckTag(SLUG, "west"), file_tags: '["west"]' },
+      { id: EAST, name: "Eastern Europe", filepath: directoryDeckPath(REF, "east"), tag: directoryDeckTag(REF, "east"), file_tags: "[]" },
+      { id: WEST, name: "Western Europe", filepath: directoryDeckPath(REF, "west"), tag: directoryDeckTag(REF, "west"), file_tags: '["west"]' },
     ]);
     expect(deckOf(db, france.id).deck_id).toBe(WEST);
     expect(deckOf(db, italy.id).deck_id).toBe(EAST);
-    expect(rows(db, "SELECT COUNT(*) AS n FROM flashcards WHERE source_file = ?", [directoryDeckPath(SLUG, "east")])[0].n).toBe(1);
+    expect(rows(db, "SELECT COUNT(*) AS n FROM flashcards WHERE source_file = ?", [directoryDeckPath(REF, "east")])[0].n).toBe(1);
   });
 
   it("keeps progress when an update moves a card between its decks, or folds them into one", async () => {
@@ -301,37 +273,21 @@ describe("directory decks in the main database", () => {
     expect(rows(db, "SELECT id FROM flashcards")).toEqual([]);
   });
 
-  it("gives each deck its package's profile, unless a mapping on the package or one deck says otherwise", async () => {
+  it("gives each deck its package's profile, and pays no heed to #directory mappings", async () => {
     const [france, germany, italy] = v1().cards;
     const exams = { east: { ...DEFAULT_EXAM_SETTINGS, passScorePct: 80 } };
-
     const db = await mainDb();
     await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", exams);
     expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([STUDY_PROFILE, examPresetProfile("east")]);
 
     const other = rows(db, USER_PROFILE_SQL, [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID])[0].id;
-    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, ?, 'x')`, [other, directoryDeckTag(SLUG)]);
+    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, ?, 'x')`, [other, directoryDeckTag(REF)]);
     materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z");
-    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([other, other]);
-
-    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m2', ?, ?, 'x')`, [
-      DEFAULT_PROFILE_ID,
-      directoryDeckTag(SLUG, "west"),
-    ]);
-    materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z");
-    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([DEFAULT_PROFILE_ID, other]);
+    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([STUDY_PROFILE, examPresetProfile("east")]);
   });
 
-  it("picks a package deck's profile from its deck tag, never from a flat tag", () => {
-    const mapping = (profileId: string, tag: string) => ({ id: tag, profileId, tag, created: "x" });
-    const tag = directoryDeckTag(SLUG, "east");
-    expect(pickDirectoryProfile([], tag, null)).toBe(DEFAULT_PROFILE_ID);
-    expect(pickDirectoryProfile([], tag, "own")).toBe("own");
-    expect(pickDirectoryProfile([mapping("p1", "#directory")], tag, "own")).toBe("p1");
-    expect(pickDirectoryProfile([mapping("p1", "#german")], tag, "own")).toBe("own");
-  });
 
-  it("names each deck's profile, and passes over a mapping whose profile was deleted", async () => {
+  it("names each deck's package profile", async () => {
     const [france, germany, italy] = v1().cards;
     const db = await mainDb();
     await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", { east: DEFAULT_EXAM_SETTINGS });
@@ -341,16 +297,6 @@ describe("directory decks in the main database", () => {
         [EAST, examPresetProfile("east")],
       ])
     );
-
-    const [first, second] = rows(db, USER_PROFILE_SQL, [DEFAULT_PROFILE_ID, EXAMS_PROFILE_ID]).map((row) => String(row.id));
-    db.run(`INSERT INTO profile_tag_mappings (id, profile_id, tag, created) VALUES ('m1', ?, '#directory', 'x'), ('m2', ?, ?, 'x')`, [
-      first,
-      second,
-      directoryDeckTag(SLUG),
-    ]);
-    db.run("UPDATE deckprofiles SET deleted_at = 'x' WHERE id = ?", [second]);
-    materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z");
-    expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([first, first]);
   });
 
   it("studies with the profiles it carries: decks sharing one share it, the first named after the package", async () => {
@@ -366,8 +312,8 @@ describe("directory decks in the main database", () => {
     const db = await mainDb();
     await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", { east: settings }, profiles);
 
-    const steady = directoryProfileId(SLUG, "steady");
-    const final = directoryProfileId(SLUG, "final");
+    const steady = directoryProfileId(REF, "steady");
+    const final = directoryProfileId(REF, "final");
     expect([profileOf(db, WEST), profileOf(db, EAST)]).toEqual([steady, final]);
     expect(profileRow(db, steady)).toMatchObject({
       name: "World capitals",
@@ -403,7 +349,7 @@ describe("directory decks in the main database", () => {
       `INSERT INTO deckprofiles (id, name, created, modified) VALUES ('profile_mine', 'World capitals', 'x', 'x')`
     );
     await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
-    expect(profileRow(db, STUDY_PROFILE).name).toBe("World capitals (capitals)");
+    expect(profileRow(db, STUDY_PROFILE).name).toBe("World capitals (decksmd)");
     expect(rows(db, "SELECT name FROM deckprofiles WHERE id = 'profile_mine'")[0].name).toBe("World capitals");
   });
 
@@ -415,7 +361,7 @@ describe("directory decks in the main database", () => {
     });
     const db = await mainDb();
     await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", {}, carried(10, 10));
-    const [a, b] = [directoryProfileId(SLUG, "a"), directoryProfileId(SLUG, "b")];
+    const [a, b] = [directoryProfileId(REF, "a"), directoryProfileId(REF, "b")];
     db.run("UPDATE deckprofiles SET new_cards_per_day = 3, exam_enabled = 1, modified = '2026-10-02T09:00:00.000Z' WHERE id = ?", [b]);
     expect(materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z").profiles).toEqual([b]);
     expect(profileRow(db, b)).toMatchObject({ newPerDay: 10, examEnabled: 0 });
@@ -447,7 +393,7 @@ describe("directory decks in the main database", () => {
     // A merge writes rows with INSERT OR REPLACE, which evicts a same-named row.
     db.run("INSERT OR REPLACE INTO deckprofiles (id, name, created, modified) VALUES ('profile_mine', 'World capitals', 'x', 'x')");
     materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z");
-    expect(profileRow(db, STUDY_PROFILE).name).toBe("World capitals (capitals)");
+    expect(profileRow(db, STUDY_PROFILE).name).toBe("World capitals (decksmd)");
     expect(rows(db, "SELECT name FROM deckprofiles WHERE id = 'profile_mine'")[0].name).toBe("World capitals");
     expect(profileOf(db, DECK)).toBe(STUDY_PROFILE);
   });
@@ -462,15 +408,84 @@ describe("directory decks in the main database", () => {
     expect(rows(db, `SELECT COUNT(*) AS n FROM deckprofiles WHERE ${OWN_PROFILES_WHERE}`)[0].n).toBe(before);
   });
 
-  it("names the package and decks behind a package profile", async () => {
-    const [france, germany, italy] = v1().cards;
+  it("names the package behind a package profile", async () => {
     const db = await mainDb();
-    await install(db, course([france, germany], [italy]), 1, "2026-10-01T10:00:00.000Z", { east: DEFAULT_EXAM_SETTINGS });
-    expect(directoryProfileOwner(listDirectoryDecks(db), STUDY_PROFILE)).toEqual({
-      title: "World capitals",
-      deckTags: [directoryDeckTag(SLUG, "west")],
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
+    const owner = directoryPackageProfileOf(listDirectoryDecks(db), STUDY_PROFILE);
+    expect([owner?.title, owner?.profile.id]).toEqual(["World capitals", STUDY_PROFILE]);
+    expect(directoryPackageProfileOf(listDirectoryDecks(db), DEFAULT_PROFILE_ID)).toBeNull();
+  });
+
+  it("lays the learner's own settings over the package profile; the rest follows a new version", async () => {
+    const carried = (newPerDay: number, order: "due-date" | "random"): PackageProfiles => ({
+      list: [packageProfile("p", { newCardsPerDay: newPerDay, reviewOrder: order })],
+      byDeck: { "": "p" },
     });
-    expect(directoryProfileOwner(listDirectoryDecks(db), DEFAULT_PROFILE_ID)).toBeNull();
+    const own = directoryProfileId(REF, "p");
+    const db = await mainDb();
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z", {}, carried(10, "due-date"));
+    db.run(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [own, JSON.stringify({ new_cards_per_day: 5 }), "2026-10-02T10:00:00.000Z"]);
+    expect(materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z").profiles).toEqual([own]);
+    expect(profileRow(db, own)).toMatchObject({ newPerDay: 5, reviewOrder: "due-date" });
+
+    await install(db, v1(), 2, "2026-10-03T10:00:00.000Z", {}, carried(25, "random"));
+    expect(profileRow(db, own)).toMatchObject({ newPerDay: 5, reviewOrder: "random" });
+
+    db.run(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [own, "{}", "2026-10-04T10:00:00.000Z"]);
+    materialiseDirectoryDecks(db, "2026-10-04T10:01:00.000Z");
+    expect(profileRow(db, own)).toMatchObject({ newPerDay: 25, reviewOrder: "random" });
+  });
+
+  it("takes the learner's newer settings from another copy, and keeps its own when they are newer", async () => {
+    const SQL = await sqlJs();
+    const phone = await mainDb();
+    const laptop = await mainDb();
+    await install(phone, v1(), 1, "2026-10-01T10:00:00.000Z");
+    await install(laptop, v1(), 1, "2026-10-01T10:00:00.000Z");
+    phone.run(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [STUDY_PROFILE, JSON.stringify({ new_cards_per_day: 7 }), "2026-10-02T10:00:00.000Z"]);
+    laptop.run(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [STUDY_PROFILE, JSON.stringify({ new_cards_per_day: 3 }), "2026-10-03T10:00:00.000Z"]);
+
+    mergeDirectoryTables(laptop, new SQL.Database(phone.export()));
+    materialiseDirectoryDecks(laptop, "2026-10-04T10:00:00.000Z");
+    expect(profileRow(laptop, STUDY_PROFILE).newPerDay).toBe(3);
+
+    mergeDirectoryTables(phone, new SQL.Database(laptop.export()));
+    materialiseDirectoryDecks(phone, "2026-10-04T10:00:00.000Z");
+    expect(profileRow(phone, STUDY_PROFILE).newPerDay).toBe(3);
+  });
+
+  it("keeps two publishers' packages of the same slug apart", async () => {
+    const theirs = "someone/capitals";
+    const db = await mainDb();
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
+    const pkg = await buildPackage(theirs, 1, singleDeck("Their capitals", [card(theirs, "card_fr", "France", "Paris")]), [], {}, "Their capitals");
+    importDpkgContent(db, await unpackDpkg(pkg, { includeMedia: false }), "sha-theirs", await opener(), "2026-10-02T10:00:00.000Z");
+
+    expect(listDirectoryDecks(db).map((record) => [record.publisher, record.slug]).sort()).toEqual([
+      ["decksmd", "capitals"],
+      ["someone", "capitals"],
+    ]);
+    expect(cards(db)).toHaveLength(3);
+    expect(rows(db, "SELECT COUNT(*) AS n FROM flashcards WHERE deck_id = ?", [directoryDeckId(theirs)])[0].n).toBe(1);
+    expect(directoryDeckTag(theirs)).toBe("#directory/someone/capitals");
+  });
+
+  it("clears installs made before publishers were part of a package's identity", async () => {
+    const db = await mainDb();
+    db.run("DROP TABLE directory_decks");
+    db.run(
+      `CREATE TABLE directory_decks (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, version INTEGER NOT NULL, title TEXT NOT NULL,
+         description TEXT NOT NULL DEFAULT '', manifest TEXT NOT NULL, archive_sha256 TEXT NOT NULL, file_tags TEXT,
+         imported_at TEXT NOT NULL, modified TEXT NOT NULL, removed_at TEXT)`
+    );
+    db.run("INSERT INTO directory_decks VALUES ('deck_dir_old', 'capitals', 1, 'Old', '', '{}', 'sha', NULL, 'x', 'x', NULL)");
+    db.run(
+      "INSERT INTO decks (id, name, filepath, tag, profile_id, created, modified) VALUES ('deck_dir_old', 'Old', 'decks-directory:capitals', '#directory/capitals', 'profile_default', 'x', 'x')"
+    );
+    ensureDirectoryTables(db);
+    expect(rows(db, "SELECT COUNT(*) AS n FROM decks WHERE filepath LIKE 'decks-directory:%'")[0].n).toBe(0);
+    expect(rows(db, "SELECT name FROM pragma_table_info('directory_decks') WHERE name = 'publisher'")).toHaveLength(1);
+    expect(listDirectoryDecks(db)).toEqual([]);
   });
 
 

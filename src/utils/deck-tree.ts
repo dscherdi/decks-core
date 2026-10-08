@@ -3,7 +3,7 @@ import type { FileDeck, DeckGroup, CustomDeckGroup } from "../database/types";
 import { generateDeckGroupId } from "./hash";
 import { naturalCompare } from "./string";
 import { I18n } from "../i18n/I18n";
-import { directoryDeckKeyFromPath, directorySlugFromPath, isDirectoryDeckPath } from "../services/directory/ids";
+import { directoryDeckKeyFromPath, directoryPackageRefFromPath, isDirectoryDeckPath } from "../services/directory/ids";
 
 /**
  * View-model for the unified Decks tree. Top-level `section` nodes
@@ -80,14 +80,14 @@ export interface BuildDeckTreeInput {
   /** Flat view: list every deck/group directly under its section, no folder or
    *  sub-tag nesting. Sections and the Pinned block are kept. */
   flat?: boolean;
-  /** Installed package titles by slug, naming the folder of a package with several decks. */
+  /** Installed package titles by package ref, naming the folder of a package with several decks. */
   directoryTitles?: ReadonlyMap<string, string>;
 }
 
 const PACKAGE_NODE_PREFIX = "pkg:";
 
-/** The slug of an installed package's folder node; null for any other node. */
-export function directoryPackageSlugOfNode(node: Pick<TreeNode, "id" | "kind">): string | null {
+/** The package ref of an installed package's folder node; null for any other node. */
+export function directoryPackageRefOfNode(node: Pick<TreeNode, "id" | "kind">): string | null {
   return node.kind === "folder" && node.id.startsWith(PACKAGE_NODE_PREFIX) ? node.id.slice(PACKAGE_NODE_PREFIX.length) : null;
 }
 
@@ -151,15 +151,15 @@ export function buildDeckTree(input: BuildDeckTreeInput): DeckTree {
     const pinned = pinnedIds.has(deck.id);
     // Installed explicitly, so the minimum-size filter never hides one.
     if (isDirectoryDeckPath(deck.filepath)) {
-      const slug = directorySlugFromPath(deck.filepath) ?? "";
-      const title = directoryTitles?.get(slug) ?? slug;
+      const ref = directoryPackageRefFromPath(deck.filepath) ?? "";
+      const title = directoryTitles?.get(ref) ?? ref;
       const inPackage = directoryDeckKeyFromPath(deck.filepath) !== "";
       let parent = directorySection;
       if (inPackage && !flat) {
-        let folder = packageFolders.get(slug);
+        let folder = packageFolders.get(ref);
         if (!folder) {
-          folder = makeNode({ id: `${PACKAGE_NODE_PREFIX}${slug}`, kind: "folder", name: title, depth: 1 });
-          packageFolders.set(slug, folder);
+          folder = makeNode({ id: `${PACKAGE_NODE_PREFIX}${ref}`, kind: "folder", name: title, depth: 1 });
+          packageFolders.set(ref, folder);
           directorySection.children.push(folder);
         }
         parent = folder;

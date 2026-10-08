@@ -111,6 +111,11 @@ export interface IDatabaseService {
   getDirectoryTemplates(deckId: string): Promise<DeckTemplate[]>;
   /** Tombstone the deck, drop its rows and tell other devices; saves straight away. */
   removeDirectoryDeck(deckId: string): Promise<void>;
+  /** Set the learner's own study settings on a package's profile; null goes back to the package's. */
+  setDirectoryProfileSettings(
+    profileId: string,
+    updates: Partial<Omit<DeckProfile, "id" | "created" | "modified" | "isDefault">> | null
+  ): Promise<void>;
   renameDeckTemplate(
     oldSourceFile: string,
     newSourceFile: string,

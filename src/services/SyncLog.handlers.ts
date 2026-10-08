@@ -18,7 +18,7 @@
 import type { IDatabaseService } from "../database/DatabaseService.interface";
 import type { ILogger as Logger } from "../database/DatabaseService.interface";
 import type { SyncLogEntry } from "./SyncLog.types";
-import { REMOVE_DIRECTORY_CONTENT_SQL } from "./directory/DirectoryStore";
+import { REMOVE_DIRECTORY_CONTENT_SQL, UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL } from "./directory/DirectoryStore";
 import { isDirectoryProfileId } from "./directory/profiles";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
 import type { ReviewLog } from "../database/types";
@@ -83,6 +83,7 @@ const HANDLERS: Partial<Record<SyncLogEntry["o"], OpHandler>> = {
   ai_staged_cards_upsert: handleAiStagedCardsUpsert,
   ai_concepts_save: handleAiConceptsSave,
   directory_deck_remove: handleDirectoryDeckRemove,
+  directory_profile_settings: handleDirectoryProfileSettings,
   client_hello: async () => {},
 };
 
@@ -284,6 +285,22 @@ async function handleDirectoryDeckRemove(
     for (const sql of REMOVE_DIRECTORY_CONTENT_SQL) await db.executeSql(sql, [deckId]);
   } catch (error) {
     logger.debug(`SyncLog: directory_deck_remove for ${deckId} not applied`, error);
+  }
+}
+
+async function handleDirectoryProfileSettings(
+  db: IDatabaseService,
+  _sourceDeviceId: string,
+  entry: SyncLogEntry,
+  logger: Logger
+): Promise<void> {
+  if (entry.o !== "directory_profile_settings") return;
+  const { profileId, settings, modified } = entry.p;
+  try {
+    await db.executeSql(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [profileId, settings, modified]);
+    await db.materialiseDirectoryDecks();
+  } catch (error) {
+    logger.debug(`SyncLog: directory_profile_settings for ${profileId} not applied`, error);
   }
 }
 

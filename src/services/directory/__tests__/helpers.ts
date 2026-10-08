@@ -28,9 +28,9 @@ export async function opener(): Promise<(bytes: Uint8Array) => ClosableRawDataba
   return (bytes) => new SQL.Database(bytes);
 }
 
-export function card(slug: string, ownerId: string, front: string, back: string, extra: Partial<DirectoryCardContent> = {}): DirectoryCardContent {
+export function card(ref: string, ownerId: string, front: string, back: string, extra: Partial<DirectoryCardContent> = {}): DirectoryCardContent {
   return {
-    id: deriveDirectoryCardId(slug, ownerId),
+    id: deriveDirectoryCardId(ref, ownerId),
     position: 0,
     type: "header-paragraph",
     front,
@@ -81,8 +81,9 @@ export function packageProfile(key: string, changes: Partial<DpkgProfile> = {}):
   };
 }
 
+/** Build a package for `ref` (`publisher/slug`). */
 export async function buildPackage(
-  slug: string,
+  ref: string,
   version: number,
   content: DirectoryPackageContent,
   media: DpkgMediaInput[] = [],
@@ -92,12 +93,14 @@ export async function buildPackage(
 ): Promise<Uint8Array> {
   const SQL = await sqlJs();
   const deckDb = new SQL.Database();
-  writeDpkgDeckDb(deckDb, slug, content, "2026-10-01T00:00:00.000Z");
+  const [publisher, slug] = ref.split("/");
+  writeDpkgDeckDb(deckDb, ref, content, "2026-10-01T00:00:00.000Z");
   const bytes = deckDb.export();
   deckDb.close();
   const cards = packageCards(content);
   const { bytes: pkg } = await packDpkg({
     manifest: {
+      publisher: { id: publisher, name: "Test publisher" },
       slug,
       version,
       title,

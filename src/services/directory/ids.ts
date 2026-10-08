@@ -15,6 +15,29 @@ export function isValidDirectorySlug(slug: string): boolean {
   return slug.length > 0 && slug.length <= MAX_SLUG_LENGTH && SLUG_PATTERN.test(slug);
 }
 
+/** The publisher of the deck directory's own packages. */
+export const DIRECTORY_PUBLISHER_ID = "decksmd";
+
+/** A publisher handle has a slug's shape, so it is safe inside paths, tags and LIKE patterns. */
+export function isValidDirectoryPublisherId(id: string): boolean {
+  return isValidDirectorySlug(id);
+}
+
+/** A handle for a publisher who has none yet: random, so two never meet. */
+export function newDirectoryPublisherId(random: () => number = Math.random): string {
+  let out = "u-";
+  for (let i = 0; i < 10; i++) out += Math.floor(random() * 36).toString(36);
+  return out;
+}
+
+/**
+ * A package's identity, `publisher/slug`: two publishers may use the same slug.
+ * Every id, path and tag below is built from it.
+ */
+export function directoryPackageRef(publisher: string, slug: string): string {
+  return `${publisher}/${slug}`;
+}
+
 /** A slug suggested from a title: "Español básico" → "espanol-basico". */
 export function slugifyDirectoryTitle(title: string): string {
   return title
@@ -35,12 +58,12 @@ export function isValidDirectoryDeckKey(key: string): boolean {
   return key === "" || isValidDirectorySlug(key);
 }
 
-export function directoryDeckId(slug: string, key = ""): string {
-  return `deck_dir_${hash64(key ? `dir-deck:${slug}/${key}` : `dir-deck:${slug}`)}`;
+export function directoryDeckId(ref: string, key = ""): string {
+  return `deck_dir_${hash64(key ? `dir-deck:${ref}/${key}` : `dir-deck:${ref}`)}`;
 }
 
-export function directoryDeckPath(slug: string, key = ""): string {
-  return `${DIRECTORY_PATH_PREFIX}${slug}${key ? `/${key}` : ""}`;
+export function directoryDeckPath(ref: string, key = ""): string {
+  return `${DIRECTORY_PATH_PREFIX}${ref}${key ? `/${key}` : ""}`;
 }
 
 /** A tag under `#directory`; a package's decks carry these, and only Customize maps them. */
@@ -49,8 +72,8 @@ export function isDirectoryTag(tag: string): boolean {
   return lower === DIRECTORY_TAG_ROOT || lower.startsWith(`${DIRECTORY_TAG_ROOT}/`);
 }
 
-export function directoryDeckTag(slug: string, key = ""): string {
-  return `${DIRECTORY_TAG_ROOT}/${slug}${key ? `/${key}` : ""}`;
+export function directoryDeckTag(ref: string, key = ""): string {
+  return `${DIRECTORY_TAG_ROOT}/${ref}${key ? `/${key}` : ""}`;
 }
 
 export function isDirectoryDeckPath(path: string | null | undefined): boolean {
@@ -61,34 +84,35 @@ export function isDirectoryDeck(deck: Pick<Deck, "filepath">): boolean {
   return isDirectoryDeckPath(deck.filepath);
 }
 
-/** The package slug of a directory deck path, without the deck key. */
-export function directorySlugFromPath(path: string): string | null {
+function pathSegments(path: string): string[] | null {
   if (!isDirectoryDeckPath(path)) return null;
-  const rest = path.slice(DIRECTORY_PATH_PREFIX.length);
-  const slash = rest.indexOf("/");
-  return slash < 0 ? rest : rest.slice(0, slash);
+  const segments = path.slice(DIRECTORY_PATH_PREFIX.length).split("/");
+  return segments.length >= 2 ? segments : null;
+}
+
+/** The package ref of a directory deck path, without the deck key. */
+export function directoryPackageRefFromPath(path: string): string | null {
+  const segments = pathSegments(path);
+  return segments ? directoryPackageRef(segments[0], segments[1]) : null;
 }
 
 /** The deck key within its package; empty for a single-deck package. */
 export function directoryDeckKeyFromPath(path: string): string {
-  if (!isDirectoryDeckPath(path)) return "";
-  const rest = path.slice(DIRECTORY_PATH_PREFIX.length);
-  const slash = rest.indexOf("/");
-  return slash < 0 ? "" : rest.slice(slash + 1);
+  return pathSegments(path)?.slice(2).join("/") ?? "";
 }
 
 /** The id of the installed package a directory deck belongs to. */
 export function directoryPackageIdFromPath(path: string): string | null {
-  const slug = directorySlugFromPath(path);
-  return slug ? directoryDeckId(slug) : null;
+  const ref = directoryPackageRefFromPath(path);
+  return ref ? directoryDeckId(ref) : null;
 }
 
 /**
  * A packaged card's id: the owner's id prefix (which encodes the card kind) and
- * a 64-bit hash of slug + owner id, so updates keep ids and never meet 31-bit ones.
+ * a 64-bit hash of package ref + owner id, so updates keep ids and never meet 31-bit ones.
  */
-export function deriveDirectoryCardId(slug: string, ownerCardId: string): string {
+export function deriveDirectoryCardId(ref: string, ownerCardId: string): string {
   const underscore = ownerCardId.indexOf("_");
   const prefix = underscore > 0 ? ownerCardId.slice(0, underscore + 1) : "card_";
-  return `${prefix}${hash64(`dir:${slug}:${ownerCardId}`)}`;
+  return `${prefix}${hash64(`dir:${ref}:${ownerCardId}`)}`;
 }

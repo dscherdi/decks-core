@@ -1,13 +1,6 @@
 import { DIRECTORY_TABLES_SQL } from "../../database/schemas";
 import type { SqlJsValue } from "../../database/sql-types";
-import {
-  DEFAULT_PROFILE_ID,
-  type DeckGroup,
-  type DeckTemplate,
-  type DeckWithProfile,
-  type ProfileTagMapping,
-} from "../../database/types";
-import { pickProfileMapping } from "../../utils/deck-tags";
+import { DEFAULT_PROFILE_ID, type DeckGroup, type DeckTemplate, type DeckWithProfile } from "../../database/types";
 import { isJsonObject, isStringList, parseJson } from "../../utils/json";
 import type { ParsedFlashcard } from "../FlashcardParser";
 import { FlashcardSynchronizer, type RawDatabase, type SyncResult } from "../FlashcardSynchronizer";
@@ -19,12 +12,27 @@ import {
   type DirectoryCardContent,
   type DirectoryPackageContent,
 } from "./deck-db";
-import { DIRECTORY_PATH_PREFIX, directoryDeckId, directoryDeckPath, directoryDeckTag } from "./ids";
-import { DpkgError, examDeckKeys, parseDpkgManifest, type DpkgManifest } from "./manifest";
-import { directoryDeckProfileIds, directoryPackageProfiles, type DirectoryPackageProfile } from "./profiles";
+import {
+  DIRECTORY_PATH_PREFIX,
+  DIRECTORY_PUBLISHER_ID,
+  directoryDeckId,
+  directoryDeckPath,
+  directoryDeckTag,
+  directoryPackageRef,
+} from "./ids";
+import { DpkgError, examDeckKeys, manifestPackageRef, parseDpkgManifest, type DpkgManifest } from "./manifest";
+import {
+  DIRECTORY_PROFILE_PREFIX,
+  directoryDeckProfileIds,
+  directoryPackageProfiles,
+  effectivePackageProfileColumns,
+  parseLearnerSettings,
+  type DirectoryPackageProfile,
+} from "./profiles";
 
 export interface DirectoryDeckRecord {
   id: string;
+  publisher: string;
   slug: string;
   version: number;
   title: string;
@@ -83,6 +91,7 @@ export function directoryDeckFromRow(row: Row): DirectoryDeckRecord {
   const removed = row.removed_at;
   return {
     id: text("id"),
+    publisher: text("publisher"),
     slug: text("slug"),
     version: typeof row.version === "number" ? row.version : 0,
     title: text("title"),
@@ -96,8 +105,29 @@ export function directoryDeckFromRow(row: Row): DirectoryDeckRecord {
   };
 }
 
+/** The package ref of an installed package: its publisher and slug. */
+export function directoryRecordRef(record: Pick<DirectoryDeckRecord, "publisher" | "slug">): string {
+  return directoryPackageRef(record.publisher, record.slug);
+}
+
+/** An installed package's name in lists: its title, and its publisher's name unless it is the directory's own. */
+export function directoryPackageLabel(record: Pick<DirectoryDeckRecord, "title" | "publisher" | "manifestJson">): string {
+  if (record.publisher === DIRECTORY_PUBLISHER_ID) return record.title;
+  return `${record.title} · ${manifestOf(record)?.publisher.name || record.publisher}`;
+}
+
 /** Idempotent; for databases created before the directory tables, or a column of them, existed. */
 export function ensureDirectoryTables(db: RawDatabase): void {
+  // Packages from before publishers were part of their identity were never released; drop them.
+  if (hasTable(db, "directory_decks") && !columnsOf(db, "directory_decks").includes("publisher")) {
+    for (const sql of DROP_UNPUBLISHED_DIRECTORY_SQL) {
+      try {
+        db.run(sql);
+      } catch {
+        // A database without that table has nothing to clear there.
+      }
+    }
+  }
   db.run(DIRECTORY_TABLES_SQL);
   if (!columnsOf(db, "directory_cards").includes("deck_key")) {
     db.run("ALTER TABLE directory_cards ADD COLUMN deck_key TEXT NOT NULL DEFAULT ''");
@@ -153,8 +183,8 @@ export function directoryPackageDecks(db: RawDatabase, record: DirectoryDeckReco
 }
 
 /** Working deck ids of an installed package, whichever of its decks they are. */
-export function packageDeckIds(db: RawDatabase, slug: string): string[] {
-  const root = directoryDeckPath(slug);
+export function packageDeckIds(db: RawDatabase, ref: string): string[] {
+  const root = directoryDeckPath(ref);
   return query(db, "SELECT id FROM decks WHERE filepath = ? OR filepath LIKE ?", [root, `${root}/%`]).map((row) =>
     String(row.id)
   );
@@ -192,22 +222,23 @@ export function storeDirectoryDeck(
   const { manifest, content, archiveSha256, now } = input;
   if (packageCards(content).length === 0) throw new DpkgError("invalid_deck", "The package holds no cards");
   ensureDirectoryTables(db);
-  const deckId = directoryDeckId(manifest.slug);
+  const deckId = directoryDeckId(manifestPackageRef(manifest));
   const previous = getDirectoryDeck(db, deckId);
 
   db.run("SAVEPOINT directory_store");
   try {
     db.run(
-      `INSERT INTO directory_decks (id, slug, version, title, description, manifest, archive_sha256,
+      `INSERT INTO directory_decks (id, publisher, slug, version, title, description, manifest, archive_sha256,
          file_tags, imported_at, modified, removed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
        ON CONFLICT(id) DO UPDATE SET
-         slug = excluded.slug, version = excluded.version, title = excluded.title,
+         publisher = excluded.publisher, slug = excluded.slug, version = excluded.version, title = excluded.title,
          description = excluded.description, manifest = excluded.manifest,
          archive_sha256 = excluded.archive_sha256, file_tags = excluded.file_tags,
          imported_at = excluded.imported_at, modified = excluded.modified, removed_at = NULL`,
       [
         deckId,
+        manifest.publisher.id,
         manifest.slug,
         manifest.version,
         manifest.title,
@@ -305,10 +336,13 @@ export function directoryDeckProfiles(records: readonly Pick<DirectoryDeckRecord
 }
 
 /** The deck whose profile an exam on a whole package starts from: its first exam deck, as on the website. */
-export function packageExamDeckId(records: readonly Pick<DirectoryDeckRecord, "slug" | "manifestJson">[], slug: string): string | null {
-  const record = records.find((candidate) => candidate.slug === slug);
+export function packageExamDeckId(
+  records: readonly Pick<DirectoryDeckRecord, "publisher" | "slug" | "manifestJson">[],
+  ref: string
+): string | null {
+  const record = records.find((candidate) => directoryRecordRef(candidate) === ref);
   const deck = record ? manifestOf(record)?.decks.find((entry) => entry.exam !== null) : undefined;
-  return record && deck ? directoryDeckId(record.slug, deck.key) : null;
+  return record && deck ? directoryDeckId(directoryRecordRef(record), deck.key) : null;
 }
 
 /**
@@ -316,12 +350,12 @@ export function packageExamDeckId(records: readonly Pick<DirectoryDeckRecord, "s
  * daily limits, with the first deck's profile for the rest.
  */
 export function directoryPackageGroup(
-  record: Pick<DirectoryDeckRecord, "slug" | "title" | "manifestJson">,
+  record: Pick<DirectoryDeckRecord, "publisher" | "slug" | "title" | "manifestJson">,
   decks: readonly DeckWithProfile[],
   tag: string
 ): DeckGroup | null {
-  const root = directoryDeckPath(record.slug);
-  const order = (manifestOf(record)?.decks ?? []).map((deck) => directoryDeckId(record.slug, deck.key));
+  const root = directoryDeckPath(directoryRecordRef(record));
+  const order = (manifestOf(record)?.decks ?? []).map((deck) => directoryDeckId(directoryRecordRef(record), deck.key));
   const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length);
   const own = decks
     .filter((deck) => deck.filepath === root || deck.filepath.startsWith(`${root}/`))
@@ -331,7 +365,7 @@ export function directoryPackageGroup(
   return {
     type: "group",
     tag,
-    name: record.title,
+    name: directoryPackageLabel(record),
     deckIds: own.map((deck) => deck.id),
     profile: own[0].profile,
     deckLimits: true,
@@ -341,16 +375,16 @@ export function directoryPackageGroup(
   };
 }
 
-/** The installed package a profile belongs to, and the tags of the decks that study with it. */
-export function directoryProfileOwner(
-  records: readonly Pick<DirectoryDeckRecord, "slug" | "title" | "manifestJson" | "removedAt">[],
+/** The installed package a package profile belongs to, and how the package sets it. */
+export function directoryPackageProfileOf(
+  records: readonly Pick<DirectoryDeckRecord, "title" | "publisher" | "manifestJson" | "removedAt">[],
   profileId: string
-): { title: string; deckTags: string[] } | null {
+): { title: string; profile: DirectoryPackageProfile } | null {
   for (const record of records) {
     if (record.removedAt !== null) continue;
     const manifest = manifestOf(record);
     const profile = manifest ? directoryPackageProfiles(manifest).find((candidate) => candidate.id === profileId) : undefined;
-    if (profile) return { title: record.title, deckTags: profile.deckKeys.map((key) => directoryDeckTag(record.slug, key)) };
+    if (profile) return { title: directoryPackageLabel(record), profile };
   }
   return null;
 }
@@ -365,79 +399,32 @@ export function livePackageProfile(
   return id !== undefined && live.has(id) ? id : null;
 }
 
-/**
- * A package deck's profile: a mapping on its deck tag or an ancestor, else its
- * package's own profile, else the default. Flat tags never apply.
- */
-export function pickDirectoryProfile(
-  mappings: readonly ProfileTagMapping[],
-  deckTag: string,
-  packageProfileId: string | null
-): string {
-  return pickProfileMapping(mappings, [deckTag]) ?? packageProfileId ?? DEFAULT_PROFILE_ID;
-}
-
-/** The profile one deck of a package studies with, from the live mappings and profiles. */
+/** The profile one deck of a package studies with: its package's own, else the default. */
 export function resolveDirectoryProfileId(
   db: RawDatabase,
-  record: Pick<DirectoryDeckRecord, "slug" | "manifestJson">,
+  record: Pick<DirectoryDeckRecord, "publisher" | "slug" | "manifestJson">,
   key = ""
 ): string {
-  const mappings: ProfileTagMapping[] = query(
-    db,
-    `SELECT m.id, m.profile_id, m.tag, m.created FROM profile_tag_mappings m
-       JOIN deckprofiles p ON p.id = m.profile_id AND p.deleted_at IS NULL
-      WHERE m.deleted_at IS NULL`
-  ).map((row) => ({
-    id: String(row.id ?? ""),
-    profileId: String(row.profile_id ?? ""),
-    tag: String(row.tag ?? ""),
-    created: String(row.created ?? ""),
-  }));
-  const own = directoryDeckProfiles([record]).get(directoryDeckId(record.slug, key)) ?? null;
-  return pickDirectoryProfile(mappings, directoryDeckTag(record.slug, key), own && liveProfile(db, own) ? own : null);
+  const own = directoryDeckProfiles([record]).get(directoryDeckId(directoryRecordRef(record), key)) ?? null;
+  return own && liveProfile(db, own) ? own : DEFAULT_PROFILE_ID;
 }
 
 /** The first of the candidate names no other profile holds, removed ones included. */
-function freeProfileName(db: RawDatabase, profile: DirectoryPackageProfile, slug: string): string {
-  const candidates = [profile.name, `${profile.name} (${slug})`, `${profile.name} (${profile.id.slice(-8)})`];
+function freeProfileName(db: RawDatabase, profile: DirectoryPackageProfile, publisher: string): string {
+  const candidates = [profile.name, `${profile.name} (${publisher})`, `${profile.name} (${profile.id.slice(-8)})`];
   for (const name of candidates) {
     if (scalar(db, "SELECT 1 FROM deckprofiles WHERE name = ? AND id <> ?", [name, profile.id]) === undefined) return name;
   }
   return `${profile.name} (${profile.id})`;
 }
 
-const DEFAULT_NEW_CARDS_PER_DAY = 20;
-const DEFAULT_REVIEW_CARDS_PER_DAY = 100;
-
-/** The columns of a package profile, as the package sets them; name and timestamps aside. */
-function packageProfileColumns(profile: DirectoryPackageProfile): Record<string, SqlJsValue> {
-  const s = profile.settings;
-  return {
-    has_new_cards_limit_enabled: s.newCardsPerDay === null ? 0 : 1,
-    new_cards_per_day: s.newCardsPerDay ?? DEFAULT_NEW_CARDS_PER_DAY,
-    has_review_cards_limit_enabled: s.reviewCardsPerDay === null ? 0 : 1,
-    review_cards_per_day: s.reviewCardsPerDay ?? DEFAULT_REVIEW_CARDS_PER_DAY,
-    header_level: 2,
-    extra_header_levels: "[]",
-    review_order: s.reviewOrder,
-    learning_steps: s.learningSteps,
-    relearning_steps: s.relearningSteps,
-    fsrs_request_retention: s.requestRetention,
-    fsrs_profile: "STANDARD",
-    cloze_enabled: 1,
-    cloze_show_context: s.clozeShowContext,
-    exam_enabled: profile.exam ? 1 : 0,
-    exam_settings: profile.exam ? JSON.stringify(profile.exam) : "{}",
-    tts_voice: null,
-    tts_rate: s.ttsRate,
-    tts_lang: s.ttsLang,
-    is_default: 0,
-  };
-}
-
-function writePackageProfile(db: RawDatabase, profile: DirectoryPackageProfile, name: string, stamp: string): void {
-  const columns = packageProfileColumns(profile);
+function writePackageProfile(
+  db: RawDatabase,
+  profile: DirectoryPackageProfile,
+  columns: Record<string, SqlJsValue>,
+  name: string,
+  stamp: string
+): void {
   const names = Object.keys(columns);
   db.run(
     `INSERT INTO deckprofiles (id, name, ${names.join(", ")}, created, modified, deleted_at)
@@ -448,26 +435,54 @@ function writePackageProfile(db: RawDatabase, profile: DirectoryPackageProfile, 
   );
 }
 
+/** A learner's own settings for a package profile, as stored. */
+export function loadLearnerSettings(db: RawDatabase, profileId: string): string | null {
+  if (!hasTable(db, "directory_profile_settings")) return null;
+  const value = scalar(db, SELECT_DIRECTORY_PROFILE_SETTINGS_SQL, [profileId]);
+  return typeof value === "string" ? value : null;
+}
+
 /**
- * Keep a live package's own profiles exactly as the package sets them: created, restored
- * and put back after any change. They stay out of merges, so each device builds its own.
+ * Keep a live package's own profiles as the package sets them, with the learner's settings laid
+ * over: created, restored and put back after any other change. Each device builds its own.
  */
 export function ensurePackageProfiles(db: RawDatabase, record: DirectoryDeckRecord): string[] {
   const manifest = manifestOf(record);
   if (!manifest || record.removedAt !== null) return [];
   const written: string[] = [];
   for (const profile of directoryPackageProfiles(manifest)) {
-    const columns = packageProfileColumns(profile);
+    const columns = effectivePackageProfileColumns(profile, parseLearnerSettings(loadLearnerSettings(db, profile.id)));
     const row = query(db, `SELECT name, deleted_at, ${Object.keys(columns).join(", ")} FROM deckprofiles WHERE id = ?`, [
       profile.id,
     ])[0];
     const live = row !== undefined && row.deleted_at === null;
     if (live && Object.entries(columns).every(([column, value]) => row[column] === value)) continue;
-    writePackageProfile(db, profile, live ? String(row.name) : freeProfileName(db, profile, record.slug), record.modified);
+    const name = live ? String(row.name) : freeProfileName(db, profile, record.publisher);
+    writePackageProfile(db, profile, columns, name, record.modified);
     written.push(profile.id);
   }
   return written;
 }
+
+/** Takes profile id, settings JSON and modified; a newer write wins. */
+export const UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL = `INSERT INTO directory_profile_settings (profile_id, settings, modified)
+  VALUES (?, ?, ?)
+  ON CONFLICT(profile_id) DO UPDATE SET settings = excluded.settings, modified = excluded.modified
+  WHERE excluded.modified > directory_profile_settings.modified`;
+export const SELECT_DIRECTORY_PROFILE_SETTINGS_SQL = "SELECT settings FROM directory_profile_settings WHERE profile_id = ?";
+
+// Clears installs from before publishers were part of a package's identity; none were ever released.
+const DIRECTORY_DECK_IDS = "SELECT id FROM decks WHERE filepath LIKE 'decks-directory:%'";
+export const DROP_UNPUBLISHED_DIRECTORY_SQL: readonly string[] = [
+  `DELETE FROM custom_deck_cards WHERE flashcard_id IN (SELECT id FROM flashcards WHERE deck_id IN (${DIRECTORY_DECK_IDS}))`,
+  `DELETE FROM cram_cards WHERE flashcard_id IN (SELECT id FROM flashcards WHERE deck_id IN (${DIRECTORY_DECK_IDS}))`,
+  `DELETE FROM flashcards WHERE deck_id IN (${DIRECTORY_DECK_IDS})`,
+  "DELETE FROM decks WHERE filepath LIKE 'decks-directory:%'",
+  `DELETE FROM deckprofiles WHERE id LIKE '${DIRECTORY_PROFILE_PREFIX}%'`,
+  "DROP TABLE IF EXISTS directory_decks",
+  "DROP TABLE IF EXISTS directory_cards",
+  "DROP TABLE IF EXISTS directory_templates",
+];
 
 /** Remove a removed package's profiles that nothing else studies with. */
 export function retirePackageProfiles(db: RawDatabase, record: DirectoryDeckRecord, at: string): void {
@@ -499,10 +514,10 @@ function workingCount(db: RawDatabase, deckId: string): SqlJsValue | undefined {
 
 export function needsMaterialise(db: RawDatabase, record: DirectoryDeckRecord): boolean {
   const decks = directoryPackageDecks(db, record);
-  const ids = new Set(decks.map((deck) => directoryDeckId(record.slug, deck.key)));
-  if (packageDeckIds(db, record.slug).some((id) => !ids.has(id))) return true;
+  const ids = new Set(decks.map((deck) => directoryDeckId(directoryRecordRef(record), deck.key)));
+  if (packageDeckIds(db, directoryRecordRef(record)).some((id) => !ids.has(id))) return true;
   return decks.some((deck) => {
-    const id = directoryDeckId(record.slug, deck.key);
+    const id = directoryDeckId(directoryRecordRef(record), deck.key);
     const marker = scalar(db, "SELECT last_synced_mtime FROM decks WHERE id = ?", [id]);
     if (marker === undefined || marker !== materialiseMarker(record)) return true;
     return workingCount(db, id) !== storedCount(db, record, deck.key);
@@ -528,9 +543,9 @@ function toParsed(card: DirectoryCardContent): ParsedFlashcard {
 }
 
 function materialiseOne(db: RawDatabase, record: DirectoryDeckRecord, deck: DirectoryPackageDeck, now: string): SyncResult {
-  const id = directoryDeckId(record.slug, deck.key);
-  const path = directoryDeckPath(record.slug, deck.key);
-  const tag = directoryDeckTag(record.slug, deck.key);
+  const id = directoryDeckId(directoryRecordRef(record), deck.key);
+  const path = directoryDeckPath(directoryRecordRef(record), deck.key);
+  const tag = directoryDeckTag(directoryRecordRef(record), deck.key);
   const fileTags = JSON.stringify(record.fileTagsByKey[deck.key] ?? []);
   if (scalar(db, "SELECT 1 FROM decks WHERE id = ?", [id]) === undefined) {
     db.run(
@@ -570,12 +585,12 @@ function materialiseOne(db: RawDatabase, record: DirectoryDeckRecord, deck: Dire
 export function materialiseDirectoryDeck(db: RawDatabase, record: DirectoryDeckRecord, now: string): SyncResult[] {
   ensurePackageProfiles(db, record);
   const decks = directoryPackageDecks(db, record);
-  const keep = new Set(decks.map((deck) => directoryDeckId(record.slug, deck.key)));
-  for (const stale of packageDeckIds(db, record.slug)) if (!keep.has(stale)) dropMaterialisedDeck(db, stale);
+  const keep = new Set(decks.map((deck) => directoryDeckId(directoryRecordRef(record), deck.key)));
+  for (const stale of packageDeckIds(db, directoryRecordRef(record))) if (!keep.has(stale)) dropMaterialisedDeck(db, stale);
   const results = decks.map((deck) => materialiseOne(db, record, deck, now));
   // A card that moved between two of the package's decks is only free once its old deck let it go.
   decks.forEach((deck, index) => {
-    if (workingCount(db, directoryDeckId(record.slug, deck.key)) !== storedCount(db, record, deck.key)) {
+    if (workingCount(db, directoryDeckId(directoryRecordRef(record), deck.key)) !== storedCount(db, record, deck.key)) {
       results[index] = materialiseOne(db, record, deck, now);
     }
   });
@@ -592,7 +607,8 @@ export const DROP_MATERIALISED_DECK_SQL: readonly string[] = [
 
 // The working decks of the package whose id is bound; its row outlives removal as a tombstone.
 const PACKAGE_DECKS = `SELECT d.id FROM decks d JOIN directory_decks p
-  ON d.filepath = '${DIRECTORY_PATH_PREFIX}' || p.slug OR d.filepath LIKE '${DIRECTORY_PATH_PREFIX}' || p.slug || '/%'
+  ON d.filepath = '${DIRECTORY_PATH_PREFIX}' || p.publisher || '/' || p.slug
+  OR d.filepath LIKE '${DIRECTORY_PATH_PREFIX}' || p.publisher || '/' || p.slug || '/%'
   WHERE p.id = ?`;
 
 /** Each takes the package id: a removed package's stored content, then every one of its working decks. */
@@ -631,7 +647,7 @@ export function materialiseDirectoryDecks(db: RawDatabase, now: string): Materia
   if (hasTable(db, "directory_decks")) ensureDirectoryTables(db);
   for (const record of listDirectoryDecks(db, true)) {
     if (record.removedAt !== null) {
-      for (const id of packageDeckIds(db, record.slug)) {
+      for (const id of packageDeckIds(db, directoryRecordRef(record))) {
         dropMaterialisedDeck(db, id);
         out.dropped.push(id);
       }
@@ -644,7 +660,7 @@ export function materialiseDirectoryDecks(db: RawDatabase, now: string): Materia
       out.materialised.push(record.id);
     }
     for (const deck of directoryPackageDecks(db, record)) {
-      const id = directoryDeckId(record.slug, deck.key);
+      const id = directoryDeckId(directoryRecordRef(record), deck.key);
       const profileId = resolveDirectoryProfileId(db, record, deck.key);
       if (scalar(db, "SELECT profile_id FROM decks WHERE id = ?", [id]) !== profileId) {
         db.run("UPDATE decks SET profile_id = ? WHERE id = ?", [profileId, id]);
@@ -693,8 +709,13 @@ function copyRows(remote: RawDatabase, local: RawDatabase, table: string, deckId
  * Returns the ids taken from `remote`; follow with `materialiseDirectoryDecks`.
  */
 export function mergeDirectoryTables(local: RawDatabase, remote: RawDatabase): string[] {
-  if (!hasTable(remote, "directory_decks")) return [];
   ensureDirectoryTables(local);
+  if (hasTable(remote, "directory_profile_settings")) {
+    for (const row of query(remote, "SELECT profile_id, settings, modified FROM directory_profile_settings")) {
+      local.run(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [row.profile_id ?? "", row.settings ?? "{}", row.modified ?? ""]);
+    }
+  }
+  if (!hasTable(remote, "directory_decks") || !columnsOf(remote, "directory_decks").includes("publisher")) return [];
   const taken: string[] = [];
   const deckColumns = columnsOf(local, "directory_decks");
   const remoteDeckColumns = new Set(columnsOf(remote, "directory_decks"));

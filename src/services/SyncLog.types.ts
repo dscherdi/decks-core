@@ -50,6 +50,7 @@ export type SyncOpV1 =
   | AiStagedCardsUpsertOp
   | AiConceptsSaveOp
   | DirectoryDeckRemoveOp
+  | DirectoryProfileSettingsOp
   | ClientHelloOp;
 
 export type SyncLogEntry = SyncLogEntryHeader & SyncOpV1;
@@ -99,6 +100,16 @@ export interface DirectoryDeckRemoveOp {
   p: {
     deckId: string;
     at: string;
+  };
+}
+
+/** A learner's own settings on a package's profile, as of `modified`; settings is their JSON. */
+export interface DirectoryProfileSettingsOp {
+  o: "directory_profile_settings";
+  p: {
+    profileId: string;
+    settings: string;
+    modified: string;
   };
 }
 
@@ -447,5 +458,6 @@ export const KNOWN_OP_TYPES_V1: ReadonlySet<SyncOpV1["o"]> = new Set([
   "ai_staged_cards_upsert",
   "ai_concepts_save",
   "directory_deck_remove",
+  "directory_profile_settings",
   "client_hello",
 ]);

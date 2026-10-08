@@ -91,6 +91,11 @@ describe("flatTagsFor", () => {
     expect(flatTagsFor(deck, scope)).toEqual(["#math", "#retry"]);
   });
 
+  it("never lets a note join the tags of installed packages", () => {
+    const deck = { fileTags: ["directory/decksmd/german-a1", "Directory", "directoryish"] };
+    expect(flatTagsFor(deck, scope)).toEqual(["#directoryish"]);
+  });
+
   it("drops ignored tags and everything beneath them", () => {
     const deck = { fileTags: ["math", "status/todo", "status"] };
     expect(flatTagsFor(deck, { baseTag: "#decks", ignore: ["#status"] })).toEqual(["#math"]);

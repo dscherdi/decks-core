@@ -6,7 +6,11 @@ import {
   directoryProfileId,
   dpkgProfileFrom,
   dpkgProfileKey,
-  uniqueProfileName,
+  learnerColumnsFromUpdates,
+  nextLearnerSettings,
+  packageOwnedChanges,
+  packageProfileColumns,
+  parseLearnerSettings,
 } from "../profiles";
 import { isDirectoryTag } from "../ids";
 import { packageProfile } from "./helpers";
@@ -71,11 +75,6 @@ describe("package profiles", () => {
     ]);
   });
 
-  it("names a customized copy so it never takes a name a profile holds", () => {
-    expect(uniqueProfileName("German A1 copy", ["DEFAULT"])).toBe("German A1 copy");
-    expect(uniqueProfileName("German A1 copy", ["German A1 copy", "German A1 copy 2"])).toBe("German A1 copy 3");
-  });
-
   it("tells directory tags from the rest", () => {
     expect([isDirectoryTag("#directory"), isDirectoryTag("#Directory/german-a1/verbs")]).toEqual([true, true]);
     expect([isDirectoryTag("#directoryish"), isDirectoryTag("#decks/directory")]).toEqual([false, false]);
@@ -89,19 +88,21 @@ describe("package profiles", () => {
 
   it("gives decks that share a profile one profile, named after the package and then after a deck", () => {
     const profiles = directoryPackageProfiles({
+      publisher: { id: "someone", name: "" },
       slug: "spanish",
       title: "Spanish A1",
       decks: [deck("words", "Words", "steady"), deck("verbs", "Verbs", "steady"), deck("final", "Final exam", "exam", true)],
       profiles: [packageProfile("steady"), packageProfile("exam", { newCardsPerDay: 0 })],
     });
     expect(profiles.map((profile) => [profile.id, profile.name, profile.deckKeys, profile.exam !== null])).toEqual([
-      [directoryProfileId("spanish", "steady"), "Spanish A1", ["words", "verbs"], false],
-      [directoryProfileId("spanish", "exam"), "Spanish A1 · Final exam", ["final"], true],
+      [directoryProfileId("someone/spanish", "steady"), "Spanish A1", ["words", "verbs"], false],
+      [directoryProfileId("someone/spanish", "exam"), "Spanish A1 · Final exam", ["final"], true],
     ]);
   });
 
   it("makes a profile for a package that carries none: one for its study decks, one per exam deck", () => {
     const profiles = directoryPackageProfiles({
+      publisher: { id: "someone", name: "" },
       slug: "spanish",
       title: "Spanish A1",
       decks: [deck("words", "Words", null), deck("quiz", "Quiz", null, true), deck("final", "Final", null, true)],
@@ -111,6 +112,50 @@ describe("package profiles", () => {
       ["preset:study", null, ["words"]],
       ["preset:exam:quiz", 0, ["quiz"]],
       ["preset:exam:final", 0, ["final"]],
+    ]);
+  });
+
+  it("keeps only a learner's own study settings, and only valid ones", () => {
+    expect(
+      parseLearnerSettings(
+        JSON.stringify({ new_cards_per_day: 10, review_order: "random", fsrs_profile: "TRAINED", exam_enabled: 0, tts_rate: 99, name: "x" })
+      )
+    ).toEqual({ new_cards_per_day: 10, review_order: "random", fsrs_profile: "TRAINED" });
+    expect(parseLearnerSettings("not json")).toEqual({});
+  });
+
+  it("keeps what a learner changed and drops what matches the package again", () => {
+    const [study] = directoryPackageProfiles({
+      publisher: { id: "decksmd", name: "" },
+      slug: "spanish",
+      title: "Spanish A1",
+      decks: [deck("words", "Words", "steady")],
+      profiles: [packageProfile("steady", { newCardsPerDay: 20 })],
+    });
+    const base = packageProfileColumns(study);
+    const changed = nextLearnerSettings(base, {}, learnerColumnsFromUpdates({ newCardsPerDay: 10, reviewOrder: "random" }));
+    expect(changed).toEqual({ new_cards_per_day: 10, review_order: "random" });
+    expect(nextLearnerSettings(base, changed, learnerColumnsFromUpdates({ newCardsPerDay: 20 }))).toEqual({ review_order: "random" });
+    // An editor shows an unset speed as the normal one; saving it changes nothing.
+    expect(nextLearnerSettings(base, {}, learnerColumnsFromUpdates({ ttsRate: 1 }))).toEqual({});
+    expect(learnerColumnsFromUpdates({ ttsVoice: "", fsrs: { requestRetention: 0.85, profile: "TRAINED" } })).toEqual({
+      tts_voice: null,
+      fsrs_request_retention: 0.85,
+      fsrs_profile: "TRAINED",
+    });
+  });
+
+  it("names the package's own fields an update would change", () => {
+    const current = { ...author, examEnabled: true, examSettings: DEFAULT_EXAM_SETTINGS };
+    expect(packageOwnedChanges(current, { name: "Spanish", newCardsPerDay: 5 })).toEqual([]);
+    const { typedGrading, ...rest } = DEFAULT_EXAM_SETTINGS;
+    const reordered = { typedGrading, ...rest };
+    expect(Object.keys(reordered)).not.toEqual(Object.keys(DEFAULT_EXAM_SETTINGS));
+    expect(packageOwnedChanges(current, { examSettings: reordered })).toEqual([]);
+    expect(packageOwnedChanges(current, { name: "Mine", examEnabled: false, headerLevel: 3 })).toEqual([
+      "name",
+      "headerLevel",
+      "examEnabled",
     ]);
   });
 });

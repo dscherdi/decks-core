@@ -685,7 +685,7 @@ export {
   sortDeckTree,
   flattenDeckTree,
   allBranchIds,
-  directoryPackageSlugOfNode,
+  directoryPackageRefOfNode,
 } from "./utils/deck-tree";
 export type {
   TreeKind,

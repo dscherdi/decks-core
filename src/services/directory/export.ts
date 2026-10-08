@@ -89,11 +89,11 @@ function isPackable(card: Flashcard, exam: boolean): boolean {
 }
 
 /**
- * Turn a deck's cards into packaged content: ids derived from the slug, media
+ * Turn a deck's cards into packaged content: ids derived from the package ref, media
  * pointed at the package, scheduling left behind.
  */
 export function buildDirectoryCards(
-  slug: string,
+  ref: string,
   cards: Flashcard[],
   resolve: (linkpath: string) => DirectoryMediaRef | null,
   options: { exam?: boolean } = {}
@@ -123,7 +123,7 @@ export function buildDirectoryCards(
     const front = rewrite(card.front);
     const notes = rewrite(card.notes ?? "");
     out.cards.push({
-      id: deriveDirectoryCardId(slug, card.id),
+      id: deriveDirectoryCardId(ref, card.id),
       position: out.cards.length,
       type: card.type,
       front,
