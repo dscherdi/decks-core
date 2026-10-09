@@ -143,9 +143,8 @@ ${I18n.format(t.section5Body, { tag: t.templateTag })}
 /**
  * The demo exam deck.
  *
- * All prose lives under the H1 (never a card); every H2 is a question. No
- * scaffolding headings between cards — a heading at the parsed level IS a card
- * front, and deeper levels would nest under the preceding question.
+ * All prose lives under the H1 (never a card); every H2 is a question or an
+ * exercise, whose own questions are H3s or paragraphs above checklists.
  */
 export function getExamDeckContent(deckTag: string): string {
   const examTag = getExamDeckFrontmatterTag(deckTag);
@@ -199,6 +198,40 @@ ${t.saBack}
 ## ${t.clozeHeading}
 
 ${t.clozeBody}
+
+## ${t.ex1Heading}
+
+${t.ex1Text}
+
+### ${t.ex1Q1}
+
+- [ ] ${t.ex1Q1OptA}
+- [x] ${t.ex1Q1OptB}
+- [ ] ${t.ex1Q1OptC}
+
+%%${t.ex1Q1Note}%%
+
+### ${t.ex1Q2}
+
+${t.ex1Q2Answer}
+
+### ${t.ex1Q3}
+
+${t.ex1Q3Body}
+
+## ${t.ex2Heading}
+
+${t.ex2Text}
+
+${t.ex2Q1}
+- [ ] ${t.ex2Q1OptA}
+- [x] ${t.ex2Q1OptB}
+- [ ] ${t.ex2Q1OptC}
+
+${t.ex2Q2}
+- [ ] ${t.ex2Q2OptA}
+- [x] ${t.ex2Q2OptB}
+- [ ] ${t.ex2Q2OptC}
 `;
 }
 

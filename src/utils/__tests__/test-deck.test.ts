@@ -130,28 +130,41 @@ describe("the demo exam deck", () => {
       const cards = parse(getExamDeckContent("#decks"));
       const questions = cards.filter((c) => c.type === "multiple-choice");
 
-      // Single answer, multiple answers, true/false — in document order.
-      expect(questions).toHaveLength(3);
+      // Single answer, multiple answers, true/false, then two exercises — in document order.
+      expect(questions).toHaveLength(5);
       const shape = questions.map((question) => {
         const parsed = classifyExamBody(question.back);
-        if (parsed.kind !== "mcq") {
-          throw new Error(
-            `${language.code}: "${question.front}" did not parse as a question (${parsed.kind})`,
-          );
+        const fail = new Error(
+          `${language.code}: "${question.front}" did not parse as a question (${parsed.kind})`,
+        );
+        if (parsed.kind === "mcq") {
+          return {
+            options: parsed.options.length,
+            correct: parsed.options.filter((o) => o.correct).length,
+          };
         }
+        if (parsed.kind !== "exercise") throw fail;
         return {
-          options: parsed.options.length,
-          correct: parsed.options.filter((o) => o.correct).length,
+          shared: parsed.shared.length > 0,
+          items: parsed.items.map((item) =>
+            item.kind === "choice"
+              ? `choice ${item.options.length}/${item.options.filter((o) => o.correct).length}`
+              : item.kind,
+          ),
         };
       });
       expect(shape).toEqual([
         { options: 4, correct: 1 },
         { options: 4, correct: 3 },
         { options: 2, correct: 1 },
+        { shared: true, items: ["choice 3/1", "typed", "cloze"] },
+        { shared: true, items: ["choice 3/1", "choice 3/1"] },
       ]);
 
       // The `%%comment%%` that becomes the explanation in the results review.
       expect(questions[0].notes).toBeTruthy();
+      const exercise = classifyExamBody(questions[3].back);
+      expect(exercise.kind === "exercise" && exercise.items[0].notes).toBeTruthy();
 
       // `undefined` in a face is a locale missing a key, which renders
       // literally rather than failing anywhere a test would notice.
