@@ -5,6 +5,7 @@ import type {
 } from "../database/DatabaseService.interface";
 import type { NoteAccess } from "./NoteAccess";
 import { FlashcardParser } from "./FlashcardParser";
+import { classifyExamBody } from "./ExamClassifier";
 import {
   cardIdForKey,
   edgeBindingKey,
@@ -327,6 +328,14 @@ export class AnchorStamper {
     // The parser skips blank lines before a body, so line k of its body is here.
     let bodyStart = segment.start + 1;
     while (bodyStart < segment.end && lines[bodyStart].trim() === "") bodyStart++;
+
+    // An exercise's stored back keeps its comments, so it is compared unextracted.
+    if (card.type === "multiple-choice" && classifyExamBody(hostBack).kind === "exercise") {
+      const end = this.exerciseBodyEnd(lines, bodyStart, segment.end, hostBack);
+      if (end === -1) return unchanged({ ok: false, reason: "stale" });
+      return this.applyQuestionStamp(content, lines, bodyStart, end, card);
+    }
+
     const bodyLines = lines.slice(bodyStart, segment.end);
     const { lines: stripped, anchors } = extractLineAnchors(bodyLines);
     const { back: cleanBack } = FlashcardParser.extractHeaderParagraphNotes(
@@ -368,19 +377,7 @@ export class AnchorStamper {
     }
 
     if (card.type === "multiple-choice") {
-      const existing = anchors.find((a) => a.role === "q")?.id;
-      const trusted = this.trustedValue(content, "q", existing, "", card);
-      if (trusted === STALE) return unchanged({ ok: false, reason: "stale" });
-      const host = this.singleHost("q", "a", card.id);
-      if (!host) return unchanged({ ok: false, reason: "not_stampable" });
-      const placed = this.replaceFirstBodyToken(lines, bodyStart, segment.end, "q", host.value);
-      if (!placed) {
-        const last = this.lastNonBlank(lines, bodyStart, segment.end);
-        if (last === -1) return unchanged({ ok: false, reason: "segment_not_found" });
-        // Own paragraph: a line directly after a list item would continue that item.
-        lines.splice(last + 1, 0, "", formatAnchorToken("q", host.value));
-      }
-      return this.done(content, lines, host);
+      return this.applyQuestionStamp(content, lines, bodyStart, segment.end, card);
     }
 
     const existing = anchors.find((a) => a.role === "h")?.id;
@@ -400,6 +397,47 @@ export class AnchorStamper {
       lines.splice(last + 1, 0, formatAnchorToken("h", host.value));
     }
     return this.done(content, lines, host);
+  }
+
+  /** Questions and exercises: the body's first q token carries the card's id. */
+  private applyQuestionStamp(
+    content: string,
+    lines: string[],
+    bodyStart: number,
+    bodyEnd: number,
+    card: Flashcard
+  ): StampResult {
+    const unchanged = (reason: StampOutcome & { ok: false }): StampResult => ({
+      content,
+      outcome: reason,
+    });
+    const { anchors } = extractLineAnchors(lines.slice(bodyStart, bodyEnd));
+    const existing = anchors.find((a) => a.role === "q")?.id;
+    const trusted = this.trustedValue(content, "q", existing, "", card);
+    if (trusted === STALE) return unchanged({ ok: false, reason: "stale" });
+    const host = this.singleHost("q", "a", card.id);
+    if (!host) return unchanged({ ok: false, reason: "not_stampable" });
+    if (!this.replaceFirstBodyToken(lines, bodyStart, bodyEnd, "q", host.value)) {
+      const last = this.lastNonBlank(lines, bodyStart, bodyEnd);
+      if (last === -1) return unchanged({ ok: false, reason: "segment_not_found" });
+      // Own paragraph: a line directly after a list item would continue that item.
+      lines.splice(last + 1, 0, "", formatAnchorToken("q", host.value));
+    }
+    return this.done(content, lines, host);
+  }
+
+  /**
+   * Where an exercise's body ends: the segment's end or an earlier heading, whichever
+   * reads back as its stored back (its sub-headings stay inside); -1 when none does.
+   */
+  private exerciseBodyEnd(lines: string[], bodyStart: number, segmentEnd: number, back: string): number {
+    const target = back.trim();
+    for (let end = bodyStart; end <= segmentEnd; end++) {
+      if (end < segmentEnd && !HEADER_LINE_REGEX.test(lines[end])) continue;
+      const { lines: stripped } = extractLineAnchors(lines.slice(bodyStart, end));
+      if (stripped.join("\n").trim() === target) return end;
+    }
+    return -1;
   }
 
   /** Title mode: the note is the card, so its token sits in the body. */
