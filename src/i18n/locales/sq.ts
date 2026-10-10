@@ -350,6 +350,7 @@ export const sq: Translations = {
     sessionCompleteCount: "U rishikuan {count} karta",
     duplicatesFound: "U gjetën {count} karta të kopjuara në {deckName}",
     idCollision: 'Në {deckName}, "{first}" dhe "{second}" marrin të njëjtin id karte, ndaj studiohet vetëm e para. Riformuloni njërën prej tyre.',
+    deckIdCollision: '"{path}" merr të njëjtin id pakoje si "{other}", ndaj nuk ngarkohet si pako. Riemërtoni njërin nga dy shënimet.',
     trainedParamsCleared:
       "Parametrat e trajnuar u pastruan, u rikthyen vlerat e paracaktuara.",
     creatingBackup: "Po krijohet kopja rezervë…",

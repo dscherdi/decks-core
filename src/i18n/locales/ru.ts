@@ -349,6 +349,7 @@ export const ru: Translations = {
     sessionCompleteCount: "Повторено карточек: {count}",
     duplicatesFound: 'Найдено дубликатов в {deckName}: {count}',
     idCollision: 'В {deckName} карточки «{first}» и «{second}» получают один и тот же id, поэтому изучается только первая. Переформулируйте одну из них.',
+    deckIdCollision: '«{path}» получает тот же id колоды, что и «{other}», поэтому не загружается как колода. Переименуйте одну из двух заметок.',
     trainedParamsCleared:
       "Обученные параметры сброшены, значения по умолчанию восстановлены.",
     creatingBackup: "Создаётся резервная копия…",

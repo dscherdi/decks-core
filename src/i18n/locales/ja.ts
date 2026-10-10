@@ -351,6 +351,7 @@ export const ja: Translations = {
     sessionCompleteCount: "{count} 枚のカードを復習しました",
     duplicatesFound: "{deckName} に {count} 枚の重複カードが見つかりました",
     idCollision: '{deckName} では「{first}」と「{second}」が同じカード ID になるため、最初のカードだけが学習されます。どちらかを言い換えてください。',
+    deckIdCollision: '「{path}」は「{other}」と同じデッキ ID になるため、デッキとして読み込まれません。どちらかのノートの名前を変更してください。',
     trainedParamsCleared: "学習済みパラメータをクリアし、既定値に戻しました。",
     creatingBackup: "バックアップを作成中…",
     backupCreated: "✅ バックアップを作成しました: {filename}",

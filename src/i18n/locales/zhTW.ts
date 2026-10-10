@@ -345,6 +345,7 @@ export const zhTW: Translations = {
     sessionCompleteCount: "已複習 {count} 張閃卡",
     duplicatesFound: "在 {deckName} 中找到 {count} 張重複的閃卡",
     idCollision: '在 {deckName} 中，「{first}」與「{second}」會得到相同的閃卡 ID，因此只會學習第一張。請改寫其中一張。',
+    deckIdCollision: '「{path}」與「{other}」會得到相同的牌組 ID，因此不會作為牌組載入。請重新命名其中一個筆記。',
     trainedParamsCleared: "已清除訓練參數，恢復為預設值。",
     creatingBackup: "正在建立備份...",
     backupCreated: "✅ 備份已建立：{filename}",

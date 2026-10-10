@@ -351,6 +351,7 @@ export const tr: Translations = {
     sessionCompleteCount: "{count} kart tekrar edildi",
     duplicatesFound: "{deckName} içinde {count} kopya kart bulundu",
     idCollision: '{deckName} içinde "{first}" ve "{second}" aynı kart kimliğini alıyor, bu yüzden yalnızca ilki çalışılıyor. Birini yeniden yazın.',
+    deckIdCollision: '"{path}", "{other}" ile aynı deste kimliğini alıyor, bu yüzden deste olarak yüklenmiyor. İki nottan birini yeniden adlandırın.',
     trainedParamsCleared:
       "Eğitilmiş parametreler temizlendi, varsayılanlara dönüldü.",
     creatingBackup: "Yedek oluşturuluyor…",

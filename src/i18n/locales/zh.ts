@@ -343,6 +343,7 @@ export const zh: Translations = {
     sessionCompleteCount: "已复习 {count} 张卡片",
     duplicatesFound: "在 {deckName} 中找到 {count} 张重复卡片",
     idCollision: '在 {deckName} 中，“{first}”和“{second}”会得到相同的卡片 ID，因此只学习第一张。请改写其中一张。',
+    deckIdCollision: '“{path}”与“{other}”会得到相同的牌组 ID，因此不会作为牌组加载。请重命名其中一个笔记。',
     trainedParamsCleared: "已清除训练参数，恢复默认值。",
     creatingBackup: "正在创建备份…",
     backupCreated: "✅ 备份已创建：{filename}",

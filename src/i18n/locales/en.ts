@@ -333,6 +333,7 @@ export const en = {
     sessionCompleteCount: "Reviewed {count} cards",
     duplicatesFound: 'Found {count, plural, one {# duplicate card} other {# duplicate cards}} in {deckName}',
     idCollision: 'In {deckName}, "{first}" and "{second}" get the same card id, so only the first is studied. Reword one of them.',
+    deckIdCollision: '"{path}" gets the same deck id as "{other}", so it is not loaded as a deck. Rename one of the two notes.',
     trainedParamsCleared: "Trained parameters cleared, defaults restored.",
     creatingBackup: "Creating backup…",
     backupCreated: "✅ Backup created: {filename}",

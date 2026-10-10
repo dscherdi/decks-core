@@ -543,6 +543,7 @@ export {
   generateAnchorId,
   hash64,
 } from "./utils/hash";
+export { DeckIdCollisionError, assertDeckIdFree } from "./database/deck-id-collision";
 export {
   DK_TOKEN_REGEX,
   isAnchorCommentBody,

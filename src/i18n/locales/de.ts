@@ -352,6 +352,7 @@ export const de: Translations = {
     sessionCompleteCount: "{count} Karten wiederholt",
     duplicatesFound: '{count, plural, one {# doppelte Karte} other {# doppelte Karten}} in {deckName} gefunden',
     idCollision: 'In {deckName} erhalten „{first}“ und „{second}“ dieselbe Karten-ID, daher wird nur die erste gelernt. Formuliere eine der beiden um.',
+    deckIdCollision: '„{path}“ erhält dieselbe Stapel-ID wie „{other}“ und wird daher nicht als Stapel geladen. Benenne eine der beiden Notizen um.',
     trainedParamsCleared:
       "Trainierte Parameter gelöscht, Standardwerte wiederhergestellt.",
     creatingBackup: "Sicherung wird erstellt…",

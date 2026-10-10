@@ -350,6 +350,7 @@ export const it: Translations = {
     sessionCompleteCount: "{count} schede ripassate",
     duplicatesFound: 'Trovate {count, plural, one {# scheda duplicata} other {# schede duplicate}} in {deckName}',
     idCollision: 'In {deckName}, "{first}" e "{second}" ricevono lo stesso id di scheda, quindi si studia solo la prima. Riformula una delle due.',
+    deckIdCollision: '"{path}" riceve lo stesso id di mazzo di "{other}", quindi non viene caricato come mazzo. Rinomina una delle due note.',
     trainedParamsCleared:
       "Parametri addestrati cancellati, valori predefiniti ripristinati.",
     creatingBackup: "Creazione del backup…",

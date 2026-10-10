@@ -352,6 +352,7 @@ export const es: Translations = {
     sessionCompleteCount: "Se repasaron {count} tarjetas",
     duplicatesFound: 'Se encontraron {count, plural, one {# tarjeta duplicada} other {# tarjetas duplicadas}} en {deckName}',
     idCollision: 'En {deckName}, "{first}" y "{second}" reciben el mismo id de tarjeta, así que solo se estudia la primera. Reformula una de las dos.',
+    deckIdCollision: '"{path}" recibe el mismo id de mazo que "{other}", así que no se carga como mazo. Cambia el nombre de una de las dos notas.',
     trainedParamsCleared:
       "Parámetros entrenados borrados, valores por defecto restaurados.",
     creatingBackup: "Creando copia de seguridad…",

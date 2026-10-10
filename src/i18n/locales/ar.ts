@@ -348,6 +348,7 @@ export const ar: Translations = {
     sessionCompleteCount: "تمت مراجعة {count} بطاقات",
     duplicatesFound: '{count, plural, zero {لا توجد بطاقات مكررة في {deckName}} one {تم العثور على بطاقة مكررة واحدة في {deckName}} two {تم العثور على بطاقتين مكررتين في {deckName}} few {تم العثور على # بطاقات مكررة في {deckName}} many {تم العثور على # بطاقة مكررة في {deckName}} other {تم العثور على # بطاقة مكررة في {deckName}}}',
     idCollision: 'في {deckName}، تحصل "{first}" و"{second}" على معرّف البطاقة نفسه، لذا تُدرس الأولى فقط. أعد صياغة إحداهما.',
+    deckIdCollision: 'يحصل "{path}" على معرّف الرزمة نفسه الذي لدى "{other}"، لذا لا يُحمَّل كرزمة. أعد تسمية إحدى الملاحظتين.',
     trainedParamsCleared: "تم مسح المعلمات المُدربة، واستعادة الافتراضيات.",
     creatingBackup: "جاري إنشاء نسخة احتياطية...",
     backupCreated: "✅ تم إنشاء النسخة الاحتياطية: {filename}",

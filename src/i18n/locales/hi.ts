@@ -352,6 +352,7 @@ export const hi: Translations = {
     sessionCompleteCount: "{count} कार्ड की समीक्षा की गई",
     duplicatesFound: "{deckName} में {count} डुप्लिकेट कार्ड मिले",
     idCollision: '{deckName} में "{first}" और "{second}" को एक ही कार्ड आईडी मिलती है, इसलिए केवल पहला पढ़ा जाता है। इनमें से एक को दोबारा लिखें।',
+    deckIdCollision: '"{path}" को "{other}" जैसी ही डेक आईडी मिलती है, इसलिए इसे डेक के रूप में लोड नहीं किया जाता। दोनों में से किसी एक नोट का नाम बदलें।',
     trainedParamsCleared:
       "प्रशिक्षित पैरामीटर साफ़ किए गए, डिफ़ॉल्ट पुनर्स्थापित किए गए।",
     creatingBackup: "बैकअप बनाया जा रहा है…",

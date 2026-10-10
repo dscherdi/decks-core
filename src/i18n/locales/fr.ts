@@ -349,6 +349,7 @@ export const fr: Translations = {
     sessionCompleteCount: "{count} cartes révisées",
     duplicatesFound: '{count, plural, one {# carte en double trouvée} other {# cartes en double trouvées}} dans {deckName}',
     idCollision: 'Dans {deckName}, « {first} » et « {second} » reçoivent le même identifiant de carte : seule la première est étudiée. Reformulez l’une des deux.',
+    deckIdCollision: '« {path} » reçoit le même identifiant de paquet que « {other} » : il n’est donc pas chargé comme paquet. Renommez l’une des deux notes.',
     trainedParamsCleared:
       "Paramètres entraînés effacés, valeurs par défaut restaurées.",
     creatingBackup: "Création de la sauvegarde…",
