@@ -12,7 +12,12 @@ import {
   generateSpatialClozeFlashcardId,
   generateOcclusionV2FlashcardId,
 } from "../utils/hash";
-import { occlusionV2HashInput, occlusionImageName } from "./occlusion/OcclusionV2";
+import {
+  activeMaskIdForCard,
+  occlusionV2HashInput,
+  occlusionImageName,
+  parseOcclusionBack,
+} from "./occlusion/OcclusionV2";
 import { cardIdForKey, isIdKey, reverseBindingKey } from "../utils/anchors";
 
 export interface FlashcardUpdates {
@@ -49,6 +54,44 @@ function tagsEqual(a: string[], b: string[]): boolean {
   return true;
 }
 
+interface IdentityFields {
+  front: string;
+  back: string;
+  breadcrumb: string;
+  clozeText: string | null;
+  clozeOrder: number | null;
+  sourceNodeId: string | null;
+  edgeId: string | null;
+}
+
+interface HeldCard extends IdentityFields {
+  anchor: string | null;
+}
+
+// What a card's content id is derived from, by id kind; equal means one card written twice.
+function identityOf(id: string, card: IdentityFields): string {
+  const kind = id.slice(0, id.indexOf("_"));
+  const node = card.sourceNodeId ?? "";
+  const order = String(card.clozeOrder ?? "");
+  const parts =
+    kind === "ocard"
+      ? [
+          card.breadcrumb,
+          occlusionImageName(parseOcclusionBack(card.back)?.image ?? ""),
+          activeMaskIdForCard(card) ?? "",
+        ]
+      : kind === "sccard"
+      ? [card.front, card.edgeId ?? "", order, card.clozeText ?? ""]
+      : kind === "scard"
+      ? [card.front, card.edgeId ?? ""]
+      : kind === "rcard"
+      ? [card.back, node]
+      : kind === "ccard"
+      ? [card.front, order, card.clozeText ?? "", node]
+      : [card.front, node];
+  return [kind, ...parts].join("\u0000");
+}
+
 export interface BatchOperation {
   type: "create" | "update" | "delete" | "migrate" | "bind" | "anchor";
   flashcardId?: string;
@@ -72,7 +115,8 @@ export interface SyncResult {
   // sync is aborted (cards preserved) rather than deleting everything. Callers
   // must NOT stamp last_synced_mtime for a skipped sync.
   skippedEmptyParse?: boolean;
-  // Different cards whose content hashed to the same id; the later one was left out.
+  // Different cards that resolve to one id, within this note or against another deck's
+  // card; the card of this note named second was left out.
   idCollisions?: Array<{ id: string; fronts: [string, string] }>;
 }
 
@@ -315,6 +359,37 @@ export class FlashcardSynchronizer {
       stmt.free();
     }
     return bindings;
+  }
+
+  // Rows under these ids that belong to another live deck; an orphaned row stays adoptable.
+  private heldInOtherDecks(ids: string[], deckId: string): Map<string, HeldCard> {
+    const held = new Map<string, HeldCard>();
+    const unique = Array.from(new Set(ids));
+    for (let i = 0; i < unique.length; i += 400) {
+      const chunk = unique.slice(i, i + 400);
+      const stmt = this.db.prepare(
+        `SELECT f.id, f.front, f.back, f.breadcrumb, f.cloze_text, f.cloze_order,
+                f.source_node_id, f.edge_id, f.anchor
+         FROM flashcards f JOIN decks d ON d.id = f.deck_id
+         WHERE f.deck_id != ? AND f.id IN (${chunk.map(() => "?").join(",")})`
+      );
+      stmt.bind([deckId, ...chunk]);
+      while (stmt.step()) {
+        const row = stmt.getAsObject();
+        held.set(row.id as string, {
+          front: row.front as string,
+          back: row.back as string,
+          breadcrumb: (row.breadcrumb as string) || "",
+          clozeText: (row.cloze_text as string) ?? null,
+          clozeOrder: (row.cloze_order as number) ?? null,
+          sourceNodeId: (row.source_node_id as string) ?? null,
+          edgeId: (row.edge_id as string) ?? null,
+          anchor: (row.anchor as string) ?? null,
+        });
+      }
+      stmt.free();
+    }
+    return held;
   }
 
   /**
@@ -891,6 +966,42 @@ export class FlashcardSynchronizer {
           cardsToDelete.push(existingCard);
         }
       });
+
+      // A different card in another live deck holds the id, so the create would do nothing.
+      // Report it, and keep it out of rename detection so no history folds into that card.
+      const held = this.heldInOtherDecks(
+        [...cardsToCreate, ...reverseCardsToCreate, ...spatialCardsToCreate, ...anchoredCardsToCreate]
+          .map((candidate) => candidate.flashcardId),
+        data.deckId
+      );
+      const dropCollisions = (list: ParsedCardData[], anchoredList: boolean): void => {
+        const kept = list.filter(({ parsed, flashcardId }) => {
+          const holder = held.get(flashcardId);
+          if (!holder) return true;
+          const sameCard =
+            identityOf(flashcardId, {
+              front: parsed.front,
+              back: parsed.back,
+              breadcrumb: parsed.breadcrumb,
+              clozeText: parsed.clozeText ?? null,
+              clozeOrder: parsed.clozeOrder ?? null,
+              sourceNodeId: parsed.sourceNodeId ?? null,
+              edgeId: parsed.edgeId ?? null,
+            }) === identityOf(flashcardId, holder);
+          // Two tokens naming one id are a card moved and edited between syncs.
+          if (sameCard || (anchoredList && holder.anchor)) return true;
+          duplicatesSkipped++;
+          idCollisions.push({ id: flashcardId, fronts: [holder.front, parsed.front] });
+          return false;
+        });
+        if (kept.length === list.length) return;
+        list.length = 0;
+        for (const candidate of kept) list.push(candidate);
+      };
+      dropCollisions(cardsToCreate, false);
+      dropCollisions(reverseCardsToCreate, false);
+      dropCollisions(spatialCardsToCreate, false);
+      dropCollisions(anchoredCardsToCreate, true);
 
       // Smart Rename Detection. A rename = same card, edited front: the old id's
       // delete + the new id's create are paired into a "migrate" that carries the

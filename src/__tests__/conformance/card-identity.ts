@@ -261,5 +261,30 @@ export function describeCardIdentity(host: ConformanceHost): void {
       expect(result.duplicatesSkipped).toBe(1);
       expect(result.idCollisions).toBeUndefined();
     });
+
+    it("reports a card whose id a different card in another deck holds", async () => {
+      const passen = "passen (passt · hat gepasst)";
+      const kuessen = "küssen (küsst · hat geküsst)";
+      const id = generateFlashcardId(passen);
+      expect(generateFlashcardId(kuessen)).toBe(id);
+      const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
+      await sync(db, other, `## ${passen}\n\nto fit\n`);
+      await addReview(db, id, "2026-10-01T00:00:00.000Z");
+      await sync(db, deckId, "## küsen (küsst · hat geküsst)\n\nto kiss\n");
+
+      // An edited front whose new id the other deck's card holds.
+      const result = await sync(db, deckId, `## ${kuessen}\n\nto kiss\n`);
+
+      expect(result.idCollisions).toEqual([{ id, fronts: [passen, kuessen] }]);
+      expect(await logIds(db, id)).toBe(1);
+      expect((await db.getFlashcardsByDeck(other)).map((c) => c.front)).toEqual([passen]);
+    });
+
+    it("does not report the same card in two decks as a collision", async () => {
+      const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
+      await sync(db, other, "## Q\n\nA.\n");
+      const result = await sync(db, deckId, "## Q\n\nAnother answer.\n");
+      expect(result.idCollisions).toBeUndefined();
+    });
   });
 }
