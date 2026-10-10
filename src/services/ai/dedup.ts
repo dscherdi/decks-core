@@ -40,7 +40,8 @@ export function partitionAgainstDeck(
 }
 
 /** Proposals whose front a deck other than the destination already holds. The
- *  id follows the front, so writing one here would not add a card here. */
+ *  id follows the front, so writing one here would not add a card here; a
+ *  different front whose id collides gets an id of its own. */
 export async function heldByOtherDecks(
   db: Pick<IDatabaseService, "getFlashcardById">,
   cards: readonly GeneratedCard[],
@@ -49,7 +50,8 @@ export async function heldByOtherDecks(
   const held = new Set<GeneratedCard>();
   for (const card of cards) {
     const existing = await db.getFlashcardById(generatedCardId(card));
-    if (existing && existing.deckId !== destinationDeckId) held.add(card);
+    const sameFront = existing?.front === card.front.trim().replace(/\n+/g, " ");
+    if (existing && sameFront && existing.deckId !== destinationDeckId) held.add(card);
   }
   return held;
 }

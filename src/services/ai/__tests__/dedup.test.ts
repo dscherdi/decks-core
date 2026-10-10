@@ -71,18 +71,28 @@ describe("partitionAgainstDeck", () => {
 });
 
 describe("heldByOtherDecks", () => {
+  const passen = "passen (passt · hat gepasst)";
   const decks = new Map([
-    [generateFlashcardId("A"), "deck_here"],
-    [generateFlashcardId("B"), "deck_other"],
+    [generateFlashcardId("A"), { front: "A", deckId: "deck_here" }],
+    [generateFlashcardId("B"), { front: "B", deckId: "deck_other" }],
+    [generateFlashcardId(passen), { front: passen, deckId: "deck_other" }],
   ]);
   const db = {
     getFlashcardById: async (id: string): Promise<Flashcard | null> =>
-      decks.has(id) ? ({ id, deckId: decks.get(id) } as Flashcard) : null,
+      decks.has(id) ? ({ id, ...decks.get(id) } as Flashcard) : null,
   };
 
   it("names the proposals another deck holds, not this one's or new ones", async () => {
     const [a, b, c] = [card("A"), card("B"), card("C")];
     expect([...(await heldByOtherDecks(db, [a, b, c], "deck_here"))]).toEqual([b]);
+  });
+
+  it("leaves out a different front whose id collides, since it gets an id of its own", async () => {
+    const kuessen = card("küssen (küsst · hat geküsst)");
+    expect(generatedCardId(kuessen)).toBe(generateFlashcardId(passen));
+    expect([...(await heldByOtherDecks(db, [kuessen, card(passen)], "deck_here"))]).toEqual([
+      expect.objectContaining({ front: passen }),
+    ]);
   });
 
   it("counts every holder as another deck when the note is not a deck yet", async () => {

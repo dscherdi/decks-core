@@ -544,6 +544,7 @@ export {
   hash64,
 } from "./utils/hash";
 export { DeckIdCollisionError, assertDeckIdFree } from "./database/deck-id-collision";
+export { identityOf, wideContentId, type IdentityFields } from "./utils/content-identity";
 export {
   DK_TOKEN_REGEX,
   isAnchorCommentBody,

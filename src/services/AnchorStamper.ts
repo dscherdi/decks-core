@@ -31,6 +31,7 @@ import { parseHeaderLevels } from "../database/types";
 import { findFlashcardSegment } from "../utils/source-navigator";
 import { wantsReverseCards } from "../utils/frontmatter";
 import { isDirectoryDeckPath } from "./directory/ids";
+import { identityOf, wideContentId, type IdentityFields } from "../utils/content-identity";
 
 export type StampOutcome =
   | { ok: true; anchorKey: string; adopted: boolean }
@@ -68,11 +69,25 @@ interface StampResult {
 
 type StampEntry = Omit<StampResult, "content">;
 
-/** Resolves a card's id from its key under the host's current token, or its content id. */
-type Resolver = (key: string | null, contentId: string) => string;
+/** A card's content id, the wide id it falls back to, and what both derive from. */
+interface ContentRef {
+  id: string;
+  wide: string;
+  identity: string;
+}
+
+function contentRef(id: string, fields: IdentityFields): ContentRef {
+  return { id, wide: wideContentId(id, fields), identity: identityOf(id, fields) };
+}
+
+/** Resolves a card's id from its key under the host's current token, or from its content. */
+type Resolver = (key: string | null, content: ContentRef) => string;
 
 /** A host whose token names another id for the reviewed card, not yet synced here. */
 const STALE = Symbol("stale");
+
+/** Marks a content id whose holding row a resolver still needs, beside binding keys. */
+const HOLDER_KEY = "\u0000holder:";
 
 const HEADER_LINE_REGEX = /^(#{1,6})\s+(.*)$/;
 const TABLE_ROW_REGEX = /^\|.*\|$/;
@@ -215,14 +230,24 @@ export class AnchorStamper {
       return { content: current, results };
     };
 
-    // Minted tokens resolve through bindings: a dry run names the keys to fetch.
+    // Minted tokens resolve through bindings, untokened cards through the rows
+    // holding their content ids: a dry run names what to fetch.
     const bindings = new Map<string, string | null>();
+    const holders = new Map<string, string | null>();
+    const liveDecks = new Map<string, boolean>();
     let requested = new Set<string>();
-    let pass = run(content, this.resolver(bindings, requested));
+    let pass = run(content, this.resolver(bindings, holders, requested));
     if (requested.size > 0) {
-      for (const key of requested) bindings.set(key, await this.db.getAnchorBinding(key));
+      for (const key of requested) {
+        if (key.startsWith(HOLDER_KEY)) {
+          const id = key.slice(HOLDER_KEY.length);
+          holders.set(id, await this.holderIdentity(id, liveDecks));
+        } else {
+          bindings.set(key, await this.db.getAnchorBinding(key));
+        }
+      }
       requested = new Set();
-      pass = run(content, this.resolver(bindings, requested));
+      pass = run(content, this.resolver(bindings, holders, requested));
     }
 
     if (pass.content !== content) {
@@ -230,7 +255,7 @@ export class AnchorStamper {
       const { preMtime, lastSynced } = await this.readMtimeState(path, deckId);
       await this.notes.process(path, (current) => {
         const missed = new Set<string>();
-        pass = run(current, this.resolver(bindings, missed));
+        pass = run(current, this.resolver(bindings, holders, missed));
         if (missed.size > 0) {
           // The note changed under us in a way the fetched bindings don't cover.
           const stale: StampOutcome = { ok: false, reason: "stale" };
@@ -257,20 +282,43 @@ export class AnchorStamper {
     return { stamped, skipped: cards.length - stamped, outcomes };
   }
 
-  /** Mirrors the synchronizer: a carried id, else the binding of a minted key, else content. */
+  /**
+   * Mirrors the synchronizer: a carried id, else the binding of a minted key, else the
+   * content id, or the wide id when a different card holds the content id.
+   */
   private resolver(
     bindings: Map<string, string | null>,
+    holders: Map<string, string | null>,
     requested: Set<string>
   ): Resolver {
-    return (key, contentId) => {
-      if (key === null) return contentId;
-      if (isIdKey(key)) return cardIdForKey(key) ?? contentId;
-      if (!bindings.has(key)) {
-        requested.add(key);
-        return contentId;
+    return (key, content) => {
+      if (key !== null && isIdKey(key)) {
+        const carried = cardIdForKey(key);
+        if (carried) return carried;
+      } else if (key !== null) {
+        if (!bindings.has(key)) requested.add(key);
+        const bound = bindings.get(key);
+        if (bound) return bound;
       }
-      return bindings.get(key) ?? contentId;
+      if (!holders.has(content.id)) {
+        requested.add(HOLDER_KEY + content.id);
+        return content.id;
+      }
+      const holder = holders.get(content.id);
+      return holder != null && holder !== content.identity ? content.wide : content.id;
     };
+  }
+
+  /** What the card holding this id derives it from, or null when no live card holds it. */
+  private async holderIdentity(id: string, liveDecks: Map<string, boolean>): Promise<string | null> {
+    const row = await this.db.getFlashcardById(id);
+    if (!row) return null;
+    let live = liveDecks.get(row.deckId);
+    if (live === undefined) {
+      live = (await this.db.getDeckById(row.deckId)) !== null;
+      liveDecks.set(row.deckId, live);
+    }
+    return live ? identityOf(id, row) : null;
   }
 
   /** Keys onto the rows now, and compatibility bindings for versions that still read them. */
@@ -365,7 +413,11 @@ export class AnchorStamper {
       const host = this.packedHost(
         "c",
         onLine.map((d) => ({
-          contentId: generateClozeFlashcardId(hostFront, d.text, d.order),
+          content: contentRef(generateClozeFlashcardId(hostFront, d.text, d.order), {
+            front: hostFront,
+            clozeText: d.text,
+            clozeOrder: d.order,
+          }),
           suffix: `#${d.indexInLine}`,
         })),
         target.indexInLine,
@@ -488,7 +540,14 @@ export class AnchorStamper {
       const ids = onLine.map((d) =>
         d.indexInLine === target.indexInLine
           ? card.id
-          : resolve(keyFor(d), generateClozeFlashcardId(hostFront, d.text, d.order))
+          : resolve(
+              keyFor(d),
+              contentRef(generateClozeFlashcardId(hostFront, d.text, d.order), {
+                front: hostFront,
+                clozeText: d.text,
+                clozeOrder: d.order,
+              })
+            )
       );
       const host = this.encodePacked("c", ids, onLine.map((d) => `#${d.indexInLine}`), target.indexInLine);
       if (!host) return unchanged({ ok: false, reason: "not_stampable" });
@@ -581,7 +640,11 @@ export class AnchorStamper {
       host = this.packedHost(
         "t",
         deletions.map((d) => ({
-          contentId: generateClozeFlashcardId(hostFront, d.text, d.order),
+          content: contentRef(generateClozeFlashcardId(hostFront, d.text, d.order), {
+            front: hostFront,
+            clozeText: d.text,
+            clozeOrder: d.order,
+          }),
           suffix: `#${d.order}`,
         })),
         slot,
@@ -706,12 +769,15 @@ export class AnchorStamper {
     const isReverse = card.id.startsWith("rcard_");
     const base = existing?.base ?? null;
     const forwardId = isReverse
-      ? resolve(base, generateFlashcardId(hostFront))
+      ? resolve(base, contentRef(generateFlashcardId(hostFront), { front: hostFront }))
       : card.id;
     const reverseId = isReverse
       ? card.id
       : reverses
-      ? resolve(base === null ? null : `${base}:rev`, generateReverseFlashcardId(hostFront))
+      ? resolve(
+          base === null ? null : `${base}:rev`,
+          contentRef(generateReverseFlashcardId(hostFront), { back: hostFront })
+        )
       : null;
     const value =
       reverseId === null
@@ -727,7 +793,7 @@ export class AnchorStamper {
   /** A host with one cloze card per deletion; the reviewed card keeps its own id. */
   private packedHost(
     role: AnchorRole,
-    slots: Array<{ contentId: string; suffix: string }>,
+    slots: Array<{ content: ContentRef; suffix: string }>,
     cardSlot: number,
     card: Flashcard,
     existing: { base: string } | null | typeof STALE,
@@ -737,7 +803,7 @@ export class AnchorStamper {
     const ids = slots.map((slot, k) =>
       k === cardSlot
         ? card.id
-        : resolve(existing === null ? null : `${existing.base}${slot.suffix}`, slot.contentId)
+        : resolve(existing === null ? null : `${existing.base}${slot.suffix}`, slot.content)
     );
     const host = this.encodePacked(role, ids, slots.map((s) => s.suffix), cardSlot);
     return host ?? { ok: false, reason: "not_stampable" };

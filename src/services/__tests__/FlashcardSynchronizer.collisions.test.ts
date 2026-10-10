@@ -3,10 +3,14 @@ import { CREATE_TABLES_SQL } from "../../database/schemas";
 import { DEFAULT_DECK_PROFILE, DEFAULT_PROFILE_ID, type DeckProfile } from "../../database/types";
 import { generateFlashcardId } from "../../utils/hash";
 import { encodeAnchorValue } from "../../utils/anchors";
+import { wideContentId } from "../../utils/content-identity";
 import { FlashcardSynchronizer, type SyncResult } from "../FlashcardSynchronizer";
 
 const PASSEN = "passen (passt · hat gepasst)";
 const KUESSEN = "küssen (küsst · hat geküsst)";
+const SHARED = generateFlashcardId(PASSEN);
+const WIDE_KUESSEN = wideContentId(SHARED, { front: KUESSEN });
+const WIDE_PASSEN = wideContentId(SHARED, { front: PASSEN });
 const NOW = "2026-10-10T00:00:00.000Z";
 const PROFILE: DeckProfile = { ...DEFAULT_DECK_PROFILE, id: DEFAULT_PROFILE_ID, created: NOW, modified: NOW };
 
@@ -36,9 +40,13 @@ function sync(deckId: string, fileContent: string): SyncResult {
   });
 }
 
-function fronts(deckId: string): string[] {
-  const result = db.exec("SELECT front FROM flashcards WHERE deck_id = ? ORDER BY front", [deckId]);
-  return (result[0]?.values ?? []).map((row) => row[0] as string);
+function cards(deckId: string): Array<{ id: string; front: string; state: string }> {
+  const result = db.exec("SELECT id, front, state FROM flashcards WHERE deck_id = ? ORDER BY front", [deckId]);
+  return (result[0]?.values ?? []).map(([id, front, state]) => ({
+    id: id as string,
+    front: front as string,
+    state: state as string,
+  }));
 }
 
 function logCount(flashcardId: string): number {
@@ -57,37 +65,46 @@ function addReview(flashcardId: string, reviewedAt: string): void {
   );
 }
 
+const token = (id: string): string => `%%dk:h:${encodeAnchorValue("a", [id])}%%`;
+
 describe("id collisions across decks", () => {
   it("hashes the two fronts to one content id", () => {
-    expect(generateFlashcardId(KUESSEN)).toBe(generateFlashcardId(PASSEN));
+    expect(generateFlashcardId(KUESSEN)).toBe(SHARED);
+    expect(WIDE_KUESSEN).toMatch(/^card_[a-z0-9]{7,13}$/);
+    expect(WIDE_KUESSEN).not.toBe(WIDE_PASSEN);
   });
 
-  it("reports a card whose id a different card in another deck already holds", () => {
+  it("gives a card whose content id another deck's card holds its wide id", () => {
     sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
     const result = sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n\n## sehen\n\nto see\n`);
 
-    expect(result.idCollisions).toEqual([
-      { id: generateFlashcardId(PASSEN), fronts: [PASSEN, KUESSEN] },
+    expect(result.idCollisions).toBeUndefined();
+    expect(result.duplicatesSkipped).toBe(0);
+    expect(cards("deck_a1").map((c) => c.id)).toEqual([SHARED]);
+    expect(cards("deck_b1")).toMatchObject([
+      { id: WIDE_KUESSEN, front: KUESSEN },
+      { id: generateFlashcardId("sehen"), front: "sehen" },
     ]);
-    expect(result.duplicatesSkipped).toBe(1);
-    expect(fronts("deck_a1")).toEqual([PASSEN]);
-    expect(fronts("deck_b1")).toEqual(["sehen"]);
   });
 
-  it("reports it whichever note syncs first", () => {
+  it("lets the note synced second take the wide id, whichever it is", () => {
     sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
-    const result = sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
+    sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
 
-    expect(result.idCollisions).toEqual([
-      { id: generateFlashcardId(PASSEN), fronts: [KUESSEN, PASSEN] },
-    ]);
-    expect(fronts("deck_b1")).toEqual([KUESSEN]);
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([SHARED]);
+    expect(cards("deck_a1").map((c) => c.id)).toEqual([WIDE_PASSEN]);
   });
 
-  it("reports it again on the next sync while it lasts", () => {
+  it("keeps the wide id on later syncs", () => {
     sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
     sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
-    expect(sync("deck_b1", `## ${KUESSEN}\n\nto kiss!\n`).idCollisions).toHaveLength(1);
+    addReview(WIDE_KUESSEN, "2026-10-02T00:00:00.000Z");
+
+    const result = sync("deck_b1", `## ${KUESSEN}\n\nto kiss, to give a kiss\n`);
+
+    expect(result.operationsCount).toBe(1);
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([WIDE_KUESSEN]);
+    expect(logCount(WIDE_KUESSEN)).toBe(1);
   });
 
   it("leaves the same front in two decks a quiet duplicate", () => {
@@ -95,52 +112,98 @@ describe("id collisions across decks", () => {
     const result = sync("deck_b1", `## ${PASSEN}\n\nto suit\n`);
 
     expect(result.idCollisions).toBeUndefined();
-    expect(result.duplicatesSkipped).toBe(0);
+    expect(cards("deck_b1")).toEqual([]);
   });
 
-  it("does not report a stamped card moved and edited between syncs", () => {
+  it("leaves a stamped card moved and edited between syncs alone", () => {
     const id = generateFlashcardId("Q");
-    const token = `%%dk:h:${encodeAnchorValue("a", [id])}%%`;
-    sync("deck_a1", `## Q\n\nA.\n${token}\n`);
-    const result = sync("deck_b1", `## Q, reworded\n\nA.\n${token}\n`);
+    sync("deck_a1", `## Q\n\nA.\n${token(id)}\n`);
+    const result = sync("deck_b1", `## Q, reworded\n\nA.\n${token(id)}\n`);
 
     expect(result.idCollisions).toBeUndefined();
+    expect(cards("deck_a1").map((c) => c.id)).toEqual([id]);
   });
 
-  it("reports an untokened card that collides with another deck's stamped card", () => {
-    const id = generateFlashcardId(PASSEN);
-    sync("deck_a1", `## ${PASSEN}\n\nto fit\n%%dk:h:${encodeAnchorValue("a", [id])}%%\n`);
-    const result = sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
+  it("gives an untokened card the wide id when another deck's stamped card holds its id", () => {
+    sync("deck_a1", `## ${PASSEN}\n\nto fit\n${token(SHARED)}\n`);
+    sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
 
-    expect(result.idCollisions).toEqual([{ id, fronts: [PASSEN, KUESSEN] }]);
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([WIDE_KUESSEN]);
   });
 
-  it("does not fold an edited card's history into the card that holds its new id", () => {
-    const passenId = generateFlashcardId(PASSEN);
+  it("lets a token take its id back from an untokened card in another deck", () => {
+    // A fresh device: the untokened card synced first and restored the stamped card's history.
+    addReview(SHARED, "2026-10-01T00:00:00.000Z");
+    sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
+    expect(cards("deck_b1")).toMatchObject([{ id: SHARED, state: "review" }]);
+
+    sync("deck_a1", `## ${PASSEN}\n\nto fit\n${token(SHARED)}\n`);
+
+    expect(cards("deck_a1")).toMatchObject([{ id: SHARED, front: PASSEN, state: "review" }]);
+    expect(cards("deck_b1")).toMatchObject([{ id: WIDE_KUESSEN, front: KUESSEN, state: "new" }]);
+    expect(logCount(SHARED)).toBe(1);
+    // The holder's next sync finds its wide row and leaves it be.
+    expect(sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`).operationsCount).toBe(0);
+  });
+
+  it("carries an edited card's history to its wide id, not into the card that holds its content id", () => {
     const typoId = generateFlashcardId("küsen (küsst · hat geküsst)");
     sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
     sync("deck_b1", "## küsen (küsst · hat geküsst)\n\nto kiss\n");
-    addReview(passenId, "2026-10-01T00:00:00.000Z");
+    addReview(SHARED, "2026-10-01T00:00:00.000Z");
     addReview(typoId, "2026-10-02T00:00:00.000Z");
 
-    // Same back, new front: rename detection would pair it with the typo's row.
-    const result = sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
+    sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
 
-    expect(result.idCollisions).toEqual([{ id: passenId, fronts: [PASSEN, KUESSEN] }]);
-    expect(logCount(passenId)).toBe(1);
-    expect(logCount(typoId)).toBe(1);
-    expect(fronts("deck_a1")).toEqual([PASSEN]);
+    expect(logCount(SHARED)).toBe(1);
+    expect(logCount(typoId)).toBe(0);
+    expect(logCount(WIDE_KUESSEN)).toBe(1);
+    expect(cards("deck_a1").map((c) => c.id)).toEqual([SHARED]);
+    expect(cards("deck_b1")).toMatchObject([{ id: WIDE_KUESSEN, front: KUESSEN }]);
   });
 
-  it("still adopts an orphaned row instead of reporting it", () => {
+  it("still adopts an orphaned row of the same card", () => {
     sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
     db.run("PRAGMA foreign_keys = OFF");
     db.run("DELETE FROM decks WHERE id = 'deck_a1'");
     db.run("PRAGMA foreign_keys = ON");
 
-    const result = sync("deck_b1", `## ${PASSEN}\n\nto fit\n`);
+    sync("deck_b1", `## ${PASSEN}\n\nto fit\n`);
+
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([SHARED]);
+  });
+
+  it("does not adopt an orphaned row of a different card", () => {
+    sync("deck_a1", `## ${PASSEN}\n\nto fit\n`);
+    db.run("UPDATE flashcards SET state = 'review', repetitions = 3 WHERE id = ?", [SHARED]);
+    db.run("PRAGMA foreign_keys = OFF");
+    db.run("DELETE FROM decks WHERE id = 'deck_a1'");
+    db.run("PRAGMA foreign_keys = ON");
+
+    sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n`);
+
+    expect(cards("deck_b1")).toMatchObject([{ id: WIDE_KUESSEN, state: "new" }]);
+  });
+});
+
+describe("id collisions within a note", () => {
+  it("studies both cards, the second under its wide id", () => {
+    const result = sync("deck_b1", `## ${PASSEN}\n\nto fit\n\n## ${KUESSEN}\n\nto kiss\n`);
 
     expect(result.idCollisions).toBeUndefined();
-    expect(fronts("deck_b1")).toEqual([PASSEN]);
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([WIDE_KUESSEN, SHARED]);
+  });
+
+  it("keeps each card's id when the two swap places", () => {
+    sync("deck_b1", `## ${PASSEN}\n\nto fit\n\n## ${KUESSEN}\n\nto kiss\n`);
+    sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n\n## ${PASSEN}\n\nto fit\n`);
+
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([WIDE_KUESSEN, SHARED]);
+  });
+
+  it("gives the id to the card whose token carries it, wherever it stands", () => {
+    sync("deck_b1", `## ${KUESSEN}\n\nto kiss\n\n## ${PASSEN}\n\nto fit\n${token(SHARED)}\n`);
+
+    expect(cards("deck_b1").map((c) => c.id)).toEqual([WIDE_KUESSEN, SHARED]);
   });
 });

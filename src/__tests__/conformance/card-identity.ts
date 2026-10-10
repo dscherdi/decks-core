@@ -4,6 +4,7 @@ import {
   generateReverseFlashcardId,
 } from "../../utils/hash";
 import { encodeAnchorValue, type AnchorValueKind } from "../../utils/anchors";
+import { wideContentId } from "../../utils/content-identity";
 import { AnchorStamper } from "../../services/AnchorStamper";
 import { AnchorUpgrader } from "../../services/AnchorUpgrader";
 import type { NoteAccess } from "../../services/NoteAccess";
@@ -246,14 +247,16 @@ export function describeCardIdentity(host: ConformanceHost): void {
       }
     });
 
-    it("reports different cards whose content ids collide", async () => {
+    it("studies both of two cards whose content ids collide, the second under its wide id", async () => {
       // "Aa" and "BB" hash alike under the 31-bit content hash.
-      expect(generateFlashcardId("Aa")).toBe(generateFlashcardId("BB"));
+      const id = generateFlashcardId("Aa");
+      expect(generateFlashcardId("BB")).toBe(id);
       const result = await sync(db, deckId, "## Aa\n\nFirst.\n\n## BB\n\nSecond.\n");
 
-      expect(result.idCollisions).toEqual([
-        { id: generateFlashcardId("Aa"), fronts: ["Aa", "BB"] },
-      ]);
+      expect(result.idCollisions).toBeUndefined();
+      const cards = await db.getFlashcardsByDeck(deckId);
+      expect(cards.find((c) => c.front === "Aa")?.id).toBe(id);
+      expect(cards.find((c) => c.front === "BB")?.id).toBe(wideContentId(id, { front: "BB" }));
     });
 
     it("does not report the same card written twice as a collision", async () => {
@@ -262,22 +265,46 @@ export function describeCardIdentity(host: ConformanceHost): void {
       expect(result.idCollisions).toBeUndefined();
     });
 
-    it("reports a card whose id a different card in another deck holds", async () => {
+    it("gives a card whose id another deck's card holds its wide id, history and all", async () => {
       const passen = "passen (passt · hat gepasst)";
       const kuessen = "küssen (küsst · hat geküsst)";
       const id = generateFlashcardId(passen);
       expect(generateFlashcardId(kuessen)).toBe(id);
+      const wide = wideContentId(id, { front: kuessen });
+      const typo = generateFlashcardId("küsen (küsst · hat geküsst)");
       const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
       await sync(db, other, `## ${passen}\n\nto fit\n`);
       await addReview(db, id, "2026-10-01T00:00:00.000Z");
       await sync(db, deckId, "## küsen (küsst · hat geküsst)\n\nto kiss\n");
+      await addReview(db, typo, "2026-10-02T00:00:00.000Z");
 
-      // An edited front whose new id the other deck's card holds.
+      // An edited front whose content id the other deck's card holds.
       const result = await sync(db, deckId, `## ${kuessen}\n\nto kiss\n`);
 
-      expect(result.idCollisions).toEqual([{ id, fronts: [passen, kuessen] }]);
+      expect(result.idCollisions).toBeUndefined();
+      expect((await db.getFlashcardsByDeck(deckId)).map((c) => c.id)).toEqual([wide]);
+      expect(await logIds(db, wide)).toBe(1);
       expect(await logIds(db, id)).toBe(1);
       expect((await db.getFlashcardsByDeck(other)).map((c) => c.front)).toEqual([passen]);
+    });
+
+    it("stamps the wide ids a card and its reverse took because another card holds their content ids", async () => {
+      const passen = "passen (passt · hat gepasst)";
+      const kuessen = "küssen (küsst · hat geküsst)";
+      const forward = wideContentId(generateFlashcardId(kuessen), { front: kuessen });
+      const reverse = wideContentId(generateReverseFlashcardId(kuessen), { back: kuessen });
+      const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
+      await sync(db, other, `## ${passen}\n\nto fit\n`, { reverseCards: true });
+      const files = { "Bio.md": `---\nreverse: true\n---\n## ${kuessen}\n\nto kiss\n` };
+      await sync(db, deckId, files["Bio.md"], { reverseCards: true });
+      expect((await db.getFlashcardsByDeck(deckId)).map((c) => c.id).sort()).toEqual([forward, reverse].sort());
+
+      // Reviewing the reverse card writes its note card's id too.
+      await new AnchorStamper(memoryNotes(files), db).ensureAnchored((await db.getFlashcardById(reverse))!);
+
+      expect(files["Bio.md"]).toContain(`%%dk:h:${value("b", [forward, reverse])}%%`);
+      await sync(db, deckId, files["Bio.md"], { reverseCards: true });
+      expect((await db.getFlashcardsByDeck(deckId)).map((c) => c.id).sort()).toEqual([forward, reverse].sort());
     });
 
     it("keeps a live card's history when rebuilding state for a card whose old id hashes to it", async () => {
@@ -292,6 +319,23 @@ export function describeCardIdentity(host: ConformanceHost): void {
 
       expect(await logIds(db, live)).toBe(1);
       expect(await logIds(db, "card_zz9")).toBe(0);
+    });
+
+    it("keeps a gone card's history off the card that took its wide id because of it", async () => {
+      const passen = "passen (passt · hat gepasst)";
+      const kuessen = "küssen (küsst · hat geküsst)";
+      const id = generateFlashcardId(passen);
+      const wide = wideContentId(id, { front: kuessen });
+      const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
+      await sync(db, other, `## ${passen}\n\nto fit\n`);
+      await sync(db, deckId, `## ${kuessen}\n\nto kiss\n`);
+      await addReview(db, id, "2026-10-01T00:00:00.000Z");
+      await db.deleteDeck(other);
+
+      await db.rebuildCardStateFromReviewLogs();
+
+      expect(await logIds(db, id)).toBe(1);
+      expect(await logIds(db, wide)).toBe(0);
     });
 
     it("does not report the same card in two decks as a collision", async () => {
