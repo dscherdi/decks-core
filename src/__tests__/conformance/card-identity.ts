@@ -280,6 +280,20 @@ export function describeCardIdentity(host: ConformanceHost): void {
       expect((await db.getFlashcardsByDeck(other)).map((c) => c.front)).toEqual([passen]);
     });
 
+    it("keeps a live card's history when rebuilding state for a card whose old id hashes to it", async () => {
+      const live = generateFlashcardId("Q");
+      const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
+      await sync(db, other, "## Q\n\nA.\n");
+      await addReview(db, live, "2026-10-01T00:00:00.000Z");
+      // Same front, but its token carries another id, so its old content id is the live card's.
+      await sync(db, deckId, `## Q\n\nB.\n%%dk:h:${value("a", ["card_zz9"])}%%\n`);
+
+      await db.rebuildCardStateFromReviewLogs();
+
+      expect(await logIds(db, live)).toBe(1);
+      expect(await logIds(db, "card_zz9")).toBe(0);
+    });
+
     it("does not report the same card in two decks as a collision", async () => {
       const other = await db.createDeck(testDeck({ id: "deck_other", filepath: "Other.md" }));
       await sync(db, other, "## Q\n\nA.\n");
