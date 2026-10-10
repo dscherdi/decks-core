@@ -66,6 +66,8 @@ interface StampResult {
   host?: HostToken;
 }
 
+type StampEntry = Omit<StampResult, "content">;
+
 /** Resolves a card's id from its key under the host's current token, or its content id. */
 type Resolver = (key: string | null, contentId: string) => string;
 
@@ -202,12 +204,13 @@ export class AnchorStamper {
     const run = (
       initial: string,
       resolve: Resolver
-    ): { content: string; results: StampResult[] } => {
+    ): { content: string; results: StampEntry[] } => {
       let current = initial;
-      const results = cards.map((card) => {
-        const result = this.applyStamp(current, card, titleMode, resolve);
-        if (result.outcome.ok) current = result.content;
-        return result;
+      // Only the latest text is kept; one copy per card would grow with cards × note size.
+      const results = cards.map((card): StampEntry => {
+        const { content: next, outcome, host } = this.applyStamp(current, card, titleMode, resolve);
+        if (outcome.ok) current = next;
+        return { outcome, host };
       });
       return { content: current, results };
     };
@@ -231,7 +234,7 @@ export class AnchorStamper {
         if (missed.size > 0) {
           // The note changed under us in a way the fetched bindings don't cover.
           const stale: StampOutcome = { ok: false, reason: "stale" };
-          pass = { content: current, results: cards.map(() => ({ content: current, outcome: stale })) };
+          pass = { content: current, results: cards.map(() => ({ outcome: stale })) };
         }
         return pass.content;
       });
