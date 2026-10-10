@@ -8,3 +8,4 @@ export * from "./media-refs";
 export * from "./remote";
 export * from "./export";
 export * from "./profiles";
+export * from "./media-prune";

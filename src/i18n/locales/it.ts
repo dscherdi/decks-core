@@ -2351,7 +2351,10 @@ export const it: Translations = {
       syncLogFolderPlaceholder: "(radice del vault)",
       pdfCacheFolder: "Cartella cache OCR dei PDF",
       pdfCacheFolderDesc: "Cartella con il testo OCR per pagina in cache, così un PDF non viene mai letto due volte.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Cartella dei media della directory dei mazzi",
+      directoryMediaFolderDesc: "Cartella per immagini, audio e video dei mazzi della directory dei mazzi, condivisa dall'app DecksMD e da Obsidian. Ha effetto dopo un riavvio.",
+      aiSourcesFolder: "Cartella dei PDF di origine dell'IA",
+      aiSourcesFolderDesc: "Cartella per le copie dei PDF allegati alle sessioni IA, così una sessione si riapre con la sua fonte su ogni dispositivo. Ha effetto dopo un riavvio.",
     },
     database: {
       heading: "Gestione del database",

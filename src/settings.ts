@@ -85,6 +85,10 @@ export interface DecksSettings {
     // Folder for the per-device .deckssynclog files. Default: vault root.
     // Changes require a restart to take effect.
     syncLogFolder: string;
+    // Media of deck directory packages. Default: DEFAULT_DIRECTORY_MEDIA_FOLDER.
+    directoryMediaFolder: string;
+    // Copies of the PDFs attached to AI sessions. Default: DEFAULT_AI_SOURCES_FOLDER.
+    aiSourcesFolder: string;
   };
 
   // Internationalization
@@ -146,6 +150,8 @@ export const DEFAULT_SETTINGS: DecksSettings = {
     dbFolder: "",
     backupFolder: "",
     syncLogFolder: "",
+    directoryMediaFolder: "",
+    aiSourcesFolder: "",
   },
 
   i18n: {

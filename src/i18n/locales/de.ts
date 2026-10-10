@@ -2382,7 +2382,10 @@ export const de: Translations = {
       syncLogFolderPlaceholder: "(Vault-Wurzel)",
       pdfCacheFolder: "Ordner für den PDF-OCR-Zwischenspeicher",
       pdfCacheFolderDesc: "Ordner mit dem zwischengespeicherten Seitentext aus PDF-OCR, damit ein PDF nie zweimal gelesen wird.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Medienordner des Stapelverzeichnisses",
+      directoryMediaFolderDesc: "Ordner für Bilder, Audio und Video der Stapel aus dem Stapelverzeichnis, gemeinsam genutzt von der DecksMD-App und Obsidian. Wird nach einem Neustart wirksam.",
+      aiSourcesFolder: "Ordner für KI-Quell-PDFs",
+      aiSourcesFolderDesc: "Ordner für Kopien der PDFs, die an KI-Sitzungen angehängt sind, damit eine Sitzung auf jedem Gerät mit ihrer Quelle wieder öffnet. Wird nach einem Neustart wirksam.",
     },
 
     database: {

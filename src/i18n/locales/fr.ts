@@ -2366,7 +2366,10 @@ export const fr: Translations = {
       syncLogFolderPlaceholder: "(racine du vault)",
       pdfCacheFolder: "Dossier de cache OCR des PDF",
       pdfCacheFolderDesc: "Dossier contenant le texte OCR mis en cache page par page, pour ne jamais relire deux fois un PDF.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Dossier des médias de l'annuaire de paquets",
+      directoryMediaFolderDesc: "Dossier des images, de l'audio et des vidéos des paquets de l'annuaire, partagé par l'app DecksMD et Obsidian. Prend effet après un redémarrage.",
+      aiSourcesFolder: "Dossier des PDF sources de l'IA",
+      aiSourcesFolderDesc: "Dossier des copies des PDF joints aux sessions d'IA, pour qu'une session se rouvre avec sa source sur chaque appareil. Prend effet après un redémarrage.",
     },
     database: {
       heading: "Gestion de la base de données",

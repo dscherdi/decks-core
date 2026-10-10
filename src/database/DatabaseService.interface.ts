@@ -106,7 +106,8 @@ export interface IDatabaseService {
   /** Store a package's deck and build its rows; saves straight away. */
   importDirectoryPackage(bytes: Uint8Array): Promise<DpkgImportResult>;
   materialiseDirectoryDecks(): Promise<MaterialiseAllResult>;
-  listDirectoryDecks(): Promise<DirectoryDeckRecord[]>;
+  /** Installed packages; with `includeRemoved`, the removed ones too, as their removal leaves them. */
+  listDirectoryDecks(includeRemoved?: boolean): Promise<DirectoryDeckRecord[]>;
   /** Templates that bind only within this directory deck. */
   getDirectoryTemplates(deckId: string): Promise<DeckTemplate[]>;
   /** Tombstone the deck, drop its rows and tell other devices; saves straight away. */

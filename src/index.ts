@@ -35,6 +35,7 @@ export type {
 // Deck directory: .dpkg packages and the decks installed from them.
 export * from "./services/directory";
 export { sha256Hex } from "./utils/sha256";
+export { DEFAULT_AI_SOURCES_FOLDER, DEFAULT_DIRECTORY_MEDIA_FOLDER, DEFAULT_PDF_OCR_FOLDER } from "./utils/vault-folders";
 export type { JsonValue, JsonObject } from "./utils/json";
 
 // Services

@@ -2339,7 +2339,10 @@ export const ru: Translations = {
       syncLogFolderPlaceholder: "(корень хранилища)",
       pdfCacheFolder: "Папка кэша OCR для PDF",
       pdfCacheFolderDesc: "Папка с кэшированным текстом OCR по страницам, чтобы PDF не читался дважды.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Папка медиафайлов каталога колод",
+      directoryMediaFolderDesc: "Папка для изображений, аудио и видео колод из каталога колод; её используют приложение DecksMD и Obsidian. Изменение вступает в силу после перезапуска.",
+      aiSourcesFolder: "Папка исходных PDF для ИИ",
+      aiSourcesFolderDesc: "Папка для копий PDF, прикреплённых к сеансам ИИ, чтобы сеанс открывался со своим источником на любом устройстве. Изменение вступает в силу после перезапуска.",
     },
     database: {
       heading: "Управление базой данных",

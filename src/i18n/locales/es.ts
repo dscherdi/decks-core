@@ -2374,7 +2374,10 @@ export const es: Translations = {
       syncLogFolderPlaceholder: "(raíz del vault)",
       pdfCacheFolder: "Carpeta de caché de OCR de PDF",
       pdfCacheFolderDesc: "Carpeta con el texto OCR de cada página en caché, para no leer dos veces un PDF.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Carpeta de medios del directorio de mazos",
+      directoryMediaFolderDesc: "Carpeta para las imágenes, el audio y el vídeo de los mazos del directorio de mazos, compartida por la app DecksMD y Obsidian. Se aplica tras reiniciar.",
+      aiSourcesFolder: "Carpeta de PDF de origen de IA",
+      aiSourcesFolderDesc: "Carpeta para las copias de los PDF adjuntos a sesiones de IA, para que una sesión se vuelva a abrir con su fuente en cualquier dispositivo. Se aplica tras reiniciar.",
     },
 
     database: {

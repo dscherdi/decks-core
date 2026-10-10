@@ -2361,7 +2361,10 @@ export const hi: Translations = {
       syncLogFolderPlaceholder: "(वॉल्ट रूट)",
       pdfCacheFolder: "PDF OCR कैश फ़ोल्डर",
       pdfCacheFolderDesc: "PDF OCR से प्रति-पृष्ठ टेक्स्ट कैश रखने वाला फ़ोल्डर, ताकि कोई PDF दो बार न पढ़ा जाए।",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "डेक निर्देशिका मीडिया फ़ोल्डर",
+      directoryMediaFolderDesc: "डेक निर्देशिका के डेक की छवियों, ऑडियो और वीडियो का फ़ोल्डर, जिसे DecksMD ऐप और Obsidian दोनों उपयोग करते हैं। पुनः आरंभ के बाद लागू होता है।",
+      aiSourcesFolder: "AI स्रोत PDF फ़ोल्डर",
+      aiSourcesFolderDesc: "AI सत्रों से जुड़े PDF की प्रतियों का फ़ोल्डर, ताकि सत्र हर डिवाइस पर अपने स्रोत के साथ फिर से खुले। पुनः आरंभ के बाद लागू होता है।",
     },
 
     database: {

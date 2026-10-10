@@ -2365,7 +2365,10 @@ export const tr: Translations = {
       syncLogFolderPlaceholder: "(kasa kök dizini)",
       pdfCacheFolder: "PDF OCR önbellek klasörü",
       pdfCacheFolderDesc: "PDF OCR’den gelen sayfa metinlerinin önbelleğe alındığı klasör; böylece bir PDF iki kez okunmaz.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Deste dizini medya klasörü",
+      directoryMediaFolderDesc: "Deste dizinindeki destelerin görsel, ses ve videoları için klasör; DecksMD uygulaması ve Obsidian ortak kullanır. Yeniden başlatmadan sonra geçerli olur.",
+      aiSourcesFolder: "Yapay zekâ kaynak PDF klasörü",
+      aiSourcesFolderDesc: "Yapay zekâ oturumlarına eklenen PDF'lerin kopyaları için klasör; böylece bir oturum her cihazda kaynağıyla yeniden açılır. Yeniden başlatmadan sonra geçerli olur.",
     },
 
     database: {

@@ -2300,7 +2300,10 @@ export const zhTW: Translations = {
       syncLogFolderPlaceholder: "(儲存庫根目錄)",
       pdfCacheFolder: "PDF OCR 快取資料夾",
       pdfCacheFolderDesc: "存放 PDF OCR 逐頁文字快取的資料夾，同一份 PDF 不必讀兩次。",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "牌組目錄媒體資料夾",
+      directoryMediaFolderDesc: "存放牌組目錄中牌組的圖片、音訊和影片的資料夾，由 DecksMD 應用程式和 Obsidian 共用。重新啟動後生效。",
+      aiSourcesFolder: "AI 來源 PDF 資料夾",
+      aiSourcesFolderDesc: "存放附加到 AI 工作階段的 PDF 副本的資料夾，讓工作階段在任何裝置上都能連同來源一起重新開啟。重新啟動後生效。",
     },
 
     database: {

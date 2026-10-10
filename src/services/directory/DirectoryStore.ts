@@ -203,6 +203,7 @@ export function directoryTemplateFromRow(row: Row): DeckTemplate {
 }
 
 export const SELECT_DIRECTORY_DECKS_SQL = "SELECT * FROM directory_decks WHERE removed_at IS NULL ORDER BY title COLLATE NOCASE";
+export const SELECT_ALL_DIRECTORY_DECKS_SQL = "SELECT * FROM directory_decks ORDER BY title COLLATE NOCASE";
 export const SELECT_DIRECTORY_TEMPLATES_SQL = "SELECT * FROM directory_templates WHERE directory_deck_id = ? ORDER BY rowid";
 export const TOMBSTONE_DIRECTORY_DECK_SQL =
   "UPDATE directory_decks SET removed_at = ?, modified = ? WHERE id = ? AND removed_at IS NULL AND modified < ?";

@@ -2321,7 +2321,10 @@ export const ja: Translations = {
       syncLogFolderPlaceholder: "（Vault のルート）",
       pdfCacheFolder: "PDF OCR キャッシュフォルダー",
       pdfCacheFolderDesc: "PDF OCR のページ単位のテキストをキャッシュするフォルダー。同じ PDF を二度読まずに済みます。",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "デッキディレクトリのメディアフォルダー",
+      directoryMediaFolderDesc: "デッキディレクトリのデッキの画像・音声・動画を保存するフォルダーです。DecksMD アプリと Obsidian で共有されます。再起動後に反映されます。",
+      aiSourcesFolder: "AI ソース PDF フォルダー",
+      aiSourcesFolderDesc: "AI セッションに添付した PDF のコピーを保存するフォルダーです。どの端末でもセッションを元の資料ごと再開できます。再起動後に反映されます。",
     },
     database: {
       heading: "データベース管理",

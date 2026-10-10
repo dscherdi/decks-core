@@ -2316,7 +2316,10 @@ export const ar: Translations = {
       syncLogFolderPlaceholder: "(جذر الخزنة)",
       pdfCacheFolder: "مجلد ذاكرة OCR لملفات PDF",
       pdfCacheFolderDesc: "مجلد يحفظ نص كل صفحة من OCR، فلا يُقرأ ملف PDF مرتين.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "مجلد وسائط دليل الرزم",
+      directoryMediaFolderDesc: "مجلد لصور الرزم وصوتها وفيديوهاتها من دليل الرزم، يتشاركه تطبيق DecksMD وObsidian. يسري بعد إعادة التشغيل.",
+      aiSourcesFolder: "مجلد ملفات PDF المصدرية للذكاء الاصطناعي",
+      aiSourcesFolderDesc: "مجلد لنسخ ملفات PDF المرفقة بجلسات الذكاء الاصطناعي، كي تُفتح الجلسة مع مصدرها على أي جهاز. يسري بعد إعادة التشغيل.",
     },
 
     database: {

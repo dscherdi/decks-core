@@ -2250,8 +2250,11 @@ export const en = {
       syncLogFolderDesc: "Folder for the per-device .deckssynclog files used by multi-device sync. Default: vault root (which iCloud syncs fastest). Restart Obsidian after changing this.",
       syncLogFolderPlaceholder: "(vault root)",
       pdfCacheFolder: "PDF OCR cache folder",
-      pdfCacheFolderDesc: "Folder holding cached per-page text from PDF OCR, reused so a PDF is never transcribed twice. Default: {pluginFolder}/pdf-ocr/. Changes take effect immediately. Delete this folder to clear the cache.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      pdfCacheFolderDesc: "Folder holding cached per-page text from PDF OCR, reused so a PDF is never transcribed twice. Default: {folder}/. Changes take effect immediately. Delete this folder to clear the cache.",
+      directoryMediaFolder: "Deck directory media folder",
+      directoryMediaFolderDesc: "Folder for the images, audio and video of decks from the deck directory, shared by the DecksMD app and Obsidian. Default: {folder}/. Takes effect after a restart.",
+      aiSourcesFolder: "AI source PDF folder",
+      aiSourcesFolderDesc: "Folder for copies of the PDFs attached to AI sessions, so a session reopens with its source on every device. Default: {folder}/. Takes effect after a restart.",
     },
 
     database: {

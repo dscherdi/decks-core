@@ -2374,7 +2374,10 @@ export const sq: Translations = {
       syncLogFolderPlaceholder: "(rrënja e Vault-it)",
       pdfCacheFolder: "Dosja e memories OCR për PDF",
       pdfCacheFolderDesc: "Dosja që mban tekstin e ruajtur për faqe nga OCR i PDF-së, që një PDF të mos lexohet dy herë.",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "Dosja e medias së drejtorisë së pakove",
+      directoryMediaFolderDesc: "Dosja për imazhet, audion dhe videon e pakove nga drejtoria e pakove, e përbashkët për aplikacionin DecksMD dhe Obsidian. Hyn në fuqi pas rinisjes.",
+      aiSourcesFolder: "Dosja e PDF-ve burimore të IA-së",
+      aiSourcesFolderDesc: "Dosja për kopjet e PDF-ve të bashkëngjitura në seancat e IA-së, që një seancë të rihapet me burimin e saj në çdo pajisje. Hyn në fuqi pas rinisjes.",
     },
 
     database: {

@@ -2273,7 +2273,10 @@ export const zh: Translations = {
       syncLogFolderPlaceholder: "（Vault 根目录）",
       pdfCacheFolder: "PDF OCR 缓存文件夹",
       pdfCacheFolderDesc: "存放 PDF OCR 逐页文本缓存的文件夹，同一份 PDF 不必读两次。",
-      pdfCacheFolderPlaceholder: "{pluginFolder}/pdf-ocr",
+      directoryMediaFolder: "牌组目录媒体文件夹",
+      directoryMediaFolderDesc: "存放牌组目录中牌组的图片、音频和视频的文件夹，由 DecksMD 应用和 Obsidian 共用。重启后生效。",
+      aiSourcesFolder: "AI 来源 PDF 文件夹",
+      aiSourcesFolderDesc: "存放附加到 AI 会话的 PDF 副本的文件夹，让会话在任何设备上都能连同来源一起重新打开。重启后生效。",
     },
     database: {
       heading: "数据库管理",
