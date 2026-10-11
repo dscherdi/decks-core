@@ -139,8 +139,8 @@ export type DpkgDeckDraft = Omit<DpkgDeckEntry, "profile"> & { profile?: string 
 
 export type DpkgManifestDraft = Omit<
   DpkgManifest,
-  "formatVersion" | "schemaVersion" | "media" | "dbSha256" | "decks" | "profiles"
-> & { decks: DpkgDeckDraft[]; profiles?: DpkgProfile[] };
+  "formatVersion" | "schemaVersion" | "media" | "dbSha256" | "decks" | "profiles" | "topic" | "level"
+> & { decks: DpkgDeckDraft[]; profiles?: DpkgProfile[]; topic?: string; level?: string };
 
 export interface PackDpkgInput {
   manifest: DpkgManifestDraft;
@@ -167,6 +167,8 @@ export async function packDpkg(input: PackDpkgInput): Promise<{ bytes: Uint8Arra
 
   const manifest: DpkgManifest = {
     ...input.manifest,
+    topic: input.manifest.topic?.trim() ?? "",
+    level: input.manifest.level?.trim() ?? "",
     decks: input.manifest.decks.map((deck) => ({ ...deck, profile: deck.profile ?? null })),
     profiles: input.manifest.profiles ?? [],
     formatVersion: input.formatVersion ?? DPKG_MIN_FORMAT_VERSION,

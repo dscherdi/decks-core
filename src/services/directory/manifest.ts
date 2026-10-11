@@ -80,6 +80,10 @@ export interface DpkgManifest {
   description: string;
   language: string;
   subject: string;
+  /** What the decks teach, such as "German"; empty when the subject says it. */
+  topic: string;
+  /** Free text, such as "CEFR A1" or "Grade 7"; empty when the package names none. */
+  level: string;
   tags: string[];
   license: string;
   cardCount: number;
@@ -216,6 +220,8 @@ export function parseDpkgManifest(json: string): DpkgManifest {
     description: text(parsed, "description", false),
     language: text(parsed, "language", false),
     subject: text(parsed, "subject", false),
+    topic: text(parsed, "topic", false).trim(),
+    level: text(parsed, "level", false).trim(),
     tags: stringList(parsed, "tags"),
     license: text(parsed, "license", false),
     cardCount,

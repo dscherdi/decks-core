@@ -41,6 +41,19 @@ async function codeOf(promise: Promise<object>): Promise<string> {
 }
 
 describe(".dpkg packages", () => {
+  it("carries what the decks teach and their level, empty on packages without them", async () => {
+    const { manifest } = await unpackDpkg(await buildPackage(REF, 1, content()));
+    expect(manifest).toMatchObject({ topic: "", level: "" });
+
+    const { topic: _topic, level: _level, ...older } = manifest;
+    expect(parseDpkgManifest(JSON.stringify(older))).toMatchObject({ topic: "", level: "" });
+    expect(parseDpkgManifest(JSON.stringify({ ...manifest, topic: " Spanish ", level: "CEFR A1" }))).toMatchObject({
+      topic: "Spanish",
+      level: "CEFR A1",
+    });
+    expect(() => parseDpkgManifest(JSON.stringify({ ...manifest, level: 1 }))).toThrow(DpkgError);
+  });
+
   it("round-trips the deck, its cards and its media", async () => {
     const pkg = await buildPackage(REF, 3, content(), [
       { bytes: png, ext: "png", mime: "image/png" },
