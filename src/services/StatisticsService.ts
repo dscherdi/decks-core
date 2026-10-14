@@ -2,7 +2,6 @@ import type { IDatabaseService, ILogger } from "../database/DatabaseService.inte
 import {
   type Statistics,
   type DailyStats,
-  type ReviewLog,
   type Flashcard,
   type DeckProfile,
   type DeckStats,
@@ -33,6 +32,7 @@ import type {
   DailyStatsRow,
   AnswerButtonStatsRow,
   PaceStatsRow,
+  ReviewTotalsRow,
   ForecastRow,
   CountResult,
   SqlJsValue,
@@ -245,16 +245,9 @@ export class StatisticsService {
           ? (correctReviews / totalReviewsInPeriod) * 100
           : 0;
 
-      // Get total review count and time (all time, not just period)
-      const allReviewLogs =
-        deckIds.length > 0
-          ? await this.getReviewLogsForChart(deckIds)
-          : await this.db.getAllReviewLogs();
-      const totalReviewsAllTime = allReviewLogs.length;
-      const totalTimeMs = allReviewLogs.reduce(
-        (sum: number, log: ReviewLog) => sum + (log.timeElapsedMs || 0),
-        0
-      );
+      // All time, not just the period.
+      const { totalReviews: totalReviewsAllTime, totalTimeMs } =
+        await this.getReviewTotals(deckIds);
 
       return {
         dailyStats: Array.from(dailyStatsData.entries()).map(
@@ -432,6 +425,17 @@ export class StatisticsService {
     });
 
     return answerButtons;
+  }
+
+  /** The overview's pace and due forecast alone, without reading every review log. */
+  async getPaceAndForecast(
+    deckIds: string[] = [],
+    now: Date = new Date()
+  ): Promise<Pick<Statistics, "averagePace" | "forecast">> {
+    const start = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
+    const pace = await this.getPaceStatsForPeriod(start, now.toISOString(), deckIds);
+    const forecast = await this.getForecastDueCards(30, deckIds, now);
+    return { averagePace: pace.averagePace, forecast };
   }
 
   /**
@@ -1313,17 +1317,25 @@ export class StatisticsService {
     }
   }
 
-  /**
-   * Get review logs for charts filtered by deck IDs
-   */
-  async getReviewLogsForChart(deckIds: string[] = []): Promise<ReviewLog[]> {
-    if (deckIds.length === 0) {
-      return await this.db.getAllReviewLogs();
-    } else if (deckIds.length === 1) {
-      return await this.db.getReviewLogsByDeck(deckIds[0]);
-    } else {
-      return await this.db.getReviewLogsByDecks(deckIds);
-    }
+  /** Every review's count and time, summed in SQL; no deck ids means every log, as getAllReviewLogs. */
+  private async getReviewTotals(
+    deckIds: string[]
+  ): Promise<{ totalReviews: number; totalTimeMs: number }> {
+    const sql =
+      deckIds.length === 0
+        ? `SELECT COUNT(*) AS total_reviews, COALESCE(SUM(time_elapsed_ms), 0) AS total_time_ms
+           FROM review_logs`
+        : `SELECT COUNT(*) AS total_reviews, COALESCE(SUM(rl.time_elapsed_ms), 0) AS total_time_ms
+           FROM review_logs rl
+           JOIN flashcards f ON rl.flashcard_id = f.id
+           WHERE f.deck_id IN (${deckIds.map(() => "?").join(",")})`;
+    const [row] = await this.db.querySql<ReviewTotalsRow>(sql, deckIds, {
+      asObject: true,
+    });
+    return {
+      totalReviews: row?.total_reviews ?? 0,
+      totalTimeMs: row?.total_time_ms ?? 0,
+    };
   }
 
   /**

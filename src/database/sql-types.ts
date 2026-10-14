@@ -121,6 +121,11 @@ export interface PaceStatsRow {
   total_time: number;
 }
 
+export interface ReviewTotalsRow {
+  total_reviews: number;
+  total_time_ms: number;
+}
+
 export interface BacklogRow {
   n: number;
 }
