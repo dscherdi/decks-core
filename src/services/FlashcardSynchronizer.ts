@@ -3,6 +3,7 @@ import { CanvasFlashcardExtractor } from "./CanvasFlashcardExtractor";
 import type { Flashcard, FlashcardType, DeckProfile, TemplateRow } from "../database/types";
 import { parseHeaderLevels } from "../database/types";
 import type { SqlJsValue } from "../database/sql-types";
+import { CARD_CHILD_STATEMENTS } from "../database/card-children";
 import {
   generateFlashcardId,
   generateContentHash,
@@ -176,44 +177,6 @@ export class FlashcardSynchronizer {
     }
   }
 
-  // Re-point an overlay row when a card's id migrates, keeping the newer
-  // record if the target id already has one.
-  private repointOverlay(oldId: string, newId: string): void {
-    try {
-      const copyStmt = this.db.prepare(`
-        INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)
-        SELECT ?, suspended_at, buried_until, modified FROM card_state_overlays WHERE flashcard_id = ?
-        ON CONFLICT(flashcard_id) DO UPDATE SET
-          suspended_at = excluded.suspended_at,
-          buried_until = excluded.buried_until,
-          modified = excluded.modified
-        WHERE excluded.modified > card_state_overlays.modified
-      `);
-      copyStmt.run([newId, oldId]);
-      copyStmt.free();
-      const deleteStmt = this.db.prepare(
-        "DELETE FROM card_state_overlays WHERE flashcard_id = ?"
-      );
-      deleteStmt.run([oldId]);
-      deleteStmt.free();
-    } catch {
-      // Table absent on databases that predate it.
-    }
-  }
-
-  // A card the AI workbench wrote keeps its source page when an edit re-keys it.
-  private repointAiOrigin(oldId: string, newId: string): void {
-    try {
-      const stmt = this.db.prepare(
-        "UPDATE ai_staged_cards SET dedup_hash = ?, modified = ? WHERE dedup_hash = ?"
-      );
-      stmt.run([newId, new Date().toISOString(), oldId]);
-      stmt.free();
-    } catch {
-      // Table absent on databases that predate it.
-    }
-  }
-
   private columnsCache: string[] | null = null;
 
   private flashcardColumns(): string[] {
@@ -228,28 +191,16 @@ export class FlashcardSynchronizer {
 
   // Every row keyed by card id follows the card when its id changes.
   private repointChildren(oldId: string, newId: string): void {
-    const run = (sql: string): void => {
+    const now = new Date().toISOString();
+    for (const statement of CARD_CHILD_STATEMENTS) {
       try {
-        const stmt = this.db.prepare(sql);
-        stmt.run([newId, oldId]);
+        const stmt = this.db.prepare(statement.sql(""));
+        stmt.run(statement.params(oldId, newId, now));
         stmt.free();
       } catch {
         // Table absent on databases that predate it.
       }
-    };
-    run("UPDATE review_logs SET flashcard_id = ? WHERE flashcard_id = ?");
-    run("UPDATE exam_answers SET flashcard_id = ? WHERE flashcard_id = ?");
-    run("UPDATE OR IGNORE custom_deck_cards SET flashcard_id = ? WHERE flashcard_id = ?");
-    run("UPDATE OR IGNORE custom_deck_card_tombstones SET flashcard_id = ? WHERE flashcard_id = ?");
-    try {
-      const leftover = this.db.prepare("DELETE FROM custom_deck_cards WHERE flashcard_id = ?");
-      leftover.run([oldId]);
-      leftover.free();
-    } catch {
-      // Table absent on databases that predate it.
     }
-    this.repointOverlay(oldId, newId);
-    this.repointAiOrigin(oldId, newId);
   }
 
   // The scheduling state the newest review log under `id` implies, if any.

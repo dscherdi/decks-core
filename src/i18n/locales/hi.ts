@@ -370,7 +370,7 @@ export const hi: Translations = {
     restoreProgress:
       "बैकअप पुनर्स्थापित किया जा रहा है: {progress}% ({current}/{total})",
     restoreFailed: "❌ पुनर्स्थापना विफल: {message}",
-    cardsRebuilt: "इतिहास से {count} कार्ड की शेड्यूलिंग बहाल की गई।",
+    historyRecovered: "{reattached} कार्ड का समीक्षा इतिहास फिर से जोड़ा गया और {restored} कार्ड की शेड्यूलिंग बहाल की गई।",
     backupRestoreFailed: "❌ बैकअप पुनर्स्थापना विफल: {message}",
     dropdownNotFound: "ड्रॉपडाउन नहीं मिला",
     noBackupsFound: "कोई बैकअप नहीं मिला",

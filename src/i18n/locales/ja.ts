@@ -366,7 +366,7 @@ export const ja: Translations = {
     restoringFromFileProgress: "{filename} から復元中: {progress}%",
     restoreProgress: "バックアップを復元中: {progress}% ({current}/{total})",
     restoreFailed: "❌ 復元に失敗: {message}",
-    cardsRebuilt: "履歴から {count} 枚のスケジュールを復元しました。",
+    historyRecovered: "{reattached} 枚のカードに復習履歴を結び直し、{restored} 枚のスケジュールを復元しました。",
     backupRestoreFailed: "❌ バックアップの復元に失敗: {message}",
     dropdownNotFound: "ドロップダウンが見つかりません",
     noBackupsFound: "バックアップが見つかりません",

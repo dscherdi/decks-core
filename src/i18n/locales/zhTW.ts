@@ -360,7 +360,7 @@ export const zhTW: Translations = {
     restoringFromFileProgress: "正在從 {filename} 還原：{progress}%",
     restoreProgress: "正在還原備份：{progress}% ({current}/{total})",
     restoreFailed: "❌ 還原失敗：{message}",
-    cardsRebuilt: "已從複習歷史為 {count} 張卡片還原排程。",
+    historyRecovered: "已為 {reattached} 張卡片重新連結複習歷史，並為 {restored} 張卡片還原排程。",
     backupRestoreFailed: "❌ 備份還原失敗：{message}",
     dropdownNotFound: "找不到下拉式選單",
     noBackupsFound: "找不到任何備份",

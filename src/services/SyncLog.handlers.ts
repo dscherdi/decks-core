@@ -22,6 +22,7 @@ import { REMOVE_DIRECTORY_CONTENT_SQL, UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL } f
 import { isDirectoryProfileId } from "./directory/profiles";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
 import type { ReviewLog } from "../database/types";
+import { applyNewestLogState, forgetStrandedHistory, relinkCardHistory } from "./ReviewHistoryRecovery";
 import {
   aiConceptId,
   aiSessionValues,
@@ -77,6 +78,7 @@ const HANDLERS: Partial<Record<SyncLogEntry["o"], OpHandler>> = {
   card_bury: handleCardBury,
   card_unbury: handleCardUnbury,
   card_reset: handleCardReset,
+  history_relink: handleHistoryRelink,
   weight_set_upsert: handleWeightSetUpsert,
   exam_session_complete: handleExamSessionComplete,
   ai_session_upsert: handleAiSessionUpsert,
@@ -343,6 +345,12 @@ async function handleDeckReset(
      WHERE deck_id = ? AND modified <= ?`,
     [resetAt, resetAt, deckId, resetAt]
   );
+  const reset = await db.querySql<{ id: string }>(
+    "SELECT id FROM flashcards WHERE deck_id = ? AND modified = ?",
+    [deckId, resetAt],
+    { asObject: true }
+  );
+  await forgetStrandedHistory(db, reset.map((row) => row.id), resetAt);
 
   logger.debug(`SyncLog deck_reset: deck=${deckId} cutoff=${resetAt} applied`);
 }
@@ -413,6 +421,7 @@ async function handleCustomDeckReset(
      WHERE id IN (${placeholders}) AND modified <= ?`,
     [resetAt, resetAt, ...cardIds, resetAt]
   );
+  await forgetStrandedHistory(db, await resetBy(db, cardIds, resetAt), resetAt);
 
   logger.debug(
     `SyncLog custom_deck_reset: deck=${customDeckId} cutoff=${resetAt} cards=${cardIds.length} applied`
@@ -964,6 +973,44 @@ async function handleCardUnbury(
   await mirrorOverlayToFlashcard(db, entry.p.c);
 }
 
+/** Of these cards, the ones a reset at `at` actually reset (it stamps `modified`). */
+async function resetBy(db: IDatabaseService, cardIds: readonly string[], at: string): Promise<string[]> {
+  const reset: string[] = [];
+  for (let i = 0; i < cardIds.length; i += 400) {
+    const chunk = cardIds.slice(i, i + 400);
+    const rows = await db.querySql<{ id: string }>(
+      `SELECT id FROM flashcards WHERE id IN (${chunk.map(() => "?").join(",")}) AND modified = ?`,
+      [...chunk, at],
+      { asObject: true }
+    );
+    reset.push(...rows.map((row) => row.id));
+  }
+  return reset;
+}
+
+/**
+ * Apply a remote `history_relink`: move each link's stranded rows unless its old id is a
+ * live card here, then let the card take the newest review. Never throws.
+ */
+async function handleHistoryRelink(
+  db: IDatabaseService,
+  sourceDeviceId: string,
+  entry: SyncLogEntry,
+  logger: Logger
+): Promise<void> {
+  if (entry.o !== "history_relink") return;
+  const { links, at } = entry.p;
+  for (const link of links) {
+    if (link.from === link.c) continue;
+    try {
+      await relinkCardHistory(db, { from: link.from, to: link.c }, at);
+      await applyNewestLogState(db, link.c, at);
+    } catch (error) {
+      logger.debug(`SyncLog history_relink from ${sourceDeviceId}: ${link.from} not moved`, error);
+    }
+  }
+}
+
 /**
  * Apply a remote `card_reset` op. Destructive — mirrors handleDeckReset
  * scoped to one flashcard:
@@ -1002,6 +1049,7 @@ async function handleCardReset(
      WHERE id = ? AND modified <= ?`,
     [at, at, c, at]
   );
+  await forgetStrandedHistory(db, await resetBy(db, [c], at), at);
 
   await db.executeSql(
     `INSERT INTO card_state_overlays (flashcard_id, suspended_at, buried_until, modified)

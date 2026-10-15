@@ -348,7 +348,7 @@ export const en = {
     restoringFromFileProgress: "Restoring from {filename}: {progress}%",
     restoreProgress: "Restoring backup: {progress}% ({current}/{total})",
     restoreFailed: "❌ Restore failed: {message}",
-    cardsRebuilt: "Restored scheduling for {count} cards from review history.",
+    historyRecovered: "Reattached review history to {reattached, plural, one {# card} other {# cards}} and restored scheduling for {restored, plural, one {# card} other {# cards}}.",
     backupRestoreFailed: "❌ Backup restoration failed: {message}",
     dropdownNotFound: "Dropdown not found",
     noBackupsFound: "No backups found",

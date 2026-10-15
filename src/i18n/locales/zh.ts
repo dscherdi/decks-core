@@ -358,7 +358,7 @@ export const zh: Translations = {
     restoringFromFileProgress: "正在从 {filename} 恢复：{progress}%",
     restoreProgress: "恢复进度：{progress}%（{current}/{total}）",
     restoreFailed: "❌ 恢复失败：{message}",
-    cardsRebuilt: "已从复习历史为 {count} 张卡片恢复排程。",
+    historyRecovered: "已为 {reattached} 张卡片重新关联复习历史，并为 {restored} 张卡片恢复排程。",
     backupRestoreFailed: "❌ 备份恢复失败：{message}",
     dropdownNotFound: "未找到下拉框",
     noBackupsFound: "未找到备份",

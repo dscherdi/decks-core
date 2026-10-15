@@ -1,4 +1,5 @@
 import type { TagScopeOptions } from "../utils/deck-tags";
+import type { HistoryRecoveryResult } from "../services/ReviewHistoryRecovery";
 import type {
   Deck,
   DeckProfile,
@@ -412,7 +413,10 @@ export interface IDatabaseService {
   purgeDatabase(): Promise<void>;
   resetDeckProgress(deckId: string): Promise<void>;
   resetCustomDeckProgress(customDeckId: string): Promise<void>;
+  /** Old id formulas only, with no sync op: the path for restoring pre-v36 backups. */
   rebuildCardStateFromReviewLogs(): Promise<number>;
+  /** Re-attaches stranded history by old id and by content, and tells other devices. */
+  recoverReviewHistory(): Promise<HistoryRecoveryResult>;
 
   suspendCard(cardId: string): Promise<void>;
   unsuspendCard(cardId: string): Promise<void>;

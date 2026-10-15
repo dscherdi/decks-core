@@ -364,7 +364,7 @@ export const ar: Translations = {
     restoreProgress:
       "جاري استعادة النسخة الاحتياطية: {progress}% ({current}/{total})",
     restoreFailed: "❌ فشلت الاستعادة: {message}",
-    cardsRebuilt: "استُعيدت جدولة {count} بطاقة من سجل المراجعة.",
+    historyRecovered: "أُعيد ربط سجل المراجعة لـ {reattached} بطاقة واستُعيدت جدولة {restored} بطاقة.",
     backupRestoreFailed: "❌ فشلت استعادة النسخة الاحتياطية: {message}",
     dropdownNotFound: "لم يتم العثور على القائمة المنسدلة",
     noBackupsFound: "لم يتم العثور على نسخ احتياطية",

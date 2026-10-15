@@ -366,7 +366,7 @@ export const it: Translations = {
     restoringFromFileProgress: "Ripristino da {filename}: {progress}%",
     restoreProgress: "Ripristino backup: {progress}% ({current}/{total})",
     restoreFailed: "❌ Ripristino fallito: {message}",
-    cardsRebuilt: "Pianificazione ripristinata per {count} carte dallo storico.",
+    historyRecovered: "Storico ricollegato a {reattached, plural, one {# carta} other {# carte}} e pianificazione ripristinata per {restored, plural, one {# carta} other {# carte}}.",
     backupRestoreFailed: "❌ Ripristino backup fallito: {message}",
     dropdownNotFound: "Menu a tendina non trovato",
     noBackupsFound: "Nessun backup trovato",

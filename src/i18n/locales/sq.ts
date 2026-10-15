@@ -367,7 +367,7 @@ export const sq: Translations = {
     restoreProgress:
       "Po rikthehet kopja rezervë: {progress}% ({current}/{total})",
     restoreFailed: "❌ Rikthimi dështoi: {message}",
-    cardsRebuilt: "U rikthye planifikimi për {count} karta nga historiku.",
+    historyRecovered: "Historiku u rilidh me {reattached, plural, one {# kartë} other {# karta}} dhe planifikimi u rikthye për {restored, plural, one {# kartë} other {# karta}}.",
     backupRestoreFailed: "❌ Rikthimi i kopjes rezervë dështoi: {message}",
     dropdownNotFound: "Menyja rënëse nuk u gjet",
     noBackupsFound: "Nuk u gjet asnjë kopje rezervë",

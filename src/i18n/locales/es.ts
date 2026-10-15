@@ -369,7 +369,7 @@ export const es: Translations = {
     restoreProgress:
       "Restaurando copia de seguridad: {progress}% ({current}/{total})",
     restoreFailed: "❌ Restauración fallida: {message}",
-    cardsRebuilt: "Programación restaurada para {count} tarjetas desde el historial.",
+    historyRecovered: "Historial reasignado a {reattached, plural, one {# tarjeta} other {# tarjetas}} y programación restaurada para {restored, plural, one {# tarjeta} other {# tarjetas}}.",
     backupRestoreFailed: "❌ Restauración de copia fallida: {message}",
     dropdownNotFound: "Desplegable no encontrado",
     noBackupsFound: "No se encontraron copias de seguridad",

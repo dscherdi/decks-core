@@ -368,7 +368,7 @@ export const tr: Translations = {
       "{filename} dosyasından geri yükleniyor: %{progress}",
     restoreProgress: "Yedek geri yükleniyor: %{progress} ({current}/{total})",
     restoreFailed: "❌ Geri yükleme başarısız: {message}",
-    cardsRebuilt: "{count} kartın zamanlaması geçmişten geri getirildi.",
+    historyRecovered: "Geçmişi yeniden bağlanan kart: {reattached}; zamanlaması geri getirilen kart: {restored}.",
     backupRestoreFailed: "❌ Yedek geri yüklemesi başarısız: {message}",
     dropdownNotFound: "Açılır menü bulunamadı",
     noBackupsFound: "Yedek bulunamadı",

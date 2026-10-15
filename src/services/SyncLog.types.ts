@@ -44,6 +44,7 @@ export type SyncOpV1 =
   | CardBuryOp
   | CardUnburyOp
   | CardResetOp
+  | HistoryRelinkOp
   | WeightSetUpsertOp
   | ExamSessionCompleteOp
   | AiSessionUpsertOp
@@ -394,6 +395,12 @@ export interface CardResetOp {
   p: { c: string; at: string };
 }
 
+/** Review history stranded under `from` belongs to card `c`; the receiver moves it unless `from` is live there. */
+export interface HistoryRelinkOp {
+  o: "history_relink";
+  p: { links: Array<{ from: string; c: string }>; at: string };
+}
+
 // ---------- AI workbench ----------------------------------------------------
 
 // Whole rows, sent only when they changed. Newer `modified` wins; a saved staged card stays saved.
@@ -452,6 +459,7 @@ export const KNOWN_OP_TYPES_V1: ReadonlySet<SyncOpV1["o"]> = new Set([
   "card_bury",
   "card_unbury",
   "card_reset",
+  "history_relink",
   "weight_set_upsert",
   "exam_session_complete",
   "ai_session_upsert",

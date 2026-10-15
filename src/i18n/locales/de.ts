@@ -369,7 +369,7 @@ export const de: Translations = {
     restoreProgress:
       "Sicherung wird wiederhergestellt: {progress}% ({current}/{total})",
     restoreFailed: "❌ Wiederherstellung fehlgeschlagen: {message}",
-    cardsRebuilt: "Planung für {count} Karten aus dem Lernverlauf wiederhergestellt.",
+    historyRecovered: "Lernverlauf für {reattached, plural, one {# Karte} other {# Karten}} wieder zugeordnet und Planung für {restored, plural, one {# Karte} other {# Karten}} wiederhergestellt.",
     backupRestoreFailed:
       "❌ Wiederherstellung der Sicherung fehlgeschlagen: {message}",
     dropdownNotFound: "Dropdown nicht gefunden",

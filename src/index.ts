@@ -247,9 +247,32 @@ export type {
   AiConceptsSaveOp,
   DirectoryDeckRemoveOp,
   ClientHelloOp,
+  HistoryRelinkOp,
 } from "./services/SyncLog.types";
 export { KNOWN_OP_TYPES_V1 } from "./services/SyncLog.types";
 export { applyOp } from "./services/SyncLog.handlers";
+export {
+  recoverReviewHistory,
+  planHistoryLinks,
+  relinkCardHistory,
+  applyNewestLogState,
+  restoreStrandedNewCards,
+  forgetStrandedHistory,
+  historyRelinkOps,
+  MIN_MATCH_BACK_CHARS,
+  HISTORY_RELINK_OP_LINKS,
+} from "./services/ReviewHistoryRecovery";
+export type {
+  HistoryLink,
+  HistoryLinkBasis,
+  HistorySkipReason,
+  PlannedHistoryLink,
+  HistoryPlan,
+  HistoryRecoveryResult,
+  HistoryPlanOptions,
+} from "./services/ReviewHistoryRecovery";
+export { CARD_CHILD_STATEMENTS } from "./database/card-children";
+export type { CardChildStatement } from "./database/card-children";
 export { sessionName, sourceDisplayName } from "./services/ai/session-name";
 export {
   MIN_PASSAGE_CHARS,

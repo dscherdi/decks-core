@@ -365,7 +365,7 @@ export const ru: Translations = {
     restoringFromFileProgress: "Восстановление из {filename}: {progress}%",
     restoreProgress: "Восстановление: {progress}% ({current}/{total})",
     restoreFailed: "❌ Восстановление не удалось: {message}",
-    cardsRebuilt: "Расписание восстановлено для {count} карточек из истории.",
+    historyRecovered: "История повторений снова привязана, карточек: {reattached}; расписание восстановлено, карточек: {restored}.",
     backupRestoreFailed: "❌ Не удалось восстановить копию: {message}",
     dropdownNotFound: "Выпадающий список не найден",
     noBackupsFound: "Резервные копии не найдены",

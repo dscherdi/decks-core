@@ -366,7 +366,7 @@ export const fr: Translations = {
     restoreProgress:
       "Restauration de la sauvegarde : {progress}% ({current}/{total})",
     restoreFailed: "❌ Échec de la restauration : {message}",
-    cardsRebuilt: "Planification restaurée pour {count} cartes depuis l’historique.",
+    historyRecovered: "Historique rattaché à {reattached, plural, one {# carte} other {# cartes}} et planification restaurée pour {restored, plural, one {# carte} other {# cartes}}.",
     backupRestoreFailed: "❌ Échec de la restauration : {message}",
     dropdownNotFound: "Menu déroulant introuvable",
     noBackupsFound: "Aucune sauvegarde trouvée",
