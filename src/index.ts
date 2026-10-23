@@ -17,6 +17,7 @@ export {
 } from "./database/schemas";
 export { remapCardIdsToDeckIndependent } from "./database/remapCardIds";
 export * from "./database/note-order";
+export * from "./database/profile-parsing";
 export * from "./database/sql-types";
 export {
   aiConceptId,

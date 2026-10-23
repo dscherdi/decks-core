@@ -1,5 +1,6 @@
 import type { FilterDefinition, FilterRule } from "../database/types";
 import type { SqlJsValue } from "../database/sql-types";
+import { DENSITY_EXEMPT_TYPES } from "./CardHealth";
 
 export interface CompiledFilter {
   whereClause: string;
@@ -96,7 +97,10 @@ function compileVirtualRule(
   }
   if (rule.field === "isDense") {
     params.push(options.denseCardCharThreshold);
-    return negated ? `(LENGTH(f.back) >= ?)` : `(LENGTH(f.back) < ?)`;
+    const exempt = DENSITY_EXEMPT_TYPES.map((type) => `'${type}'`).join(", ");
+    return negated
+      ? `(LENGTH(f.back) >= ? AND f.type NOT IN (${exempt}))`
+      : `(LENGTH(f.back) < ? OR f.type IN (${exempt}))`;
   }
   if (rule.field === "isSuspended") {
     return negated

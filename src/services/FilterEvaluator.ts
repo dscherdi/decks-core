@@ -8,6 +8,7 @@ import {
   DEFAULT_DENSE_CHAR_THRESHOLD,
   type FilterCompileOptions,
 } from "./FilterEngine";
+import { isCardDense } from "./CardHealth";
 
 export interface FilterEvaluationContext {
   /**
@@ -86,7 +87,7 @@ function evaluateRule(
     if (rule.field === "isLeech") {
       actual = card.lapses >= leechThreshold;
     } else if (rule.field === "isDense") {
-      actual = (card.back?.length ?? 0) >= denseCharThreshold;
+      actual = isCardDense(card, denseCharThreshold);
     } else if (rule.field === "isSuspended") {
       actual = card.suspendedAt !== null && card.suspendedAt !== undefined;
     } else {

@@ -1,4 +1,4 @@
-import type { Flashcard, TypedGradingMode } from "../database/types";
+import type { Flashcard, FlashcardType, TypedGradingMode } from "../database/types";
 import { classifyExamBody, type ExamInvalidReason } from "./ExamClassifier";
 import { checkTypeInGradability, getTypeInAnswerLine, MAX_MEANING_ANSWER_LENGTH } from "./ExamGrading";
 
@@ -25,6 +25,9 @@ export interface CardHealth {
 }
 
 const TYPE_IN_TYPES = new Set(["header-paragraph", "table", "cloze"]);
+
+// These keep data in `back` (occlusion masks, an exam question or exercise), not an answer to read.
+export const DENSITY_EXEMPT_TYPES: readonly FlashcardType[] = ["image-occlusion-v2", "multiple-choice"];
 
 function computeExamIssue(
   card: Pick<Flashcard, "back"> & Partial<Pick<Flashcard, "type" | "clozeText">>,
@@ -54,7 +57,7 @@ export function computeCardHealth(
 ): CardHealth {
   return {
     isLeech: card.lapses >= thresholds.leechThreshold,
-    isDense: (card.back?.length ?? 0) >= thresholds.denseCardCharThreshold,
+    isDense: isCardDense(card, thresholds.denseCardCharThreshold),
     examIssue: computeExamIssue(card, examContext),
   };
 }
@@ -67,8 +70,9 @@ export function isCardLeech(
 }
 
 export function isCardDense(
-  card: Pick<Flashcard, "back">,
+  card: Pick<Flashcard, "back"> & Partial<Pick<Flashcard, "type">>,
   denseCardCharThreshold: number
 ): boolean {
+  if (card.type !== undefined && DENSITY_EXEMPT_TYPES.includes(card.type)) return false;
   return (card.back?.length ?? 0) >= denseCardCharThreshold;
 }
