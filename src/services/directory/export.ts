@@ -1,5 +1,8 @@
 import type { Flashcard } from "../../database/types";
+import { cardIdForKey, reverseBindingKey } from "../../utils/anchors";
+import { wantsReverseCards } from "../../utils/frontmatter";
 import { generateContentHash } from "../../utils/hash";
+import { FlashcardParser, type ParsedFlashcard } from "../FlashcardParser";
 import { occlusionImageLinkpath, parseOcclusionBack, serializeOcclusionBack } from "../occlusion/OcclusionV2";
 import type { DirectoryCardContent } from "./deck-db";
 import { deriveDirectoryCardId } from "./ids";
@@ -72,6 +75,83 @@ export function collectCardEmbeds(cards: Flashcard[]): string[] {
     else for (const path of listVaultEmbeds(card.back)) out.add(path);
   }
   return [...out];
+}
+
+/** How the deck's profile parses its note. */
+export interface NoteOrderOptions {
+  headerLevels: number[];
+  /** The note's name, the front of a title-mode card. */
+  fileTitle?: string;
+  clozeEnabled?: boolean;
+  examEnabled?: boolean;
+}
+
+type NoteCard = Pick<ParsedFlashcard, "type" | "front" | "back" | "breadcrumb" | "clozeOrder" | "anchorKey">;
+
+const NEVER_REVERSED = new Set<Flashcard["type"]>([
+  "cloze",
+  "image-occlusion",
+  "image-occlusion-v2",
+  "spatial",
+  "multiple-choice",
+]);
+
+function contentKey(card: Pick<Flashcard, "type" | "front" | "back"> & { breadcrumb?: string; clozeOrder?: number | null }): string {
+  return JSON.stringify([card.type, card.front, card.back, card.breadcrumb ?? "", card.clozeOrder ?? null]);
+}
+
+// Reverse cards follow every note card, as a sync adds them.
+function withReverses(parsed: ParsedFlashcard[], reverse: boolean): NoteCard[] {
+  if (!reverse) return parsed;
+  const reverses = parsed
+    .filter((card) => card.back && !card.edgeId && !NEVER_REVERSED.has(card.type))
+    .map((card) => ({
+      type: card.type,
+      front: card.back,
+      back: card.front,
+      breadcrumb: card.breadcrumb,
+      anchorKey: card.anchorKey ? reverseBindingKey(card.anchorKey) : undefined,
+    }));
+  return [...parsed, ...reverses];
+}
+
+/**
+ * A deck's cards in the order its note lays them out. Each parsed card claims its row by
+ * token, then by content; rows the note doesn't place keep their order at the end.
+ */
+export function sortCardsInNoteOrder(cards: Flashcard[], content: string, options: NoteOrderOptions): Flashcard[] {
+  const parsed = FlashcardParser.parseInNoteOrder(
+    content,
+    options.headerLevels,
+    options.fileTitle,
+    options.clozeEnabled === true,
+    options.examEnabled === true
+  );
+  const byId = new Map<string, Flashcard>();
+  const byAnchor = new Map<string, Flashcard>();
+  const byContent = new Map<string, Flashcard[]>();
+  for (const card of cards) {
+    byId.set(card.id, card);
+    if (card.anchor) byAnchor.set(card.anchor, card);
+    const key = contentKey(card);
+    const twins = byContent.get(key);
+    if (twins) twins.push(card);
+    else byContent.set(key, [card]);
+  }
+  const placed = new Set<string>();
+  const ordered: Flashcard[] = [];
+  const claim = (card: Flashcard | undefined): boolean => {
+    if (!card || placed.has(card.id)) return false;
+    placed.add(card.id);
+    ordered.push(card);
+    return true;
+  };
+  for (const card of withReverses(parsed, wantsReverseCards(content))) {
+    const key = card.anchorKey;
+    if (key && (claim(byAnchor.get(key)) || claim(byId.get(cardIdForKey(key) ?? "")))) continue;
+    claim(byContent.get(contentKey(card))?.find((row) => !placed.has(row.id)));
+  }
+  return [...ordered, ...cards.filter((card) => !placed.has(card.id))];
 }
 
 export type ExportSkipReason = "unsupported_type";

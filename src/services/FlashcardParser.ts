@@ -159,9 +159,10 @@ export class FlashcardParser {
   private static extractOcclusionV2Blocks(
     content: string,
     levelSet: Set<number>
-  ): { cards: ParsedFlashcard[]; maskedContent: string } {
+  ): { cards: ParsedFlashcard[]; cardLines: number[]; maskedContent: string } {
     const lines = content.split("\n");
     const cards: ParsedFlashcard[] = [];
+    const cardLines: number[] = [];
     const headerStack: Array<{ text: string; level: number; tags: string[] }> = [];
     let inFrontmatter = false;
 
@@ -217,7 +218,9 @@ export class FlashcardParser {
         if (inConfiguredHeader) {
           const breadcrumb = headerStack.map((h) => h.text).join(" > ");
           const tags = FlashcardParser.collectStackTags(headerStack);
-          cards.push(...OcclusionV2Parser.parse(body.join("\n"), breadcrumb, tags));
+          const blockCards = OcclusionV2Parser.parse(body.join("\n"), breadcrumb, tags);
+          cards.push(...blockCards);
+          cardLines.push(...blockCards.map(() => start));
         }
 
         for (let k = start; k <= end; k++) lines[k] = "";
@@ -226,7 +229,7 @@ export class FlashcardParser {
       }
     }
 
-    return { cards, maskedContent: lines.join("\n") };
+    return { cards, cardLines, maskedContent: lines.join("\n") };
   }
 
   /**
@@ -299,6 +302,32 @@ export class FlashcardParser {
     clozeEnabled = false,
     examEnabled = false
   ): ParsedFlashcard[] {
+    return FlashcardParser.parseWithLines(content, headerLevel, fileTitle, clozeEnabled, examEnabled).cards;
+  }
+
+  /** The same cards, sorted by the line each starts on; occlusion blocks sit where they are in the note. */
+  static parseInNoteOrder(
+    content: string,
+    headerLevel: number | number[] = 2,
+    fileTitle?: string,
+    clozeEnabled = false,
+    examEnabled = false
+  ): ParsedFlashcard[] {
+    const { cards, lines } = FlashcardParser.parseWithLines(content, headerLevel, fileTitle, clozeEnabled, examEnabled);
+    return cards
+      .map((card, index) => ({ card, line: lines[index], index }))
+      .sort((a, b) => a.line - b.line || a.index - b.index)
+      .map(({ card }) => card);
+  }
+
+  // Cards in parse order (occlusion blocks first), each with the note line it starts on.
+  private static parseWithLines(
+    content: string,
+    headerLevel: number | number[],
+    fileTitle: string | undefined,
+    clozeEnabled: boolean,
+    examEnabled: boolean
+  ): { cards: ParsedFlashcard[]; lines: number[] } {
     const levelSet = new Set(
       Array.isArray(headerLevel) ? headerLevel : [headerLevel]
     );
@@ -310,7 +339,7 @@ export class FlashcardParser {
     const occlusionCards = occlusion.cards;
 
     if (levelSet.has(0)) {
-      if (!fileTitle) return occlusionCards;
+      if (!fileTitle) return { cards: occlusionCards, lines: occlusion.cardLines };
       const view = FlashcardParser.titleBodyView(content);
       const back = view.back;
       const titleId = FlashcardParser.extractDecksId(content);
@@ -331,30 +360,38 @@ export class FlashcardParser {
             card.anchorKey = titleClozeBindingKey(titleId, card.clozeOrder);
           }
         }
-        return [...occlusionCards, ...cards];
+        return { cards: [...occlusionCards, ...cards], lines: [...occlusion.cardLines, ...cards.map(() => 0)] };
       }
-      return [
-        ...occlusionCards,
-        {
-          front: fileTitle,
-          back,
-          notes: "",
-          type: "header-paragraph",
-          breadcrumb: "",
-          tags: [],
-          ...(headerKey ? { anchorKey: headerKey } : {}),
-        },
-      ];
+      return {
+        cards: [
+          ...occlusionCards,
+          {
+            front: fileTitle,
+            back,
+            notes: "",
+            type: "header-paragraph",
+            breadcrumb: "",
+            tags: [],
+            ...(headerKey ? { anchorKey: headerKey } : {}),
+          },
+        ],
+        lines: [...occlusion.cardLines, 0],
+      };
     }
 
     const lines = content.split("\n");
     const flashcards: ParsedFlashcard[] = [...occlusionCards];
+    const cardLines: number[] = [...occlusion.cardLines];
+    const placeNewCardsAt = (line: number): void => {
+      while (cardLines.length < flashcards.length) cardLines.push(line);
+    };
 
     // Single pass through lines for both table and header parsing
     let inTable = false;
     let tableRowCount = 0;
     let currentTableHeaders: string[] = [];
     let currentHeader: { text: string; level: number; tags: string[] } | null = null;
+    let currentHeaderLine = 0;
     let currentContent: string[] = [];
     let inFrontmatter = false;
     let skipNextParagraph = false;
@@ -497,6 +534,7 @@ export class FlashcardParser {
               }
             }
             flashcards.push(...rowCards);
+            placeNewCardsAt(i);
           }
         } else {
           // Table under wrong header level or has non-table content - treat as regular content
@@ -550,6 +588,7 @@ export class FlashcardParser {
               clozeEnabled,
               examEnabled
             );
+            placeNewCardsAt(currentHeaderLine);
             currentHeader = null;
             currentContent = [];
             sectionIsTableOnly = false;
@@ -582,6 +621,7 @@ export class FlashcardParser {
             clozeEnabled,
             examEnabled
           );
+          placeNewCardsAt(currentHeaderLine);
 
           // Update header stack: pop all headers at same or deeper level
           while (
@@ -599,6 +639,7 @@ export class FlashcardParser {
             level: currentHeaderLevel,
             tags: headerTags,
           };
+          currentHeaderLine = i;
           currentContent = [];
           sectionIsTableOnly = FlashcardParser.isSectionTableOnly(lines, i + 1, subQuestionLines);
           skipNextParagraph = false;
@@ -632,8 +673,9 @@ export class FlashcardParser {
       clozeEnabled,
       examEnabled
     );
+    placeNewCardsAt(currentHeaderLine);
 
-    return flashcards;
+    return { cards: flashcards, lines: cardLines };
   }
 
   /**
