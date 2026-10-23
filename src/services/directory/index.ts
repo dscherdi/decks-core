@@ -6,6 +6,7 @@ export * from "./DirectoryStore";
 export * from "./import";
 export * from "./media-refs";
 export * from "./remote";
+export * from "./catalog";
 export * from "./export";
 export * from "./profiles";
 export * from "./media-prune";
