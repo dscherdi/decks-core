@@ -320,8 +320,8 @@ export class FlashcardParser {
       .map(({ card }) => card);
   }
 
-  // Cards in parse order (occlusion blocks first), each with the note line it starts on.
-  private static parseWithLines(
+  /** Cards in parse order (occlusion blocks first), each with the note line it starts on. */
+  static parseWithLines(
     content: string,
     headerLevel: number | number[],
     fileTitle: string | undefined,

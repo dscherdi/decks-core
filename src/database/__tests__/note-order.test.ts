@@ -98,6 +98,31 @@ describe("note positions", () => {
     ]);
   });
 
+  it("places an occlusion block's cards where the block sits in the note", () => {
+    const note = [
+      "## Alpha",
+      "",
+      "first",
+      "",
+      "## Heart",
+      "",
+      "```decks-occlusion",
+      "image: '[[heart.png]]'",
+      "masks:",
+      "  - { id: m1, x: 10, y: 20, w: 15, h: 8, answer: Aorta }",
+      "  - { id: m2, x: 50, y: 30, w: 12, h: 6, answer: Atrium }",
+      "```",
+      "",
+      "## Gamma",
+      "",
+      "last",
+    ].join("\n");
+    sync("deck_a", "A.md", note, true);
+    const result = db.exec("SELECT type, front FROM flashcards WHERE deck_id = 'deck_a' ORDER BY note_position");
+    const order = (result[0]?.values ?? []).map(([type, front]) => (type === "image-occlusion-v2" ? "occlusion" : String(front)));
+    expect(order).toEqual(["Alpha", "occlusion", "occlusion", "Gamma", "first", "last"]);
+  });
+
   it("syncs a database that lacks the column, which a later open adds", () => {
     db.run("ALTER TABLE flashcards DROP COLUMN note_position");
     db.run("ALTER TABLE deckprofiles DROP COLUMN new_card_order");

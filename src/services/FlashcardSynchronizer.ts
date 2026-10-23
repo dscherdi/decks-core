@@ -72,6 +72,21 @@ export interface BatchOperation {
   bindAnchor?: { anchor: string; flashcardId: string };
 }
 
+// Each card's rank in note order: note cards by the line they start on, then reverse cards in their sources' order.
+function noteOrderRanks(parsedCount: number, lines: number[] | undefined, reverseSources: number[]): number[] {
+  const source = (index: number) => (index < parsedCount ? index : reverseSources[index - parsedCount]);
+  const line = (index: number) => lines?.[source(index)] ?? source(index);
+  const isReverse = (index: number) => (index < parsedCount ? 0 : 1);
+  const byNote = Array.from({ length: parsedCount + reverseSources.length }, (_, index) => index).sort(
+    (a, b) => isReverse(a) - isReverse(b) || line(a) - line(b) || source(a) - source(b)
+  );
+  const ranks: number[] = [];
+  byNote.forEach((index, rank) => {
+    ranks[index] = rank;
+  });
+  return ranks;
+}
+
 export interface SyncResult {
   success: boolean;
   parsedCount: number;
@@ -338,14 +353,14 @@ export class FlashcardSynchronizer {
     drop.free();
   }
 
-  // Each card's place in this sync's card list. Only changed rows are written, and `modified` stays.
-  private writeNotePositions(deckId: string, ids: string[]): void {
+  // Each card's place in the note. Only changed rows are written, and `modified` stays.
+  private writeNotePositions(deckId: string, positions: Map<string, number>): void {
     if (!this.flashcardColumns().includes("note_position")) return;
     const stmt = this.db.prepare(
       "UPDATE flashcards SET note_position = ? WHERE id = ? AND deck_id = ? AND note_position IS NOT ?"
     );
     try {
-      ids.forEach((id, position) => stmt.run([position, id, deckId, position]));
+      for (const [id, position] of positions) stmt.run([position, id, deckId, position]);
     } finally {
       stmt.free();
     }
@@ -532,23 +547,26 @@ export class FlashcardSynchronizer {
     }
   }
 
-  private parseContent(data: SyncData): ParsedFlashcard[] {
+  // Canvas cards carry no note lines; their places follow the extractor's order.
+  private parseContent(data: SyncData): { cards: ParsedFlashcard[]; lines?: number[] } {
     if (!data.deckConfig) throw new Error("A deck profile is required to parse cards");
     const headerLevels = parseHeaderLevels(data.deckConfig);
     if (data.deckFilepath.toLowerCase().endsWith(".canvas")) {
-      return CanvasFlashcardExtractor.extract(
-        data.fileContent,
-        headerLevels,
-        data.fileTitle,
-        data.clozeEnabled,
-      );
+      return {
+        cards: CanvasFlashcardExtractor.extract(
+          data.fileContent,
+          headerLevels,
+          data.fileTitle,
+          data.clozeEnabled,
+        ),
+      };
     }
-    return FlashcardParser.parseFlashcardsFromContent(
+    return FlashcardParser.parseWithLines(
       data.fileContent,
       headerLevels,
       data.fileTitle,
-      data.clozeEnabled,
-      data.examEnabled,
+      data.clozeEnabled ?? false,
+      data.examEnabled ?? false,
     );
   }
 
@@ -565,15 +583,17 @@ export class FlashcardSynchronizer {
       // let CanvasFlashcardExtractor stamp each parsed card with its source
       // text-node id.
       progressCallback?.(10, "Parsing flashcards from file content...");
-      const parsedCards = data.preParsed ?? this.parseContent(data);
+      const parseResult = data.preParsed ? { cards: data.preParsed } : this.parseContent(data);
+      const parsedCards = parseResult.cards;
 
       // Expand with reverse cards if enabled. Cloze, image-occlusion, spatial
       // and multiple-choice cards never reverse — spatial edges are
       // directional, and flipping the other formats (options as a front, a
       // deleted word as a question) makes no sensible card.
       const expandedCards = [...parsedCards];
+      const reverseSources: number[] = [];
       if (data.reverseCards) {
-        for (const card of parsedCards) {
+        for (const [source, card] of parsedCards.entries()) {
           if (
             card.back &&
             card.type !== "cloze" &&
@@ -596,9 +616,11 @@ export class FlashcardSynchronizer {
                 ? { anchorKey: reverseBindingKey(card.anchorKey) }
                 : {}),
             });
+            reverseSources.push(source);
           }
         }
       }
+      const noteRanks = noteOrderRanks(parsedCards.length, parseResult.lines, reverseSources);
 
       // Get existing flashcards
       progressCallback?.(20, "Loading existing flashcards...");
@@ -697,6 +719,7 @@ export class FlashcardSynchronizer {
 
       // Id -> who claimed it first: what its id is derived from, and whether a token fixed it.
       const processedIds = new Map<string, { identity: string; front: string; anchored: boolean }>();
+      const notePositions = new Map<string, number>();
       const batchOperations: BatchOperation[] = [];
       let duplicatesSkipped = 0;
       const idCollisions: Array<{ id: string; fronts: [string, string] }> = [];
@@ -902,6 +925,7 @@ export class FlashcardSynchronizer {
           continue;
         }
         processedIds.set(flashcardId, { identity, front: parsed.front, anchored });
+        notePositions.set(flashcardId, noteRanks[cardIndex]);
 
         if (existingCard) {
           // Update if content, breadcrumb, notes, front, type, tags, hint, or
@@ -1368,7 +1392,7 @@ export class FlashcardSynchronizer {
         );
         this.executeBatchOperations(batchOperations);
       }
-      this.writeNotePositions(data.deckId, [...processedIds.keys()]);
+      this.writeNotePositions(data.deckId, notePositions);
 
       // Update deck timestamp
       progressCallback?.(95, "Finalizing deck update...");
