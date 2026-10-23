@@ -2,6 +2,7 @@
 export {
   ExamAttempt,
   buildExamPool,
+  buildExamSetupPool,
   drawExamQuestions,
   examQuestionText,
   examUnits,
@@ -17,6 +18,7 @@ export type {
   ExamGivenAnswer,
   ExamQuestionOutcome,
   ExamPool,
+  ExamSetupPool,
 } from "./services/ExamAttempt";
 export { DEFAULT_EXAM_SETTINGS } from "./database/types";
 export type { ExamSettings, TypedGradingMode } from "./database/types";

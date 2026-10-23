@@ -1,5 +1,6 @@
 import {
   buildExamPool,
+  buildExamSetupPool,
   drawExamQuestions,
   ExamAttempt,
   examUnits,
@@ -176,5 +177,15 @@ describe("exam exercises", () => {
     expect(built.eligible.map((q) => q.stem)).toEqual(["Wann?"]);
     expect(built.skipped.map((s) => s.reason)).toEqual(["answer-too-long"]);
     expect(buildExamPool([card({ back })], EXAM_DECKS, "self").eligible).toHaveLength(2);
+  });
+
+  it("opens self-graded when every typed answer of an exercise is too long to check", () => {
+    const back = ["Material", "### Erkläre", "x ".repeat(200), "### Begründe", "y ".repeat(200)].join("\n");
+    const exercise = card({ back });
+    expect(buildExamPool([exercise], EXAM_DECKS, "exact").eligible).toEqual([]);
+    const pool = buildExamSetupPool([exercise], EXAM_DECKS, "exact");
+    expect(pool.typedGrading).toBe("self");
+    expect(pool.needsSelfGrading).toBe(true);
+    expect(pool.eligible.map((q) => q.stem)).toEqual(["Erkläre", "Begründe"]);
   });
 });

@@ -514,6 +514,7 @@ export const it: Translations = {
       note: "Un esame non cambia mai il tuo piano di ripasso. Sono le carte create da questi errori a essere pianificate.",
     },
     noQuestions: "Nessuna domanda d'esame disponibile in questa selezione.",
+    needsSelfGrading: "Le risposte da digitare sono troppo lunghe per essere verificate automaticamente, quindi questo esame richiede l'autovalutazione.",
     questionCountSetting: "Numero di domande",
     questionCountAll: "0 = tutte",
     timeLimitSetting: "Limite di tempo (minuti)",

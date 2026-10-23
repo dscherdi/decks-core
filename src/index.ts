@@ -112,6 +112,7 @@ export type { DailyLimitProfile, DayCounts, StudiedToday } from "./utils/daily-l
 export {
   ExamAttempt,
   buildExamPool,
+  buildExamSetupPool,
   drawExamQuestions,
   examQuestionText,
   examUnits,
@@ -128,6 +129,7 @@ export type {
   ExamQuestionOutcome,
   ExamSkipReason,
   ExamPool,
+  ExamSetupPool,
   ExamJudgeItem,
 } from "./services/ExamAttempt";
 export { judgePending } from "./services/ExamJudging";

@@ -299,6 +299,29 @@ export function buildExamPool(
   return { eligible, skipped };
 }
 
+/** The pool a setup screen opens with, and the grading it was built for. */
+export interface ExamSetupPool extends ExamPool {
+  typedGrading: TypedGradingMode;
+  /** The chosen grading had nothing to ask because its typed answers are too long to check. */
+  needsSelfGrading: boolean;
+}
+
+/** The pool under the chosen grading, or the self-graded pool when long answers leave it empty. */
+export function buildExamSetupPool(
+  cards: Flashcard[],
+  examEnabledByDeckId: ReadonlyMap<string, boolean>,
+  typedGrading: TypedGradingMode,
+  showClozeContext = true
+): ExamSetupPool {
+  const pool = buildExamPool(cards, examEnabledByDeckId, typedGrading, showClozeContext);
+  const tooLong = pool.skipped.some((skip) => skip.reason === "answer-too-long");
+  if (pool.eligible.length === 0 && tooLong) {
+    const self = buildExamPool(cards, examEnabledByDeckId, "self", showClozeContext);
+    if (self.eligible.length > 0) return { ...self, typedGrading: "self", needsSelfGrading: true };
+  }
+  return { ...pool, typedGrading, needsSelfGrading: false };
+}
+
 function inPoolOrder<T>(pool: readonly T[], picked: readonly T[]): T[] {
   const chosen = new Set(picked);
   return pool.filter((item) => chosen.has(item));

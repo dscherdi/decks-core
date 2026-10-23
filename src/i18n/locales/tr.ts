@@ -516,6 +516,7 @@ export const tr: Translations = {
       note: "Sınav tekrar planını asla değiştirmez. Bu hatalardan yapılan kartlar planlanır.",
     },
     noQuestions: "Bu seçimde kullanılabilir sınav sorusu yok.",
+    needsSelfGrading: "Yazılı cevaplar otomatik kontrol için çok uzun, bu yüzden bu sınav öz değerlendirme gerektiriyor.",
     questionCountSetting: "Soru sayısı",
     questionCountAll: "0 = tümü",
     timeLimitSetting: "Süre sınırı (dakika)",

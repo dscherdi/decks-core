@@ -512,6 +512,7 @@ export const ja: Translations = {
       note: "試験で復習スケジュールが変わることはありません。これらの間違いから作ったカードがスケジュールされます。",
     },
     noQuestions: "この選択範囲には出題できる試験問題がありません。",
+    needsSelfGrading: "入力式の解答が長すぎて自動で採点できないため、この試験は自己採点が必要です。",
     questionCountSetting: "問題数",
     questionCountAll: "0 = すべて",
     timeLimitSetting: "制限時間（分）",

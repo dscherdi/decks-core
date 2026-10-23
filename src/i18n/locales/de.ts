@@ -525,6 +525,7 @@ export const de: Translations = {
       note: "Eine Prüfung ändert deinen Wiederholungsplan nie. Erst Karten aus diesen Fehlern werden eingeplant.",
     },
     noQuestions: "Keine Prüfungsfragen in dieser Auswahl verfügbar.",
+    needsSelfGrading: "Die Antworten sind zu lang, um sie automatisch zu prüfen. Diese Prüfung braucht daher die Selbstbewertung.",
     questionCountSetting: "Anzahl der Fragen",
     questionCountAll: "0 = alle",
     timeLimitSetting: "Zeitlimit (Minuten)",

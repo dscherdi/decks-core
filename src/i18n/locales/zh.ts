@@ -495,6 +495,7 @@ export const zh: Translations = {
       note: "考试不会改变复习计划。由这些错题生成的卡片才会被安排复习。",
     },
     noQuestions: "当前选择范围内没有可用的考试题目。",
+    needsSelfGrading: "这些输入答案太长，无法自动检查，因此本次考试需要自行评分。",
     questionCountSetting: "题目数量",
     questionCountAll: "0 = 全部",
     timeLimitSetting: "时间限制（分钟）",

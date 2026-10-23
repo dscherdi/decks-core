@@ -1,5 +1,6 @@
 import {
   buildExamPool,
+  buildExamSetupPool,
   drawExamQuestions,
   EXAM_INERT_BLANK,
   EXAM_TARGET_BLANK,
@@ -115,6 +116,35 @@ describe("buildExamPool", () => {
     expect(context).toContain(EXAM_INERT_BLANK);
     expect(context).not.toContain("powerhouse");
     expect(context).not.toContain("mitochondrion");
+  });
+});
+
+describe("buildExamSetupPool", () => {
+  const long = () => makeCard({ type: "header-paragraph", back: "x".repeat(200) });
+
+  it.each(["exact", "tolerant"] as const)(
+    "switches to self grading when %s grading leaves only answers too long to check",
+    (grading) => {
+      const pool = buildExamSetupPool([long(), long()], EXAM_DECKS, grading);
+      expect(buildExamPool([long()], EXAM_DECKS, grading).eligible).toEqual([]);
+      expect(pool.typedGrading).toBe("self");
+      expect(pool.needsSelfGrading).toBe(true);
+      expect(pool.eligible).toHaveLength(2);
+      expect(pool.skipped).toEqual([]);
+    }
+  );
+
+  it("keeps the chosen grading while anything can be asked", () => {
+    const pool = buildExamSetupPool([long(), mcqCard()], EXAM_DECKS, "exact");
+    expect(pool.typedGrading).toBe("exact");
+    expect(pool.needsSelfGrading).toBe(false);
+    expect(pool.eligible).toHaveLength(1);
+    expect(pool.skipped.map((s) => s.reason)).toEqual(["answer-too-long"]);
+  });
+
+  it("stays empty when no grading could ask anything", () => {
+    const pool = buildExamSetupPool([makeCard({ type: "image-occlusion" })], EXAM_DECKS, "exact");
+    expect(pool).toMatchObject({ eligible: [], typedGrading: "exact", needsSelfGrading: false });
   });
 });
 

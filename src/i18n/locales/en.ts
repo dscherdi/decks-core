@@ -484,6 +484,7 @@ export const en = {
       note: "An exam never changes your review schedule. Cards made from these misses are how they get scheduled.",
     },
     noQuestions: "No exam questions available in this selection.",
+    needsSelfGrading: "The typed answers here are too long to check automatically, so this exam needs self-grading.",
     questionCountSetting: "Number of questions",
     questionCountAll: "0 = all",
     timeLimitSetting: "Time limit (minutes)",

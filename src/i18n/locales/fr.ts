@@ -517,6 +517,7 @@ export const fr: Translations = {
       note: "Un examen ne modifie jamais ton planning de révision. Ce sont les cartes tirées de ces erreurs qui sont planifiées.",
     },
     noQuestions: "Aucune question d'examen disponible dans cette sélection.",
+    needsSelfGrading: "Les réponses saisies sont trop longues pour être vérifiées automatiquement : cet examen nécessite donc l'auto-évaluation.",
     questionCountSetting: "Nombre de questions",
     questionCountAll: "0 = toutes",
     timeLimitSetting: "Limite de temps (minutes)",

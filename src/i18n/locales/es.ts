@@ -519,6 +519,7 @@ export const es: Translations = {
       note: "Un examen nunca cambia tu calendario de repaso. Las tarjetas hechas con estos fallos son las que se programan.",
     },
     noQuestions: "No hay preguntas de examen disponibles en esta selección.",
+    needsSelfGrading: "Las respuestas escritas son demasiado largas para comprobarlas automáticamente, así que este examen requiere autoevaluación.",
     questionCountSetting: "Número de preguntas",
     questionCountAll: "0 = todas",
     timeLimitSetting: "Límite de tiempo (minutos)",

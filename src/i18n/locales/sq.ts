@@ -520,6 +520,7 @@ export const sq: Translations = {
       note: "Provimi nuk ndryshon kurrë planin tënd të përsëritjes. Kartat e krijuara nga këto gabime janë ato që planifikohen.",
     },
     noQuestions: "Nuk ka pyetje provimi të disponueshme në këtë përzgjedhje.",
+    needsSelfGrading: "Përgjigjet e shkruara janë shumë të gjata për t'u kontrolluar automatikisht, prandaj ky provim kërkon vetëvlerësim.",
     questionCountSetting: "Numri i pyetjeve",
     questionCountAll: "0 = të gjitha",
     timeLimitSetting: "Kufiri kohor (minuta)",

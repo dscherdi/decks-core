@@ -498,6 +498,7 @@ export const zhTW: Translations = {
       note: "考試不會改變複習計畫。由這些錯題產生的卡片才會被安排複習。",
     },
     noQuestions: "目前的選擇範圍內沒有可用的考試題目。",
+    needsSelfGrading: "這些輸入答案太長，無法自動檢查，因此本次考試需要自行評分。",
     questionCountSetting: "題目數量",
     questionCountAll: "0 = 全部",
     timeLimitSetting: "時間限制 (分鐘)",
