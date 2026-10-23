@@ -38,9 +38,15 @@ export function directoryPackageRef(publisher: string, slug: string): string {
   return `${publisher}/${slug}`;
 }
 
-/** A slug suggested from a title: "Español básico" → "espanol-basico". */
+const GERMAN_TRANSLITERATION: Record<string, string> = {
+  ä: "ae", ö: "oe", ü: "ue", Ä: "Ae", Ö: "Oe", Ü: "Ue", ß: "ss", ẞ: "SS",
+};
+
+/** A slug suggested from a title: "Übungsaufgaben" → "uebungsaufgaben", "Español básico" → "espanol-basico". */
 export function slugifyDirectoryTitle(title: string): string {
   return title
+    .normalize("NFC")
+    .replace(/[äöüÄÖÜßẞ]/g, (letter) => GERMAN_TRANSLITERATION[letter])
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
