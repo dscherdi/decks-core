@@ -40,6 +40,7 @@ describe("package profiles", () => {
         ttsLang: "es-ES",
         ttsVoice: "com.apple.voice.es-ES",
         ttsRate: 40,
+        newCardOrder: "note",
       },
       "spanish"
     );
@@ -48,6 +49,7 @@ describe("package profiles", () => {
       newCardsPerDay: 12,
       reviewCardsPerDay: null,
       reviewOrder: "due-date",
+      newCardOrder: "note",
       learningSteps: "1m",
       relearningSteps: "10m",
       requestRetention: 0.9,

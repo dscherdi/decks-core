@@ -338,6 +338,19 @@ export class FlashcardSynchronizer {
     drop.free();
   }
 
+  // Each card's place in this sync's card list. Only changed rows are written, and `modified` stays.
+  private writeNotePositions(deckId: string, ids: string[]): void {
+    if (!this.flashcardColumns().includes("note_position")) return;
+    const stmt = this.db.prepare(
+      "UPDATE flashcards SET note_position = ? WHERE id = ? AND deck_id = ? AND note_position IS NOT ?"
+    );
+    try {
+      ids.forEach((id, position) => stmt.run([position, id, deckId, position]));
+    } finally {
+      stmt.free();
+    }
+  }
+
   /**
    * Execute batch database operations using raw SQL
    */
@@ -1355,6 +1368,7 @@ export class FlashcardSynchronizer {
         );
         this.executeBatchOperations(batchOperations);
       }
+      this.writeNotePositions(data.deckId, [...processedIds.keys()]);
 
       // Update deck timestamp
       progressCallback?.(95, "Finalizing deck update...");

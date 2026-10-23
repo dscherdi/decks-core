@@ -1,6 +1,6 @@
 import { REQUEST_RETENTION_MAX, REQUEST_RETENTION_MIN } from "../../algorithm/fsrs-weights";
 import type { SqlJsValue } from "../../database/sql-types";
-import { DEFAULT_DECK_PROFILE, type DeckProfile, type ExamSettings } from "../../database/types";
+import { DEFAULT_DECK_PROFILE, parseNewCardOrder, type DeckProfile, type ExamSettings } from "../../database/types";
 import { isJsonObject, parseJson } from "../../utils/json";
 import { hash64 } from "../../utils/hash";
 import { parseSteps } from "../../utils/step-parser";
@@ -52,6 +52,7 @@ export function dpkgProfileFrom(profile: DeckProfile, key: string): DpkgProfile 
     newCardsPerDay: limit(profile.hasNewCardsLimitEnabled, profile.newCardsPerDay),
     reviewCardsPerDay: limit(profile.hasReviewCardsLimitEnabled, profile.reviewCardsPerDay),
     reviewOrder: profile.reviewOrder,
+    newCardOrder: parseNewCardOrder(profile.newCardOrder),
     learningSteps: validSteps(profile.learningSteps, DEFAULT_DECK_PROFILE.learningSteps),
     relearningSteps: validSteps(profile.relearningSteps, DEFAULT_DECK_PROFILE.relearningSteps),
     requestRetention: Math.min(REQUEST_RETENTION_MAX, Math.max(REQUEST_RETENTION_MIN, profile.fsrs.requestRetention)),
@@ -81,13 +82,14 @@ export function carriedProfiles(decks: readonly { key: string; profile: DeckProf
   return { profiles: [...profiles.values()], byDeck };
 }
 
-// Packages that carry no profiles study with the shipped defaults; exam decks add no new cards, as the Exams preset.
+// Packages that carry no profiles study with the shipped defaults, new cards in the package's order; exam decks add none, as the Exams preset.
 function presetSettings(key: string, exam: boolean): DpkgProfile {
   return {
     key,
     newCardsPerDay: exam ? 0 : null,
     reviewCardsPerDay: null,
     reviewOrder: DEFAULT_DECK_PROFILE.reviewOrder,
+    newCardOrder: "note",
     learningSteps: DEFAULT_DECK_PROFILE.learningSteps,
     relearningSteps: DEFAULT_DECK_PROFILE.relearningSteps,
     requestRetention: DEFAULT_DECK_PROFILE.fsrs.requestRetention,
@@ -159,6 +161,7 @@ export function packageProfileColumns(profile: DirectoryPackageProfile): Record<
     header_level: 2,
     extra_header_levels: "[]",
     review_order: s.reviewOrder,
+    new_card_order: parseNewCardOrder(s.newCardOrder),
     learning_steps: s.learningSteps,
     relearning_steps: s.relearningSteps,
     fsrs_request_retention: s.requestRetention,
@@ -181,6 +184,7 @@ export const LEARNER_PROFILE_COLUMNS = [
   "has_review_cards_limit_enabled",
   "review_cards_per_day",
   "review_order",
+  "new_card_order",
   "learning_steps",
   "relearning_steps",
   "fsrs_request_retention",
@@ -208,6 +212,8 @@ function validLearnerValue(column: LearnerProfileColumn, value: SqlJsValue): boo
       return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= DPKG_DAILY_LIMIT_MAX;
     case "review_order":
       return value === "due-date" || value === "random";
+    case "new_card_order":
+      return value === "note" || value === "created" || value === "random";
     case "learning_steps":
     case "relearning_steps":
       return typeof value === "string" && (value.trim() === "" || parseSteps(value).length > 0);
@@ -249,6 +255,7 @@ export function learnerColumnsFromUpdates(updates: Partial<Omit<DeckProfile, "id
     ["has_review_cards_limit_enabled", bool(updates.hasReviewCardsLimitEnabled)],
     ["review_cards_per_day", updates.reviewCardsPerDay],
     ["review_order", updates.reviewOrder],
+    ["new_card_order", updates.newCardOrder],
     ["learning_steps", updates.learningSteps],
     ["relearning_steps", updates.relearningSteps],
     ["fsrs_request_retention", updates.fsrs?.requestRetention],

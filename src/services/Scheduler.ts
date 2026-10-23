@@ -10,7 +10,8 @@ import type {
   DeckOrGroup,
   CramRating,
 } from "../database/types";
-import { isDeckGroup, isCustomDeck } from "../database/types";
+import { isDeckGroup, isCustomDeck, parseNewCardOrder } from "../database/types";
+import { newCardOrderBy } from "../database/note-order";
 import type {
   IDatabaseService,
   ILogger,
@@ -350,7 +351,7 @@ export class Scheduler {
     // If no due cards and new cards allowed, get next new card (also under cap)
     if (allowNew && this.hasNewCardQuota(deck, dailyCounts) && globalRemaining > 0) {
       this.debugLog(`Checking for new cards for deck: ${deckId}`);
-      const newCard = await this.getNextNewCard(deckId);
+      const newCard = await this.getNextNewCard(deck);
       if (newCard) {
         this.debugLog(`Found new card: ${newCard.id}`);
         this.perfLog("Scheduler.getNext", getNextPerfStart);
@@ -796,16 +797,17 @@ export class Scheduler {
     return flashcards.length > 0 ? flashcards[0] : null;
   }
 
-  private async getNextNewCard(deckId: string): Promise<Flashcard | null> {
+  private async getNextNewCard(deck: DeckWithProfile): Promise<Flashcard | null> {
     const now = new Date().toISOString();
+    const order = newCardOrderBy(parseNewCardOrder(deck.profile.newCardOrder));
     const query = `
       SELECT * FROM flashcards
       WHERE deck_id = ? AND state = 'new'
         AND suspended_at IS NULL
         AND (buried_until IS NULL OR buried_until <= ?)
-       ORDER BY due_date ASC LIMIT 1
+      ${order.sql} LIMIT 1
     `;
-    const params = [deckId, now];
+    const params = [deck.id, now, ...order.params];
 
     const results = await this.db.querySql(query, params);
     const flashcards = results.map((row) => this.rowToFlashcard(row));
@@ -1305,14 +1307,15 @@ export class Scheduler {
 
     const now = new Date().toISOString();
     const placeholders = eligibleDeckIds.map(() => '?').join(',');
+    const order = newCardOrderBy(parseNewCardOrder(deckGroup.profile.newCardOrder), eligibleDeckIds);
     const query = `
       SELECT * FROM flashcards
       WHERE deck_id IN (${placeholders}) AND state = 'new'
         AND suspended_at IS NULL
         AND (buried_until IS NULL OR buried_until <= ?)
-      ORDER BY due_date ASC LIMIT 1
+      ${order.sql} LIMIT 1
     `;
-    const results = await this.db.querySql(query, [...eligibleDeckIds, now]);
+    const results = await this.db.querySql(query, [...eligibleDeckIds, now, ...order.params]);
     return results.length > 0 ? this.rowToFlashcard(results[0]) : null;
   }
 

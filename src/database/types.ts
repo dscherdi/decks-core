@@ -5,6 +5,15 @@ import type { FSRSProfile } from "../algorithm/fsrs-weights";
 export type { FSRSProfile };
 
 export type ReviewOrder = "due-date" | "random";
+/** The order new cards are introduced in: where they sit in the note, when they were added, or shuffled. */
+export type NewCardOrder = "note" | "created" | "random";
+export const NEW_CARD_ORDERS: readonly NewCardOrder[] = ["note", "created", "random"];
+
+/** A stored value as a new-card order; anything unknown reads as the order added. */
+export function parseNewCardOrder(value: string | null | undefined): NewCardOrder {
+  return value === "note" || value === "random" ? value : "created";
+}
+
 export type ClozeShowContext = "open" | "hidden";
 
 /** "meaning" asks the backend whether a typed answer means the same; unsure answers fall back to self-grading. */
@@ -89,6 +98,8 @@ export interface DeckProfile {
   extraHeaderLevels?: number[];
 
   reviewOrder: ReviewOrder;
+  // Optional so existing profile literals/fixtures don't need updating; absent reads as "created".
+  newCardOrder?: NewCardOrder;
 
   learningSteps: string;
   relearningSteps: string;
@@ -159,6 +170,7 @@ export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modifie
   headerLevel: 2,
   extraHeaderLevels: [],
   reviewOrder: "due-date",
+  newCardOrder: "created",
   learningSteps: "1m",
   relearningSteps: "10m",
   fsrs: {

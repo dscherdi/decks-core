@@ -505,6 +505,38 @@ describe("directory decks in the main database", () => {
     expect(profileOf(laptop, WEST)).toBe(STUDY_PROFILE);
   });
 
+  it("introduces new cards in the package's order, and places the cards of an older install", async () => {
+    const db = await mainDb();
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z");
+    const placed = () => rows(db, "SELECT front, note_position FROM flashcards WHERE deck_id = ? ORDER BY note_position", [DECK]);
+    expect(placed().map((row) => row.front)).toEqual(["France", "Germany", "Italy"]);
+    expect(rows(db, "SELECT new_card_order FROM deckprofiles WHERE id = ?", [STUDY_PROFILE])[0].new_card_order).toBe("note");
+
+    db.run("UPDATE flashcards SET note_position = NULL");
+    expect(materialiseDirectoryDecks(db, "2026-10-02T10:00:00.000Z").materialised).toEqual([DECK]);
+    expect(placed()).toEqual([
+      { front: "France", note_position: 0 },
+      { front: "Germany", note_position: 1 },
+      { front: "Italy", note_position: 2 },
+    ]);
+    expect(materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z").materialised).toEqual([]);
+  });
+
+  it("carries the author's new-card order, which the learner may change", async () => {
+    const own = directoryProfileId(REF, "p");
+    const db = await mainDb();
+    const order = () => rows(db, "SELECT new_card_order FROM deckprofiles WHERE id = ?", [own])[0].new_card_order;
+    await install(db, v1(), 1, "2026-10-01T10:00:00.000Z", {}, {
+      list: [packageProfile("p", { newCardOrder: "random" })],
+      byDeck: { "": "p" },
+    });
+    expect(order()).toBe("random");
+
+    db.run(UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL, [own, JSON.stringify({ new_card_order: "note" }), "2026-10-02T10:00:00.000Z"]);
+    materialiseDirectoryDecks(db, "2026-10-02T10:01:00.000Z");
+    expect(order()).toBe("note");
+  });
+
   it("adds the deck key column to a table created before it existed", async () => {
     const db = await mainDb();
     db.run("ALTER TABLE directory_cards DROP COLUMN deck_key");

@@ -248,6 +248,8 @@ export interface ProfileUpsertOp {
     ttsVoice?: string;
     ttsRate?: number;
     ttsLang?: string;
+    // Optional (added with note positions): absent on older ops — apply keeps the stored value.
+    newCardOrder?: "note" | "created" | "random";
     isDefault: boolean;
     created: string;
     modified: string;

@@ -513,6 +513,15 @@ function workingCount(db: RawDatabase, deckId: string): SqlJsValue | undefined {
   return scalar(db, "SELECT COUNT(*) FROM flashcards WHERE deck_id = ?", [deckId]);
 }
 
+// Rows materialised before cards recorded their place; the stored content has it.
+function hasUnplacedCard(db: RawDatabase, deckId: string): boolean {
+  try {
+    return scalar(db, "SELECT 1 FROM flashcards WHERE deck_id = ? AND note_position IS NULL LIMIT 1", [deckId]) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 export function needsMaterialise(db: RawDatabase, record: DirectoryDeckRecord): boolean {
   const decks = directoryPackageDecks(db, record);
   const ids = new Set(decks.map((deck) => directoryDeckId(directoryRecordRef(record), deck.key)));
@@ -521,7 +530,7 @@ export function needsMaterialise(db: RawDatabase, record: DirectoryDeckRecord): 
     const id = directoryDeckId(directoryRecordRef(record), deck.key);
     const marker = scalar(db, "SELECT last_synced_mtime FROM decks WHERE id = ?", [id]);
     if (marker === undefined || marker !== materialiseMarker(record)) return true;
-    return workingCount(db, id) !== storedCount(db, record, deck.key);
+    return workingCount(db, id) !== storedCount(db, record, deck.key) || hasUnplacedCard(db, id);
   });
 }
 

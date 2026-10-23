@@ -21,7 +21,7 @@ import type { SyncLogEntry } from "./SyncLog.types";
 import { REMOVE_DIRECTORY_CONTENT_SQL, UPSERT_DIRECTORY_PROFILE_SETTINGS_SQL } from "./directory/DirectoryStore";
 import { isDirectoryProfileId } from "./directory/profiles";
 import { normalizeProfile } from "../algorithm/fsrs-weights";
-import type { ReviewLog } from "../database/types";
+import { parseNewCardOrder, type ReviewLog } from "../database/types";
 import { applyNewestLogState, forgetStrandedHistory, relinkCardHistory } from "./ReviewHistoryRecovery";
 import {
   aiConceptId,
@@ -446,6 +446,8 @@ async function handleProfileUpsert(
   const p = entry.p;
   // Package profiles are built on each device from the package, never synced.
   if (isDirectoryProfileId(p.id)) return;
+  // Ops from clients that predate the field keep the stored order.
+  const newCardOrder = p.newCardOrder === undefined ? null : parseNewCardOrder(p.newCardOrder);
   await db.executeSql(
     `INSERT INTO deckprofiles (
        id, name,
@@ -457,8 +459,8 @@ async function handleProfileUpsert(
        cloze_enabled, cloze_show_context,
        exam_enabled, exam_settings,
        tts_voice, tts_rate, tts_lang,
-       is_default, created, modified, deleted_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+       is_default, created, modified, deleted_at, new_card_order
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, COALESCE(?, 'created'))
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -479,6 +481,7 @@ async function handleProfileUpsert(
        tts_voice = excluded.tts_voice,
        tts_rate = excluded.tts_rate,
        tts_lang = excluded.tts_lang,
+       new_card_order = COALESCE(?, deckprofiles.new_card_order),
        is_default = excluded.is_default,
        modified = excluded.modified,
        deleted_at = NULL
@@ -507,6 +510,8 @@ async function handleProfileUpsert(
       p.isDefault ? 1 : 0,
       p.created,
       p.modified,
+      newCardOrder,
+      newCardOrder,
     ]
   );
 }

@@ -149,7 +149,8 @@ export const CREATE_TABLES_SQL = `
     is_default INTEGER NOT NULL DEFAULT 0,
     created TEXT NOT NULL,
     modified TEXT NOT NULL,
-    deleted_at TEXT
+    deleted_at TEXT,
+    new_card_order TEXT NOT NULL DEFAULT 'created'
   );
 
   -- Profile tag mappings table
@@ -234,6 +235,8 @@ export const CREATE_TABLES_SQL = `
     -- Anchor binding key currently present in the source file (locator; the
     -- durable record lives in anchor_bindings).
     anchor TEXT,
+    -- Where the card sits in its note (or package), set on every sync.
+    note_position INTEGER,
     FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
   );
 
@@ -647,6 +650,7 @@ export function buildMigrationSQL(db: Database): string {
   const needsExtraHeaderLevels = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("extra_header_levels");
   const needsExamColumns = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("exam_enabled");
   const needsTts = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("tts_voice");
+  const needsNewCardOrder = deckprofilesColumns.length > 0 && !deckprofilesColumns.includes("new_card_order");
   const customDecksColumns = getColumnNames(db, "custom_decks");
   const needsDeckType = customDecksColumns.length > 0 && !customDecksColumns.includes("deck_type");
   const needsCustomDecksDeletedAt = customDecksColumns.length > 0 && !customDecksColumns.includes("deleted_at");
@@ -789,7 +793,8 @@ export function buildMigrationSQL(db: Database): string {
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
-      deleted_at TEXT
+      deleted_at TEXT,
+      new_card_order TEXT NOT NULL DEFAULT 'created'
     );
 
     ${needsLearningSteps ? `
@@ -824,6 +829,10 @@ export function buildMigrationSQL(db: Database): string {
     ALTER TABLE deckprofiles ADD COLUMN tts_voice TEXT;
     ALTER TABLE deckprofiles ADD COLUMN tts_rate REAL;
     ALTER TABLE deckprofiles ADD COLUMN tts_lang TEXT;
+    ` : ""}
+
+    ${needsNewCardOrder ? `
+    ALTER TABLE deckprofiles ADD COLUMN new_card_order TEXT NOT NULL DEFAULT 'created';
     ` : ""}
 
     INSERT OR IGNORE INTO deckprofiles (
@@ -875,7 +884,8 @@ export function buildMigrationSQL(db: Database): string {
       is_default INTEGER NOT NULL DEFAULT 0,
       created TEXT NOT NULL,
       modified TEXT NOT NULL,
-      deleted_at TEXT
+      deleted_at TEXT,
+      new_card_order TEXT NOT NULL DEFAULT 'created'
     );
 
     INSERT OR IGNORE INTO deckprofiles_new (
@@ -888,7 +898,7 @@ export function buildMigrationSQL(db: Database): string {
       cloze_enabled, cloze_show_context,
       exam_enabled, exam_settings,
       tts_voice, tts_rate, tts_lang,
-      is_default, created, modified, deleted_at
+      is_default, created, modified, deleted_at, new_card_order
     )
     SELECT
       id, name,
@@ -905,7 +915,7 @@ export function buildMigrationSQL(db: Database): string {
       cloze_enabled, cloze_show_context,
       exam_enabled, exam_settings,
       tts_voice, tts_rate, tts_lang,
-      is_default, created, modified, deleted_at
+      is_default, created, modified, deleted_at, new_card_order
     FROM deckprofiles;
 
     DROP TABLE deckprofiles;
@@ -1099,6 +1109,7 @@ export function buildMigrationSQL(db: Database): string {
       buried_until TEXT,
       template_row TEXT,
       anchor TEXT,
+      note_position INTEGER,
       FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
     );
 
@@ -1524,8 +1535,8 @@ export const SQL_QUERIES = {
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
       exam_enabled, exam_settings,
-      tts_voice, tts_rate, tts_lang
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      tts_voice, tts_rate, tts_lang, new_card_order
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
 
   GET_PROFILE_BY_ID: `
@@ -1536,7 +1547,7 @@ export const SQL_QUERIES = {
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
       exam_enabled, exam_settings,
-      tts_voice, tts_rate, tts_lang
+      tts_voice, tts_rate, tts_lang, new_card_order
     FROM deckprofiles WHERE id = ? AND deleted_at IS NULL
   `,
 
@@ -1548,7 +1559,7 @@ export const SQL_QUERIES = {
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
       exam_enabled, exam_settings,
-      tts_voice, tts_rate, tts_lang
+      tts_voice, tts_rate, tts_lang, new_card_order
     FROM deckprofiles WHERE name = ? AND deleted_at IS NULL
   `,
 
@@ -1560,7 +1571,7 @@ export const SQL_QUERIES = {
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
       exam_enabled, exam_settings,
-      tts_voice, tts_rate, tts_lang
+      tts_voice, tts_rate, tts_lang, new_card_order
     FROM deckprofiles
     WHERE deleted_at IS NULL
     ORDER BY CASE WHEN is_default = 1 THEN 0 ELSE 1 END, name
@@ -1574,7 +1585,7 @@ export const SQL_QUERIES = {
       cloze_enabled, cloze_show_context,
       is_default, created, modified, extra_header_levels,
       exam_enabled, exam_settings,
-      tts_voice, tts_rate, tts_lang
+      tts_voice, tts_rate, tts_lang, new_card_order
     FROM deckprofiles WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1
   `,
 
@@ -1590,6 +1601,7 @@ export const SQL_QUERIES = {
       extra_header_levels = ?,
       exam_enabled = ?, exam_settings = ?,
       tts_voice = ?, tts_rate = ?, tts_lang = ?,
+      new_card_order = ?,
       modified = ?
     WHERE id = ? AND deleted_at IS NULL
   `,

@@ -2,9 +2,11 @@ import { REQUEST_RETENTION_MAX, REQUEST_RETENTION_MIN } from "../../algorithm/fs
 import {
   DEFAULT_DECK_PROFILE,
   parseExamSettings,
+  parseNewCardOrder,
   type ClozeShowContext,
   type ExamSettings,
   type FlashcardType,
+  type NewCardOrder,
   type ReviewOrder,
 } from "../../database/types";
 import { parseSteps } from "../../utils/step-parser";
@@ -42,6 +44,8 @@ export interface DpkgProfile {
   newCardsPerDay: number | null;
   reviewCardsPerDay: number | null;
   reviewOrder: ReviewOrder;
+  /** Absent on packages from before the setting; they introduce new cards in the order added. */
+  newCardOrder?: NewCardOrder;
   learningSteps: string;
   relearningSteps: string;
   requestRetention: number;
@@ -325,6 +329,7 @@ function profileEntry(value: JsonObject[string]): DpkgProfile {
     newCardsPerDay: dailyLimit(value, "newCardsPerDay"),
     reviewCardsPerDay: dailyLimit(value, "reviewCardsPerDay"),
     reviewOrder: value.reviewOrder === "random" ? "random" : "due-date",
+    ...(typeof value.newCardOrder === "string" ? { newCardOrder: parseNewCardOrder(value.newCardOrder) } : {}),
     learningSteps: steps(value, "learningSteps", DEFAULT_DECK_PROFILE.learningSteps),
     relearningSteps: steps(value, "relearningSteps", DEFAULT_DECK_PROFILE.relearningSteps),
     requestRetention: retention,
