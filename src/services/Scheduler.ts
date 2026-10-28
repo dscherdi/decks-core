@@ -9,6 +9,7 @@ import type {
   CustomDeckGroup,
   DeckOrGroup,
   CramRating,
+  CramCard,
 } from "../database/types";
 import { isDeckGroup, isCustomDeck, parseNewCardOrder } from "../database/types";
 import { newCardOrderBy } from "../database/note-order";
@@ -63,6 +64,11 @@ export interface CramRateResult {
 // A card leaves the cram queue once a rating would schedule it >= 1 day out.
 const CRAM_GRADUATION_MINUTES = 1440;
 
+interface CramUndoEntry {
+  sessionId: string;
+  before: CramCard;
+}
+
 export interface NewSession {
   sessionId: string;
   deckFilePath: string;
@@ -79,6 +85,8 @@ export class Scheduler {
   private currentSessionId: string | null = null;
   /** Cards buried or suspended in each session before being graded; they leave its goal. */
   private setAsideInSession = new Map<string, number>();
+  /** Cram rows as they were before each rating, newest last; cleared when a cram run starts. */
+  private cramUndoStack: CramUndoEntry[] = [];
   private logger?: ILogger;
   private backupService: IBackupService;
   private settings: DecksSettings;
@@ -1446,6 +1454,7 @@ export class Scheduler {
     now: Date = new Date(),
     only?: readonly string[]
   ): Promise<NewSession> {
+    this.cramUndoStack = [];
     const { deckKey, deckKind } = this.cramDeckKeyAndKind(deckOrGroup, only);
 
     const existing = await this.db.getActiveCramSessionForDeck(deckKey);
@@ -1540,6 +1549,7 @@ export class Scheduler {
 
     // Card deleted mid-session: graduate it out and report done.
     if (!realCard) {
+      this.cramUndoStack.push({ sessionId, before: cramCard });
       await this.db.graduateCramCard(id, now.toISOString(), newReps);
       if (session) {
         await this.db.updateCramSessionProgress(
@@ -1583,6 +1593,7 @@ export class Scheduler {
       now
     );
 
+    this.cramUndoStack.push({ sessionId, before: cramCard });
     if (next.interval >= CRAM_GRADUATION_MINUTES) {
       await this.db.graduateCramCard(id, now.toISOString(), newReps);
       if (session) {
@@ -1603,6 +1614,37 @@ export class Scheduler {
       reps: newReps,
     });
     return { graduated: false, interval: next.interval };
+  }
+
+  hasUndoableCram(sessionId: string): boolean {
+    return this.cramUndoStack.some((entry) => entry.sessionId === sessionId);
+  }
+
+  /**
+   * Take back the session's latest cram rating: the cram row and graduated count
+   * return to how they were. Returns the card to show again, or null.
+   */
+  async undoLastCramRating(sessionId: string): Promise<Flashcard | null> {
+    const index = this.cramUndoStack.map((entry) => entry.sessionId).lastIndexOf(sessionId);
+    if (index === -1) return null;
+    const { before } = this.cramUndoStack.splice(index, 1)[0];
+
+    const flashcard = await this.db.getFlashcardById(before.flashcardId);
+    if (!flashcard) return null;
+
+    // Decrement rather than restore an absolute count, so retirements made since stay counted.
+    const current = await this.db.getCramCardById(before.id);
+    if (before.graduatedAt === null && current?.graduatedAt) {
+      const session = await this.db.getCramSessionById(sessionId);
+      if (session) {
+        await this.db.updateCramSessionProgress(
+          sessionId,
+          Math.max(0, session.graduatedCount - 1)
+        );
+      }
+    }
+    await this.db.restoreCramCard(before);
+    return flashcard;
   }
 
   async getCramProgress(sessionId: string): Promise<CramProgress | null> {

@@ -2017,6 +2017,13 @@ export const SQL_QUERIES = {
     WHERE id = ?
   `,
 
+  RESTORE_CRAM_CARD: `
+    UPDATE cram_cards
+    SET temp_state = ?, temp_stability = ?, temp_difficulty = ?,
+        temp_interval = ?, temp_due_at = ?, reps = ?, graduated_at = ?, modified = ?
+    WHERE id = ?
+  `,
+
   // Custom deck operations
   INSERT_CUSTOM_DECK: `
     INSERT INTO custom_decks (id, name, deck_type, filter_definition, last_reviewed, created, modified)

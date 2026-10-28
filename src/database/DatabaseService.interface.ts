@@ -263,6 +263,8 @@ export interface IDatabaseService {
     }
   ): Promise<void>;
   graduateCramCard(id: string, graduatedAt: string, reps: number): Promise<void>;
+  /** Writes back a snapshot taken before a cram rating, graduation included. */
+  restoreCramCard(card: CramCard): Promise<void>;
 
   // Exam attempts — append-only results store, isolated from review history.
   // completeExamSession writes answers first and the session row last: the
