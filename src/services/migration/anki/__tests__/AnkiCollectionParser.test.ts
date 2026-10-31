@@ -65,6 +65,7 @@ function makeFakeDb(tables: {
         get: () => [],
         getAsObject: () => rows[index] as Record<string, string | number>,
         run: () => undefined,
+        reset: () => undefined,
         free: () => undefined,
       };
     },

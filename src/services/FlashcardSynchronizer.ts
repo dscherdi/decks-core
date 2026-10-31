@@ -164,11 +164,46 @@ export interface RawStatement {
   get(): SqlJsValue[];
   getAsObject(params?: Record<string, SqlJsValue>): Record<string, SqlJsValue>;
   run(params?: SqlJsValue[]): void;
+  reset(): void;
   free(): void;
 }
 
+const NEWEST_LOG_SQL = `
+  SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
+         new_stability, new_lapses, reviewed_at
+  FROM review_logs WHERE flashcard_id = ? ORDER BY reviewed_at DESC LIMIT 1
+`;
+
 export class FlashcardSynchronizer {
   constructor(private db: RawDatabase) {}
+
+  // Per-card statements, compiled once per sync and freed when it ends.
+  private statements = new Map<string, RawStatement>();
+
+  private statement(sql: string): RawStatement {
+    let stmt = this.statements.get(sql);
+    if (!stmt) {
+      stmt = this.db.prepare(sql);
+      this.statements.set(sql, stmt);
+    }
+    return stmt;
+  }
+
+  private freeStatements(): void {
+    for (const stmt of this.statements.values()) stmt.free();
+    this.statements.clear();
+  }
+
+  // Reset after reading, so an idle statement never holds a read open across writes.
+  private firstRow(sql: string, params: SqlJsValue[]): SqlJsValue[] | null {
+    const stmt = this.statement(sql);
+    try {
+      stmt.bind(params);
+      return stmt.step() ? stmt.get() : null;
+    } finally {
+      stmt.reset();
+    }
+  }
 
   // Durable suspend/bury state for a card id; falls back to clear state on
   // databases that predate the card_state_overlays table.
@@ -177,12 +212,10 @@ export class FlashcardSynchronizer {
     buriedUntil: string | null;
   } {
     try {
-      const stmt = this.db.prepare(
-        "SELECT suspended_at, buried_until FROM card_state_overlays WHERE flashcard_id = ?"
+      const row = this.firstRow(
+        "SELECT suspended_at, buried_until FROM card_state_overlays WHERE flashcard_id = ?",
+        [flashcardId]
       );
-      stmt.bind([flashcardId]);
-      const row = stmt.step() ? stmt.get() : null;
-      stmt.free();
       return {
         suspendedAt: (row?.[0] as string) ?? null,
         buriedUntil: (row?.[1] as string) ?? null,
@@ -228,14 +261,7 @@ export class FlashcardSynchronizer {
     lapses: number;
     reviewedAt: string;
   } | null {
-    const stmt = this.db.prepare(`
-      SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
-             new_stability, new_lapses, reviewed_at
-      FROM review_logs WHERE flashcard_id = ? ORDER BY reviewed_at DESC LIMIT 1
-    `);
-    stmt.bind([id]);
-    const row = stmt.step() ? stmt.get() : null;
-    stmt.free();
+    const row = this.firstRow(NEWEST_LOG_SQL, [id]);
     if (!row) return null;
     return {
       state: row[0] as "new" | "review",
@@ -370,6 +396,14 @@ export class FlashcardSynchronizer {
    * Execute batch database operations using raw SQL
    */
   executeBatchOperations(operations: BatchOperation[]): void {
+    try {
+      this.runOperations(operations);
+    } finally {
+      this.freeStatements();
+    }
+  }
+
+  private runOperations(operations: BatchOperation[]): void {
     for (const op of operations) {
       if (op.bindAnchor) {
         const bindStmt = this.db.prepare(
@@ -447,9 +481,7 @@ export class FlashcardSynchronizer {
         stmt.run([op.anchor ?? null, op.flashcardId]);
         stmt.free();
       } else if (op.type === "delete" && op.flashcardId) {
-        const stmt = this.db.prepare("DELETE FROM flashcards WHERE id = ?");
-        stmt.run([op.flashcardId]);
-        stmt.free();
+        this.statement("DELETE FROM flashcards WHERE id = ?").run([op.flashcardId]);
       } else if (op.type === "create" && op.flashcard) {
         const card = op.flashcard;
         // Card ids are deck-independent, so a card can already exist under a
@@ -461,7 +493,7 @@ export class FlashcardSynchronizer {
         // leftovers from an old import. The `WHERE … deck is null` makes the whole
         // update a no-op when the card still lives in a LIVE deck, so a front shared
         // by two overlapping decks stays put instead of bouncing/being overwritten.
-        const stmt = this.db.prepare(`
+        const stmt = this.statement(`
                     INSERT INTO flashcards (
                         id, deck_id, front, back, type, source_file, content_hash, breadcrumb, notes,
                         cloze_text, cloze_order, source_node_id, edge_id, hint,
@@ -518,9 +550,8 @@ export class FlashcardSynchronizer {
           serializeTemplateRow(card.templateRow),
           card.anchor ?? null,
         ]);
-        stmt.free();
       } else if (op.type === "update" && op.flashcardId && op.updates) {
-        const stmt = this.db.prepare(`
+        const stmt = this.statement(`
                     UPDATE flashcards
                     SET front = ?, back = ?, type = ?, content_hash = ?, breadcrumb = ?, notes = ?,
                         cloze_text = ?, cloze_order = ?, hint = ?, tags = ?, template_row = ?,
@@ -542,7 +573,6 @@ export class FlashcardSynchronizer {
           op.updates.anchor,
           op.flashcardId,
         ]);
-        stmt.free();
       }
     }
   }
@@ -1123,17 +1153,7 @@ export class FlashcardSynchronizer {
         const newCardData = cardsToCreate[createIdx];
 
         // Check for review history
-        const reviewLogStmt = this.db.prepare(`
-                    SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
-                           new_stability, new_lapses, reviewed_at
-                    FROM review_logs
-                    WHERE flashcard_id = ?
-                    ORDER BY reviewed_at DESC
-                    LIMIT 1
-                `);
-        reviewLogStmt.bind([newCardData.flashcardId]);
-        const reviewLogRow = reviewLogStmt.step() ? reviewLogStmt.get() : null;
-        reviewLogStmt.free();
+        const reviewLogRow = this.firstRow(NEWEST_LOG_SQL, [newCardData.flashcardId]);
 
         // Create new flashcard
         const flashcard: Omit<Flashcard, "created" | "modified"> = {
@@ -1193,17 +1213,7 @@ export class FlashcardSynchronizer {
       for (let createIdx = 0; createIdx < anchoredCardsToCreate.length; createIdx++) {
         if (mergedAnchored.has(createIdx)) continue;
         const newCardData = anchoredCardsToCreate[createIdx];
-        const reviewLogStmt = this.db.prepare(`
-                    SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
-                           new_stability, new_lapses, reviewed_at
-                    FROM review_logs
-                    WHERE flashcard_id = ?
-                    ORDER BY reviewed_at DESC
-                    LIMIT 1
-                `);
-        reviewLogStmt.bind([newCardData.flashcardId]);
-        const reviewLogRow = reviewLogStmt.step() ? reviewLogStmt.get() : null;
-        reviewLogStmt.free();
+        const reviewLogRow = this.firstRow(NEWEST_LOG_SQL, [newCardData.flashcardId]);
 
         const flashcard: Omit<Flashcard, "created" | "modified"> = {
           id: newCardData.flashcardId,
@@ -1248,17 +1258,7 @@ export class FlashcardSynchronizer {
 
       // Process reverse cards (never participate in rename detection)
       for (const newCardData of reverseCardsToCreate) {
-        const reviewLogStmt = this.db.prepare(`
-                    SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
-                           new_stability, new_lapses, reviewed_at
-                    FROM review_logs
-                    WHERE flashcard_id = ?
-                    ORDER BY reviewed_at DESC
-                    LIMIT 1
-                `);
-        reviewLogStmt.bind([newCardData.flashcardId]);
-        const reviewLogRow = reviewLogStmt.step() ? reviewLogStmt.get() : null;
-        reviewLogStmt.free();
+        const reviewLogRow = this.firstRow(NEWEST_LOG_SQL, [newCardData.flashcardId]);
 
         const flashcard: Omit<Flashcard, "created" | "modified"> = {
           id: newCardData.flashcardId,
@@ -1312,17 +1312,7 @@ export class FlashcardSynchronizer {
       // Process spatial cards (never participate in rename detection — IDs are
       // already deterministic from the canvas edge id).
       for (const newCardData of spatialCardsToCreate) {
-        const reviewLogStmt = this.db.prepare(`
-                    SELECT new_state, new_interval_minutes, new_repetitions, new_difficulty,
-                           new_stability, new_lapses, reviewed_at
-                    FROM review_logs
-                    WHERE flashcard_id = ?
-                    ORDER BY reviewed_at DESC
-                    LIMIT 1
-                `);
-        reviewLogStmt.bind([newCardData.flashcardId]);
-        const reviewLogRow = reviewLogStmt.step() ? reviewLogStmt.get() : null;
-        reviewLogStmt.free();
+        const reviewLogRow = this.firstRow(NEWEST_LOG_SQL, [newCardData.flashcardId]);
 
         const flashcard: Omit<Flashcard, "created" | "modified"> = {
           id: newCardData.flashcardId,
@@ -1412,6 +1402,8 @@ export class FlashcardSynchronizer {
       };
     } catch (error) {
       throw new Error(`Sync failed: ${(error as Error).message}`);
+    } finally {
+      this.freeStatements();
     }
   }
 }
