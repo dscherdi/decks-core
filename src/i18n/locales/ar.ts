@@ -1115,6 +1115,8 @@ export const ar: Translations = {
     clozeContextDesc: "كيف تظهر الفراغات غير المختبرة أثناء المراجعة",
     clozeShowOption: "إظهار الفراغات الأخرى",
     clozeHideOption: "إخفاء كل الفراغات",
+    clozeLinesLabel: "تجميع الفراغات حسب السطر",
+    clozeLinesDesc: "تُخفى الفراغات في السطر نفسه وتُكشف وتُقيَّم معًا. يحتفظ كل فراغ بجدوله الخاص.",
     reviewOrderLabel: "ترتيب المراجعة",
     reviewOrderDesc: "الترتيب الذي تتم به مراجعة البطاقات",
     newCardOrderLabel: "ترتيب البطاقات الجديدة",

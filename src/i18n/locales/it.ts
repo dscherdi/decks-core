@@ -1132,6 +1132,8 @@ export const it: Translations = {
     clozeContextDesc: "Come appaiono le lacune non testate durante il ripasso",
     clozeShowOption: "Mostra altre lacune",
     clozeHideOption: "Nascondi tutte le lacune",
+    clozeLinesLabel: "Raggruppa le lacune per riga",
+    clozeLinesDesc: "Le lacune sulla stessa riga vengono nascoste, mostrate e valutate insieme. Ognuna mantiene la propria pianificazione.",
     reviewOrderLabel: "Ordine di ripasso",
     reviewOrderDesc: "Ordine in cui le schede sono ripassate",
     newCardOrderLabel: "Ordine delle nuove schede",

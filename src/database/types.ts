@@ -111,6 +111,8 @@ export interface DeckProfile {
 
   clozeEnabled: boolean;
   clozeShowContext: ClozeShowContext;
+  // Clozes on one line are hidden, revealed and rated together; each stays its own card.
+  clozeGroupByLine?: boolean;
 
   // Exam decks: examEnabled gates the task-list question rule (and exam entry
   // points); examSettings holds session defaults. Optional so existing profile
@@ -179,6 +181,7 @@ export const DEFAULT_DECK_PROFILE: Omit<DeckProfile, 'id' | 'created' | 'modifie
   },
   clozeEnabled: true,
   clozeShowContext: "hidden",
+  clozeGroupByLine: false,
   examEnabled: false,
   examSettings: DEFAULT_EXAM_SETTINGS,
   isDefault: true,

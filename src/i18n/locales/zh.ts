@@ -1095,6 +1095,8 @@ export const zh: Translations = {
     clozeContextDesc: "复习时未测试的填空如何显示",
     clozeShowOption: "显示其他填空",
     clozeHideOption: "隐藏所有填空",
+    clozeLinesLabel: "按行分组填空",
+    clozeLinesDesc: "同一行的填空一起隐藏、显示和评分。每个填空保留各自的复习计划。",
     reviewOrderLabel: "复习顺序",
     reviewOrderDesc: "卡片复习的顺序",
     newCardOrderLabel: "新卡片顺序",

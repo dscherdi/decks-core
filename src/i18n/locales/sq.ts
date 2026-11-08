@@ -1138,6 +1138,8 @@ export const sq: Translations = {
     clozeContextDesc: "Si shfaqen boshllëqet e tjera gjatë rishikimit",
     clozeShowOption: "Shfaq boshllëqet e tjera",
     clozeHideOption: "Fshih të gjitha boshllëqet",
+    clozeLinesLabel: "Grupo boshllëqet sipas rreshtit",
+    clozeLinesDesc: "Boshllëqet në të njëjtin rresht fshihen, shfaqen dhe vlerësohen së bashku. Secili ruan orarin e vet.",
     reviewOrderLabel: "Renditja e rishikimit",
     reviewOrderDesc: "Renditja në të cilën rishikohen kartat",
     newCardOrderLabel: "Rendi i kartave të reja",

@@ -1145,6 +1145,8 @@ export const de: Translations = {
       "Wie nicht abgefragte Lücken bei der Wiederholung erscheinen",
     clozeShowOption: "Andere Lücken anzeigen",
     clozeHideOption: "Alle Lücken verbergen",
+    clozeLinesLabel: "Lücken zeilenweise gruppieren",
+    clozeLinesDesc: "Lücken in derselben Zeile werden zusammen verborgen, aufgedeckt und bewertet. Jede behält ihren eigenen Zeitplan.",
     reviewOrderLabel: "Wiederholungsreihenfolge",
     reviewOrderDesc: "Reihenfolge, in der Karten wiederholt werden",
     newCardOrderLabel: "Reihenfolge neuer Karten",

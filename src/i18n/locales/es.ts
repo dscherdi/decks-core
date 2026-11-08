@@ -1136,6 +1136,8 @@ export const es: Translations = {
     clozeContextDesc: "Cómo aparecen los huecos no evaluados durante el repaso",
     clozeShowOption: "Mostrar otros huecos",
     clozeHideOption: "Ocultar todos los huecos",
+    clozeLinesLabel: "Agrupar huecos por línea",
+    clozeLinesDesc: "Los huecos de una misma línea se ocultan, se muestran y se califican juntos. Cada uno conserva su propia programación.",
     reviewOrderLabel: "Orden de repaso",
     reviewOrderDesc: "Orden en que se repasan las tarjetas",
     newCardOrderLabel: "Orden de tarjetas nuevas",

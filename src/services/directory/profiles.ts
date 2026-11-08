@@ -168,6 +168,7 @@ export function packageProfileColumns(profile: DirectoryPackageProfile): Record<
     fsrs_profile: "STANDARD",
     cloze_enabled: 1,
     cloze_show_context: s.clozeShowContext,
+    cloze_group_by_line: 0,
     exam_enabled: profile.exam ? 1 : 0,
     exam_settings: profile.exam ? JSON.stringify(profile.exam) : "{}",
     tts_voice: null,
@@ -190,6 +191,7 @@ export const LEARNER_PROFILE_COLUMNS = [
   "fsrs_request_retention",
   "fsrs_profile",
   "cloze_show_context",
+  "cloze_group_by_line",
   "tts_voice",
   "tts_rate",
   "tts_lang",
@@ -206,6 +208,7 @@ function validLearnerValue(column: LearnerProfileColumn, value: SqlJsValue): boo
   switch (column) {
     case "has_new_cards_limit_enabled":
     case "has_review_cards_limit_enabled":
+    case "cloze_group_by_line":
       return value === 0 || value === 1;
     case "new_cards_per_day":
     case "review_cards_per_day":
@@ -261,6 +264,7 @@ export function learnerColumnsFromUpdates(updates: Partial<Omit<DeckProfile, "id
     ["fsrs_request_retention", updates.fsrs?.requestRetention],
     ["fsrs_profile", updates.fsrs?.profile],
     ["cloze_show_context", updates.clozeShowContext],
+    ["cloze_group_by_line", bool(updates.clozeGroupByLine)],
     ["tts_voice", "ttsVoice" in updates ? updates.ttsVoice || null : undefined],
     ["tts_rate", "ttsRate" in updates ? (updates.ttsRate ?? null) : undefined],
     ["tts_lang", "ttsLang" in updates ? updates.ttsLang || null : undefined],

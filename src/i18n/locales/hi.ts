@@ -1134,6 +1134,8 @@ export const hi: Translations = {
       "समीक्षा के दौरान गैर-परीक्षणित क्लोज़ कैसे दिखाई देते हैं",
     clozeShowOption: "अन्य क्लोज़ दिखाएं",
     clozeHideOption: "सभी क्लोज़ छिपाएं",
+    clozeLinesLabel: "क्लोज़ को पंक्ति के अनुसार समूहित करें",
+    clozeLinesDesc: "एक ही पंक्ति के क्लोज़ एक साथ छिपाए, दिखाए और रेट किए जाते हैं। हर एक का अपना शेड्यूल रहता है।",
     reviewOrderLabel: "समीक्षा क्रम",
     reviewOrderDesc: "वह क्रम जिसमें कार्ड की समीक्षा की जाती है",
     newCardOrderLabel: "नए कार्डों का क्रम",

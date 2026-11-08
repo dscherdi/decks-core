@@ -1143,6 +1143,8 @@ export const fr: Translations = {
       "Comment les lacunes non testées apparaissent pendant la révision",
     clozeShowOption: "Afficher les autres lacunes",
     clozeHideOption: "Masquer toutes les lacunes",
+    clozeLinesLabel: "Grouper les lacunes par ligne",
+    clozeLinesDesc: "Les lacunes d'une même ligne sont masquées, révélées et évaluées ensemble. Chacune garde son propre calendrier.",
     reviewOrderLabel: "Ordre de révision",
     reviewOrderDesc: "Ordre dans lequel les cartes sont révisées",
     newCardOrderLabel: "Ordre des nouvelles cartes",

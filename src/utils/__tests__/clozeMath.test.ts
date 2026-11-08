@@ -67,7 +67,7 @@ describe("prepareClozeMath", () => {
 
   it("maps the active index for two out-of-math clozes (one wraps math, one plain)", () => {
     const src = "==$r = p$==\n\nConique de ==foyer F, $x=\\frac{p}{e}$==";
-    expect(prepareClozeMath(src, 0, "hidden", false)).toEqual({ markdown: src, markActiveIndex: 0 });
-    expect(prepareClozeMath(src, 1, "hidden", false)).toEqual({ markdown: src, markActiveIndex: 1 });
+    expect(prepareClozeMath(src, 0, "hidden", false)).toEqual({ markdown: src, markActiveIndex: 0, markActiveIndices: [0] });
+    expect(prepareClozeMath(src, 1, "hidden", false)).toEqual({ markdown: src, markActiveIndex: 1, markActiveIndices: [1] });
   });
 });

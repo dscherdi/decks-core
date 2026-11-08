@@ -1080,6 +1080,8 @@ export const en = {
     clozeContextDesc: "How non-tested clozes appear during review",
     clozeShowOption: "Show other clozes",
     clozeHideOption: "Hide all clozes",
+    clozeLinesLabel: "Group clozes by line",
+    clozeLinesDesc: "Clozes on the same line are hidden, revealed and rated together. Each keeps its own schedule.",
     reviewOrderLabel: "Review order",
     reviewOrderDesc: "Order in which cards are reviewed",
     newCardOrderLabel: "New card order",

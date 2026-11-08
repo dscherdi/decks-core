@@ -17,6 +17,7 @@ export {
 } from "./database/schemas";
 export { remapCardIdsToDeckIndependent } from "./database/remapCardIds";
 export * from "./database/note-order";
+export * from "./database/added-columns";
 export * from "./database/profile-parsing";
 export * from "./database/sql-types";
 export {
@@ -71,7 +72,7 @@ export {
 } from "./services/FilterBadgeFormatter";
 export type { BadgeParts, DeckLookup } from "./services/FilterBadgeFormatter";
 export { Scheduler } from "./services/Scheduler";
-export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession } from "./services/Scheduler";
+export type { SchedulerOptions, SchedulingPreview, SessionProgress, NewSession, ClozeStep } from "./services/Scheduler";
 export { StatisticsService } from "./services/StatisticsService";
 export type {
   TimeframeStats,
@@ -757,6 +758,7 @@ export {
 } from "./utils/source-navigator";
 export type { CardFieldDef } from "./utils/card-fields";
 export { prepareClozeMath } from "./utils/clozeMath";
+export { clozeActiveOrders, clozeLineOrders, clozeOrderRange, clozeSource, groupClozeRunByLine } from "./utils/cloze-lines";
 export type { PreparedClozeMath } from "./utils/clozeMath";
 export { toSpeechText } from "./utils/toSpeechText";
 export type { ToSpeechOptions } from "./utils/toSpeechText";

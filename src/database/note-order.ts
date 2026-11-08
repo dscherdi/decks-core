@@ -16,7 +16,7 @@ export function noteOrderColumnStatements(
   return statements;
 }
 
-function columnsOf(db: RawDatabase, table: string): string[] {
+export function columnsOf(db: RawDatabase, table: string): string[] {
   const stmt = db.prepare(`PRAGMA table_info(${table})`);
   const names: string[] = [];
   try {

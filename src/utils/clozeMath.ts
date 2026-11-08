@@ -23,7 +23,10 @@ const MATH_HIDDEN = "\\boxed{\\cdots}"; // other hidden clozes in the same span
 
 export interface PreparedClozeMath {
   markdown: string;
+  /** The first active cloze among the `<mark>` ones, or -1 when none is outside math. */
   markActiveIndex: number;
+  /** Every active cloze among the `<mark>` ones, ascending. */
+  markActiveIndices: number[];
 }
 
 function mathRanges(content: string): Array<[number, number]> {
@@ -46,18 +49,19 @@ function mathClozeLatex(
 
 export function prepareClozeMath(
   content: string,
-  activeOrder: number,
+  activeOrder: number | readonly number[],
   mode: ClozeShowContext,
   revealed: boolean
 ): PreparedClozeMath {
   const ranges = mathRanges(content);
   const cloze = new RegExp(CLOZE_REGEX.source, "g");
+  const active = new Set(typeof activeOrder === "number" ? [activeOrder] : activeOrder);
 
   let out = "";
   let last = 0;
   let i = 0;
   let nonMath = 0;
-  let markActiveIndex = -1;
+  const markActiveIndices: number[] = [];
   let m: RegExpExecArray | null;
   while ((m = cloze.exec(content)) !== null) {
     const start = m.index;
@@ -68,9 +72,9 @@ export function prepareClozeMath(
     // stays `==…==` for the <mark> post-processor.
     const inMath = ranges.some(([s, e]) => start >= s && end <= e);
     if (inMath) {
-      out += mathClozeLatex(m[1], i === activeOrder, mode, revealed);
+      out += mathClozeLatex(m[1], active.has(i), mode, revealed);
     } else {
-      if (i === activeOrder) markActiveIndex = nonMath;
+      if (active.has(i)) markActiveIndices.push(nonMath);
       nonMath++;
       out += m[0];
     }
@@ -79,5 +83,5 @@ export function prepareClozeMath(
   }
   out += content.slice(last);
 
-  return { markdown: out, markActiveIndex };
+  return { markdown: out, markActiveIndex: markActiveIndices[0] ?? -1, markActiveIndices };
 }

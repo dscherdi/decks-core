@@ -1120,6 +1120,8 @@ export const ja: Translations = {
     clozeContextDesc: "テストされていない穴埋めの復習時の表示",
     clozeShowOption: "他の穴を表示",
     clozeHideOption: "すべての穴を非表示",
+    clozeLinesLabel: "穴埋めを行ごとにまとめる",
+    clozeLinesDesc: "同じ行の穴埋めはまとめて隠され、表示され、評価されます。それぞれの予定は個別に保たれます。",
     reviewOrderLabel: "復習順序",
     reviewOrderDesc: "カードを復習する順序",
     newCardOrderLabel: "新規カードの順序",

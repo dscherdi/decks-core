@@ -32,6 +32,7 @@ import { formatTime } from "../utils/formatting";
 import { generateContentHash } from "../utils/hash";
 import type { RateOp } from "./SyncLog.types";
 import type { DecksSettings } from "../settings";
+import { clozeActiveOrders, groupClozeRunByLine } from "../utils/cloze-lines";
 
 export interface SchedulerOptions {
   allowNew?: boolean;
@@ -67,6 +68,21 @@ const CRAM_GRADUATION_MINUTES = 1440;
 interface CramUndoEntry {
   sessionId: string;
   before: CramCard;
+  /** Shared by the entries of one rating that covered several cards. */
+  group?: number;
+}
+
+/** One step of a review: the cards one rating covers, and the clozes shown with them. */
+export interface ClozeStep {
+  /** Rated together; the first is the card shown. */
+  cards: Flashcard[];
+  /** Cloze orders blanked and revealed together. */
+  activeOrders: number[];
+}
+
+interface ReviewGroup {
+  logIds: Set<string>;
+  cardIds: string[];
 }
 
 export interface NewSession {
@@ -87,6 +103,9 @@ export class Scheduler {
   private setAsideInSession = new Map<string, number>();
   /** Cram rows as they were before each rating, newest last; cleared when a cram run starts. */
   private cramUndoStack: CramUndoEntry[] = [];
+  private cramGroupSeq = 0;
+  /** Logs written by one rating of several cards, by each log id; cleared at session boundaries. */
+  private reviewGroups = new Map<string, ReviewGroup>();
   private logger?: ILogger;
   private backupService: IBackupService;
   private settings: DecksSettings;
@@ -259,6 +278,7 @@ export class Scheduler {
    */
   setCurrentSession(sessionId: string | null): void {
     this.deckCache.clear(); // session boundary — re-read config next session
+    this.reviewGroups.clear();
     this.currentSessionId = sessionId;
   }
 
@@ -428,7 +448,6 @@ export class Scheduler {
     shownAt?: Date
   ): Promise<Flashcard> {
     const ratePerfStart = performance.now();
-    const now = new Date();
     const cardId = typeof cardOrId === "string" ? cardOrId : cardOrId.id;
     this.debugLog(`Rating card ${cardId} with rating: ${rating}`);
     const card =
@@ -439,7 +458,46 @@ export class Scheduler {
       this.debugLog(`Error: Card not found: ${cardId}`);
       throw new Error(`Card not found: ${cardId}`);
     }
+    const { updated } = await this.rateCard(card, rating, timeElapsed, shownAt, new Date());
+    this.perfLog("Scheduler.rate", ratePerfStart);
+    return updated;
+  }
 
+  /**
+   * Rate cards shown together with one rating. Each card gets its own FSRS update,
+   * log and sync op; the time spent is split between them, and one undo takes back all.
+   */
+  async rateGroup(
+    cards: readonly Flashcard[],
+    rating: RatingLabel,
+    timeElapsed?: number,
+    shownAt?: Date
+  ): Promise<Flashcard[]> {
+    if (cards.length === 1) return [await this.rate(cards[0], rating, timeElapsed, shownAt)];
+    const now = new Date();
+    const shown = shownAt ?? (timeElapsed ? new Date(now.getTime() - timeElapsed) : undefined);
+    const share = timeElapsed === undefined ? undefined : Math.round(timeElapsed / Math.max(1, cards.length));
+    const rated: Flashcard[] = [];
+    const logIds: string[] = [];
+    for (const card of cards) {
+      const { updated, logId } = await this.rateCard(card, rating, share, shown, now);
+      rated.push(updated);
+      logIds.push(logId);
+    }
+    if (cards.length > 1) {
+      const group: ReviewGroup = { logIds: new Set(logIds), cardIds: cards.map((card) => card.id) };
+      for (const logId of logIds) this.reviewGroups.set(logId, group);
+    }
+    return rated;
+  }
+
+  private async rateCard(
+    card: Flashcard,
+    rating: RatingLabel,
+    timeElapsed: number | undefined,
+    shownAt: Date | undefined,
+    now: Date
+  ): Promise<{ updated: Flashcard; logId: string }> {
     const deck = await this.getCachedDeck(card.deckId);
     if (!deck) {
       this.debugLog(`Error: Deck not found: ${card.deckId}`);
@@ -621,8 +679,7 @@ export class Scheduler {
       this.syncLog.append(op);
     }
 
-    this.perfLog("Scheduler.rate", ratePerfStart);
-    return updatedCard;
+    return { updated: updatedCard, logId };
   }
 
   /**
@@ -631,13 +688,39 @@ export class Scheduler {
    * restored card, or null if there's nothing to undo.
    */
   async undoLastReview(): Promise<Flashcard | null> {
-    if (!this.currentSessionId) return null;
+    return (await this.undoLastReviewGroup())[0] ?? null;
+  }
 
-    const log = await this.db.getLatestReviewLogForSession(
-      this.currentSessionId
-    );
-    if (!log) return null;
+  /** Undo the latest rating with every card it covered; returns those cards restored, in rating order. */
+  async undoLastReviewGroup(): Promise<Flashcard[]> {
+    const sessionId = this.currentSessionId;
+    if (!sessionId) return [];
 
+    const log = await this.db.getLatestReviewLogForSession(sessionId);
+    if (!log) return [];
+
+    const group = this.reviewGroups.get(log.id);
+    if (!group) {
+      const restored = await this.undoReviewLog(sessionId, log);
+      return restored ? [restored] : [];
+    }
+    const undone = new Set<string>();
+    let latest: ReviewLog | null = log;
+    while (latest && group.logIds.has(latest.id)) {
+      this.reviewGroups.delete(latest.id);
+      const restored = await this.undoReviewLog(sessionId, latest);
+      if (restored) undone.add(restored.id);
+      latest = await this.db.getLatestReviewLogForSession(sessionId);
+    }
+    const cards: Flashcard[] = [];
+    for (const id of group.cardIds) {
+      const card = undone.has(id) ? await this.db.getFlashcardById(id) : null;
+      if (card) cards.push(card);
+    }
+    return cards;
+  }
+
+  private async undoReviewLog(sessionId: string, log: ReviewLog): Promise<Flashcard | null> {
     const card = await this.db.getFlashcardById(log.flashcardId);
     if (!card) {
       this.debugLog(
@@ -658,18 +741,12 @@ export class Scheduler {
       lastReviewed: log.lastReviewedAt || null,
     });
 
-    const reviewCount = await this.db.countCardReviewsInSession(
-      this.currentSessionId,
-      card.id
-    );
+    const reviewCount = await this.db.countCardReviewsInSession(sessionId, card.id);
     if (reviewCount === 1) {
-      const session = await this.db.getReviewSessionById(this.currentSessionId);
+      const session = await this.db.getReviewSessionById(sessionId);
       if (session) {
         const nextDoneUnique = Math.max(0, session.doneUnique - 1);
-        await this.db.updateReviewSessionDoneUnique(
-          this.currentSessionId,
-          nextDoneUnique
-        );
+        await this.db.updateReviewSessionDoneUnique(sessionId, nextDoneUnique);
       }
     }
 
@@ -984,7 +1061,8 @@ export class Scheduler {
     };
   }
 
-  async getClozeSiblings(card: Flashcard, now: Date): Promise<Flashcard[]> {
+  /** A note's other due or new clozes; `dueBy` moves the due cutoff past `now`. */
+  async getClozeSiblings(card: Flashcard, now: Date, dueBy: Date = now): Promise<Flashcard[]> {
     // Siblings share the same note: same front AND back (all of a note's clozes
     // carry identical front/back, only cloze_order/text differ). Matching on
     // front alone would merge unrelated notes that happen to share a header.
@@ -1002,10 +1080,41 @@ export class Scheduler {
       card.front,
       card.back,
       card.id,
-      now.toISOString(),
+      dueBy.toISOString(),
       now.toISOString(),
     ]);
     return rows.map((row) => this.rowToFlashcard(row as unknown[]));
+  }
+
+  /** Whether the card's profile hides, reveals and rates the clozes on one line together. */
+  async groupsClozesByLine(card: Flashcard): Promise<boolean> {
+    if (card.type !== "cloze") return false;
+    const deck = await this.getCachedDeck(card.deckId);
+    return deck?.profile.clozeGroupByLine === true;
+  }
+
+  /**
+   * The note's clozes reviewed back to back from `card`, as steps, `card`'s first; a step is a line when
+   * its profile groups by line, and line-mates due by `card`'s own due time join it so an Again comes back whole.
+   */
+  async getClozeSteps(card: Flashcard, now: Date): Promise<ClozeStep[]> {
+    const siblings = await this.getClozeSiblings(card, now);
+    const grouped = await this.groupsClozesByLine(card);
+    if (!grouped) {
+      return [card, ...siblings].map((c) => ({ cards: [c], activeOrders: [c.clozeOrder ?? 0] }));
+    }
+    const activeOrders = clozeActiveOrders(card, true);
+    const dueBy = new Date(Math.max(now.getTime(), new Date(card.dueDate).getTime() || 0));
+    const mates = (await this.getClozeSiblings(card, now, dueBy)).filter(
+      (mate) => mate.type === "cloze" && mate.clozeOrder !== null && activeOrders.includes(mate.clozeOrder)
+    );
+    const first: ClozeStep = { cards: [card, ...mates], activeOrders };
+    const taken = new Set(first.cards.map((c) => c.id));
+    const rest = groupClozeRunByLine(
+      siblings.filter((c) => !taken.has(c.id)),
+      true
+    ).map((cards) => ({ cards, activeOrders: clozeActiveOrders(cards[0], true) }));
+    return [first, ...rest];
   }
 
   async getClozeGroupSize(card: Flashcard): Promise<number> {
@@ -1616,6 +1725,42 @@ export class Scheduler {
     return { graduated: false, interval: next.interval };
   }
 
+  /** The cards drilled with `card`: its line-mates still in the cram run, when its profile groups clozes by line. */
+  async getCramClozeStep(sessionId: string, card: Flashcard): Promise<ClozeStep> {
+    const grouped = await this.groupsClozesByLine(card);
+    const activeOrders = clozeActiveOrders(card, grouped);
+    if (activeOrders.length < 2) return { cards: [card], activeOrders };
+    const rows = await this.db.querySql<unknown[]>(
+      `SELECT f.* FROM flashcards f
+       JOIN cram_cards c ON c.flashcard_id = f.id
+       WHERE c.session_id = ? AND c.graduated_at IS NULL
+         AND f.id != ? AND f.deck_id = ? AND f.front = ? AND f.back = ? AND f.type = 'cloze'
+       ORDER BY f.cloze_order ASC`,
+      [sessionId, card.id, card.deckId, card.front, card.back]
+    );
+    const mates = rows
+      .map((row) => this.rowToFlashcard(row))
+      .filter((mate) => mate.clozeOrder !== null && activeOrders.includes(mate.clozeOrder));
+    return { cards: [card, ...mates], activeOrders };
+  }
+
+  /** One cram rating for cards shown together; one undo takes them all back. Returns the first card's result. */
+  async rateCramGroup(
+    sessionId: string,
+    flashcardIds: readonly string[],
+    rating: CramRating,
+    now: Date = new Date()
+  ): Promise<CramRateResult> {
+    const start = this.cramUndoStack.length;
+    const results: CramRateResult[] = [];
+    for (const id of flashcardIds) results.push(await this.rateCram(sessionId, id, rating, now));
+    if (flashcardIds.length > 1) {
+      const group = ++this.cramGroupSeq;
+      for (let i = start; i < this.cramUndoStack.length; i++) this.cramUndoStack[i].group = group;
+    }
+    return results[0] ?? { graduated: true, interval: CRAM_GRADUATION_MINUTES };
+  }
+
   hasUndoableCram(sessionId: string): boolean {
     return this.cramUndoStack.some((entry) => entry.sessionId === sessionId);
   }
@@ -1625,10 +1770,25 @@ export class Scheduler {
    * return to how they were. Returns the card to show again, or null.
    */
   async undoLastCramRating(sessionId: string): Promise<Flashcard | null> {
-    const index = this.cramUndoStack.map((entry) => entry.sessionId).lastIndexOf(sessionId);
-    if (index === -1) return null;
-    const { before } = this.cramUndoStack.splice(index, 1)[0];
+    return (await this.undoLastCramGroup(sessionId))[0] ?? null;
+  }
 
+  /** Take back the session's latest cram rating with every card it covered; returns those cards, in rating order. */
+  async undoLastCramGroup(sessionId: string): Promise<Flashcard[]> {
+    const index = this.cramUndoStack.map((entry) => entry.sessionId).lastIndexOf(sessionId);
+    if (index === -1) return [];
+    const { group } = this.cramUndoStack[index];
+    const entries =
+      group === undefined
+        ? this.cramUndoStack.splice(index, 1)
+        : this.cramUndoStack.filter((entry) => entry.group === group);
+    if (group !== undefined) this.cramUndoStack = this.cramUndoStack.filter((entry) => entry.group !== group);
+    const restored: (Flashcard | null)[] = [];
+    for (const entry of [...entries].reverse()) restored.unshift(await this.restoreCramEntry(sessionId, entry));
+    return restored.filter((card): card is Flashcard => card !== null);
+  }
+
+  private async restoreCramEntry(sessionId: string, { before }: CramUndoEntry): Promise<Flashcard | null> {
     const flashcard = await this.db.getFlashcardById(before.flashcardId);
     if (!flashcard) return null;
 

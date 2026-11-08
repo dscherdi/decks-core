@@ -1131,6 +1131,8 @@ export const tr: Translations = {
       "Tekrar sırasında test edilmeyen boşlukların nasıl görüneceği",
     clozeShowOption: "Diğer boşlukları göster",
     clozeHideOption: "Tüm boşlukları gizle",
+    clozeLinesLabel: "Boşlukları satıra göre grupla",
+    clozeLinesDesc: "Aynı satırdaki boşluklar birlikte gizlenir, gösterilir ve puanlanır. Her biri kendi zamanlamasını korur.",
     reviewOrderLabel: "Tekrar sırası",
     reviewOrderDesc: "Kartların tekrar edilme sırası",
     newCardOrderLabel: "Yeni kart sırası",

@@ -250,6 +250,8 @@ export interface ProfileUpsertOp {
     ttsLang?: string;
     // Optional (added with note positions): absent on older ops — apply keeps the stored value.
     newCardOrder?: "note" | "created" | "random";
+    // Optional (added with cloze line groups): absent on older ops — apply keeps the stored value.
+    clozeGroupByLine?: boolean;
     isDefault: boolean;
     created: string;
     modified: string;

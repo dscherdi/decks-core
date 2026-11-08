@@ -1101,6 +1101,8 @@ export const zhTW: Translations = {
     clozeContextDesc: "在複習時，其他未被測試的填空部分該如何顯示",
     clozeShowOption: "顯示其他填空",
     clozeHideOption: "隱藏所有填空",
+    clozeLinesLabel: "依行分組填空",
+    clozeLinesDesc: "同一行的填空會一起隱藏、顯示和評分。每個填空保留各自的複習排程。",
     reviewOrderLabel: "複習順序",
     reviewOrderDesc: "卡片的複習顯示順序",
     newCardOrderLabel: "新卡片順序",

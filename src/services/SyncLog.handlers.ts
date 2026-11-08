@@ -448,6 +448,7 @@ async function handleProfileUpsert(
   if (isDirectoryProfileId(p.id)) return;
   // Ops from clients that predate the field keep the stored order.
   const newCardOrder = p.newCardOrder === undefined ? null : parseNewCardOrder(p.newCardOrder);
+  const clozeGroupByLine = p.clozeGroupByLine === undefined ? null : p.clozeGroupByLine ? 1 : 0;
   await db.executeSql(
     `INSERT INTO deckprofiles (
        id, name,
@@ -459,8 +460,8 @@ async function handleProfileUpsert(
        cloze_enabled, cloze_show_context,
        exam_enabled, exam_settings,
        tts_voice, tts_rate, tts_lang,
-       is_default, created, modified, deleted_at, new_card_order
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, COALESCE(?, 'created'))
+       is_default, created, modified, deleted_at, new_card_order, cloze_group_by_line
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, COALESCE(?, 'created'), COALESCE(?, 0))
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        has_new_cards_limit_enabled = excluded.has_new_cards_limit_enabled,
@@ -482,6 +483,7 @@ async function handleProfileUpsert(
        tts_rate = excluded.tts_rate,
        tts_lang = excluded.tts_lang,
        new_card_order = COALESCE(?, deckprofiles.new_card_order),
+       cloze_group_by_line = COALESCE(?, deckprofiles.cloze_group_by_line),
        is_default = excluded.is_default,
        modified = excluded.modified,
        deleted_at = NULL
@@ -511,7 +513,9 @@ async function handleProfileUpsert(
       p.created,
       p.modified,
       newCardOrder,
+      clozeGroupByLine,
       newCardOrder,
+      clozeGroupByLine,
     ]
   );
 }
