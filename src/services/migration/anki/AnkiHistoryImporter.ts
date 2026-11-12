@@ -23,6 +23,7 @@ export interface AnkiRevlogRow {
   ivl: number; // resulting interval (days if positive, seconds if negative)
   lastIvl: number; // previous interval
   factor: number; // ease, per-mille
+  time?: number; // answer time in ms
 }
 
 /** The history writers, plus one read of each deck's rows. */
@@ -327,7 +328,7 @@ export class AnkiHistoryImporter {
         reviewedAt,
         rating: clampRating(row.ease),
         ratingLabel: RATING_LABELS[clampRating(row.ease)],
-        timeElapsedMs: 0,
+        timeElapsedMs: Math.max(row.time ?? 0, 0),
 
         oldState: oldIntervalDays > 0 ? "review" : "new",
         oldRepetitions: 0,

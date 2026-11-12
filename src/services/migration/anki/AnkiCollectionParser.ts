@@ -1,4 +1,4 @@
-import type { RawDatabase } from "../../FlashcardSynchronizer";
+import type { RawDatabase, RawStatement } from "../../FlashcardSynchronizer";
 import { AnkiSanitizer } from "./AnkiSanitizer";
 import type { HtmlToMarkdown, SanitizeOptions } from "./AnkiSanitizer";
 import { AnkiTemplateEngine } from "./AnkiTemplateEngine";
@@ -805,9 +805,7 @@ export class AnkiCollectionParser {
   /** Real Anki review rows grouped by card id, for the review timeline. */
   static readRevlog(db: RawDatabase): Map<number, AnkiRevlogRow[]> {
     const result = new Map<number, AnkiRevlogRow[]>();
-    const stmt = db.prepare(
-      "SELECT id, cid, ease, ivl, lastIvl, factor FROM revlog ORDER BY id ASC"
-    );
+    const stmt = AnkiCollectionParser.prepareRevlog(db);
     try {
       while (stmt.step()) {
         const r = stmt.getAsObject();
@@ -818,6 +816,7 @@ export class AnkiCollectionParser {
           ivl: Number(r.ivl) || 0,
           lastIvl: Number(r.lastIvl) || 0,
           factor: Number(r.factor) || 0,
+          time: Number(r.time) || 0,
         };
         const group = result.get(row.cid);
         if (group) group.push(row);
@@ -830,6 +829,16 @@ export class AnkiCollectionParser {
       stmt.free();
     }
     return result;
+  }
+
+  // A collection built by hand may leave the answer-time column out.
+  private static prepareRevlog(db: RawDatabase): RawStatement {
+    const columns = "id, cid, ease, ivl, lastIvl, factor";
+    try {
+      return db.prepare(`SELECT ${columns}, time FROM revlog ORDER BY id ASC`);
+    } catch {
+      return db.prepare(`SELECT ${columns} FROM revlog ORDER BY id ASC`);
+    }
   }
 }
 

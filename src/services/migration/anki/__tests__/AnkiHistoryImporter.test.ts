@@ -205,6 +205,25 @@ describe("AnkiHistoryImporter.importHistory", () => {
     expect(db.logs.get(`log_anki_${cardId}_1700100000000`)?.rating).toBe(2);
   });
 
+  it("carries a review's answer time into its log", async () => {
+    const db = new MockHistoryDb();
+    const cardId = generateFlashcardId("Hallo");
+    const revlog: AnkiRevlogRow[] = [
+      { id: 1700000000000, cid: 100, ease: 3, ivl: 4, lastIvl: 1, factor: 2500, time: 8200 },
+      { id: 1700100000000, cid: 100, ease: 2, ivl: 6, lastIvl: 4, factor: 2300 },
+    ];
+    const items: AnkiDeckItem[] = [
+      {
+        deckId: "deck_x",
+        profileFsrs: PROFILE,
+        cards: [card({ front: "Hallo", scheduling: sched({ type: 2, ivl: 6, reps: 2 }) })],
+      },
+    ];
+    await AnkiHistoryImporter.importHistory(db, items, { revlogByCard: new Map([[100, revlog]]) }, now);
+    expect(db.logs.get(`log_anki_${cardId}_1700000000000`)?.timeElapsedMs).toBe(8200);
+    expect(db.logs.get(`log_anki_${cardId}_1700100000000`)?.timeElapsedMs).toBe(0);
+  });
+
   it("skips new cards (no state, no log)", async () => {
     const db = new MockHistoryDb();
     const items: AnkiDeckItem[] = [

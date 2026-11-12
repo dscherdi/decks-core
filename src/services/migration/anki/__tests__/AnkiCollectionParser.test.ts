@@ -583,6 +583,27 @@ describe("AnkiCollectionParser", () => {
   });
 });
 
+describe("AnkiCollectionParser.readRevlog", () => {
+  const row = { id: 1700000000000, cid: 100, ease: 3, ivl: 4, lastIvl: 1, factor: 2500 };
+
+  it("reads each review's answer time", () => {
+    const db = makeFakeDb({ models: {}, decks: {}, cardNotes: [], revlog: [{ ...row, time: 8200 }] });
+    expect(AnkiCollectionParser.readRevlog(db).get(100)).toEqual([{ ...row, time: 8200 }]);
+  });
+
+  it("reads a revlog that has no answer-time column", () => {
+    const fake = makeFakeDb({ models: {}, decks: {}, cardNotes: [], revlog: [row] });
+    const db: RawDatabase = {
+      prepare(sql: string): RawStatement {
+        if (sql.includes("time")) throw new Error("no such column: time");
+        return fake.prepare(sql);
+      },
+      run: () => undefined,
+    };
+    expect(AnkiCollectionParser.readRevlog(db).get(100)).toEqual([{ ...row, time: 0 }]);
+  });
+});
+
 function cardNote(opts: {
   cid: number;
   nid: number;
