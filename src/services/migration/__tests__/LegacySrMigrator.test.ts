@@ -1027,3 +1027,45 @@ describe("LegacySrMigrator.expandReverseCards", () => {
     expect(LegacySrMigrator.expandReverseCards([card])).toEqual([card]);
   });
 });
+
+describe("LegacySrMigrator.countCards", () => {
+  const note = [
+    "bonjour::hello <!--SR:!2026-11-14,6,270-->",
+    "le chien:::the dog <!--SR:!2026-11-21,14,270!2026-11-10,4,250-->",
+    "",
+    "How do you say library?",
+    "?",
+    "la bibliothèque",
+    "<!--SR:!2026-11-18,10,270-->",
+    "",
+    "Paris is the ==capital== of ==France==. <!--SR:!2026-11-27,21,290-->",
+    "",
+    "au revoir::goodbye",
+  ].join("\n");
+
+  it("counts a reverse line as two cards and each cloze as one", () => {
+    expect(LegacySrMigrator.countCards(process(note))).toEqual({ cards: 7, withHistory: 5 });
+  });
+
+  it("counts the same before and after reverse lines are expanded", () => {
+    const cards = process(note);
+    expect(LegacySrMigrator.countCards(LegacySrMigrator.expandReverseCards(cards))).toEqual(
+      LegacySrMigrator.countCards(cards)
+    );
+  });
+});
+
+describe("processWholeNote on a note with inline cards", () => {
+  const cardComment = "Intro.\n\nQ :: A <!--SR:!2026-11-27,21,290-->";
+
+  it("leaves a card's schedule with the card", () => {
+    const card = LegacySrMigrator.processWholeNote(cardComment, "Note", { hasInlineCards: true });
+    expect(card.fsrsData).toBeUndefined();
+  });
+
+  it("still reads the note's own schedule from frontmatter", () => {
+    const content = ["---", "sr-due: 2024-06-18", "sr-interval: 12", "sr-ease: 250", "---", cardComment].join("\n");
+    const card = LegacySrMigrator.processWholeNote(content, "Note", { hasInlineCards: true });
+    expect(card.fsrsData?.intervalDays).toBe(12);
+  });
+});

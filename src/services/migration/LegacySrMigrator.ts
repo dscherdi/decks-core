@@ -79,6 +79,8 @@ export interface WholeNoteOptions {
   multiSep?: string;
   clozeSep?: string;
   hintLabel?: string;
+  // The note has inline cards, so every SR comment in it belongs to one of them.
+  hasInlineCards?: boolean;
 }
 
 export interface RenderOptions {
@@ -1073,9 +1075,9 @@ export class LegacySrMigrator {
    * (unclaimed) `<!--SR:-->` comment in the body. Returns null when nothing
    * usable is found, so the note migrates as a brand-new card.
    */
-  static parseFileLevelState(content: string): FsrsState | null {
+  static parseFileLevelState(content: string, frontmatterOnly = false): FsrsState | null {
     const yaml = LegacySrMigrator.parseSrFrontmatter(content);
-    if (yaml) return yaml;
+    if (yaml || frontmatterOnly) return yaml;
 
     // Fall back to the last SR comment in the file (the whole-note EOF marker).
     const matches = content.match(SR_COMMENT_G);
@@ -1150,7 +1152,7 @@ export class LegacySrMigrator {
       multiline: true,
       suspended: isSkipMarked(content),
       sourceMatch: content,
-      fsrsData: LegacySrMigrator.parseFileLevelState(content) ?? undefined,
+      fsrsData: LegacySrMigrator.parseFileLevelState(content, opts?.hasInlineCards) ?? undefined,
     };
   }
 
@@ -1251,6 +1253,23 @@ export class LegacySrMigrator {
       });
     }
     return out;
+  }
+
+  /** Cards as Decks will hold them, and how many carry a schedule: one per direction and per cloze. */
+  static countCards(cards: MigratedCard[]): { cards: number; withHistory: number } {
+    let count = 0;
+    let withHistory = 0;
+    for (const card of cards) {
+      if (card.clozes) {
+        count += card.clozes.length;
+        withHistory += card.clozes.filter((cloze) => cloze.fsrsData).length;
+        continue;
+      }
+      count += card.isReverse ? 2 : 1;
+      if (card.fsrsData) withHistory++;
+      if (card.isReverse && card.fsrsDataReverse) withHistory++;
+    }
+    return { cards: count, withHistory };
   }
 
   /**
