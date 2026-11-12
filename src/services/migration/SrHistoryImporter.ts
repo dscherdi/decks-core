@@ -19,7 +19,7 @@ const MINUTES_PER_DAY = 1440;
 /** The slice of the database interface the importer needs. */
 export type HistoryDb = Pick<
   IDatabaseService,
-  "insertReviewLog" | "batchUpdateFlashcards" | "getReviewLogById"
+  "insertReviewLog" | "batchUpdateFlashcards" | "getReviewLogById" | "querySql"
 >;
 
 export interface MigrationProfileFsrs {
@@ -43,6 +43,13 @@ function intervalMinutes(stabilityDays: number): number {
 }
 
 const MS_PER_DAY = 86_400_000;
+
+// Importers write log_anki_* and log_migrate_*; every other log is a review made in Decks.
+const OWN_REVIEW_SINCE_SQL = `
+  SELECT 1 FROM review_logs
+  WHERE flashcard_id = ? AND reviewed_at > ?
+    AND id NOT GLOB 'log_anki_*' AND id NOT GLOB 'log_migrate_*'
+  LIMIT 1`;
 
 // The implied last-review date is `due − interval` (SR stores due + interval but
 // not the review timestamp). Clamp so it never lands in the future.
@@ -197,10 +204,8 @@ export class SrHistoryImporter {
     return { injected, suspended };
   }
 
-  // Queues one direction's state update (and writes its review log when there's
-  // history). The synthetic log id is deterministic, so a previously-migrated
-  // card is left untouched (the local insert path is a plain INSERT and would
-  // otherwise collide). Suspension is applied with or without history.
+  // Writes one direction's log once (its id is deterministic) and queues the legacy state,
+  // unless Decks reviewed the card after that log. Suspension is queued either way.
   private static async injectDirection(
     db: HistoryDb,
     cardId: string,
@@ -213,8 +218,8 @@ export class SrHistoryImporter {
   ): Promise<{ injected: number; suspended: number }> {
     if (fsrs) {
       const logId = `log_migrate_${cardId}`;
-      const isNew = !(await db.getReviewLogById(logId));
-      if (isNew) {
+      const migrated = await db.getReviewLogById(logId);
+      if (!migrated) {
         const log = SrHistoryImporter.buildMigrationReviewLog(
           cardId,
           fsrs,
@@ -224,10 +229,14 @@ export class SrHistoryImporter {
         );
         await db.insertReviewLog({ ...log, id: logId });
       }
-      const update = SrHistoryImporter.buildFlashcardUpdate(fsrs, now);
+      const keepsOwnState =
+        !!migrated && (await SrHistoryImporter.reviewedInDecksSince(db, cardId, migrated.reviewedAt));
+      const update: Partial<Flashcard> = keepsOwnState
+        ? {}
+        : SrHistoryImporter.buildFlashcardUpdate(fsrs, now);
       if (suspend) update.suspendedAt = now.toISOString();
-      updates.push({ id: cardId, updates: update });
-      return { injected: isNew ? 1 : 0, suspended: suspend ? 1 : 0 };
+      if (!keepsOwnState || suspend) updates.push({ id: cardId, updates: update });
+      return { injected: migrated ? 0 : 1, suspended: suspend ? 1 : 0 };
     }
 
     if (suspend) {
@@ -237,5 +246,14 @@ export class SrHistoryImporter {
     }
 
     return { injected: 0, suspended: 0 };
+  }
+
+  private static async reviewedInDecksSince(
+    db: HistoryDb,
+    cardId: string,
+    since: string
+  ): Promise<boolean> {
+    const rows = await db.querySql(OWN_REVIEW_SINCE_SQL, [cardId, since]);
+    return rows.length > 0;
   }
 }

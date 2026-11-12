@@ -1,7 +1,9 @@
 import { SrHistoryImporter } from "../SrHistoryImporter";
 import type { HistoryDb, MigrationDeckItem } from "../SrHistoryImporter";
+import { LegacySrMigrator } from "../LegacySrMigrator";
 import type { MigratedCard, FsrsState } from "../LegacySrMigrator";
 import type { Flashcard, ReviewLog } from "../../../database/types";
+import type { SqlJsValue } from "../../../database/sql-types";
 import {
   generateClozeFlashcardId,
   generateFlashcardId,
@@ -10,6 +12,9 @@ import {
 
 const NOW = new Date("2026-06-19T00:00:00.000Z");
 const PROFILE = { requestRetention: 0.9, profile: "STANDARD" as const };
+
+const isImported = (logId: string): boolean =>
+  logId.startsWith("log_anki_") || logId.startsWith("log_migrate_");
 
 function makeDb(): {
   db: HistoryDb;
@@ -26,8 +31,29 @@ function makeDb(): {
       updates.push(...batch);
     },
     getReviewLogById: async (id) => logs.find((l) => l.id === id) ?? null,
+    // Answers the importer's one query: a card's Decks reviews newer than a given time.
+    querySql: <T>(_sql: string, params: SqlJsValue[] = []): Promise<T[]> => {
+      const [cardId, since] = params;
+      const own = logs.filter(
+        (l) =>
+          l.flashcardId === cardId &&
+          !isImported(l.id) &&
+          typeof since === "string" &&
+          l.reviewedAt > since
+      );
+      return Promise.resolve(own.map(() => [1]) as T[]);
+    },
   };
   return { db, logs, updates };
+}
+
+// A review made in Decks: its log id carries no importer prefix.
+function reviewInDecks(logs: ReviewLog[], cardId: string, at: Date): void {
+  logs.push({
+    ...SrHistoryImporter.buildMigrationReviewLog(cardId, fsrs(), "hash", PROFILE, at),
+    id: `log_${at.getTime()}_x`,
+    reviewedAt: at.toISOString(),
+  });
 }
 
 const fsrs = (over: Partial<FsrsState> = {}): FsrsState => ({
@@ -247,5 +273,105 @@ describe("SrHistoryImporter.importHistory", () => {
     await SrHistoryImporter.importHistory(a.db, items, NOW);
     await SrHistoryImporter.importHistory(b.db, items, NOW);
     expect(a.logs[0].id).toBe(b.logs[0].id);
+  });
+
+  it("writes as many logs as countCards reports schedules", async () => {
+    const { db } = makeDb();
+    const cards: MigratedCard[] = [
+      card(),
+      card({ front: "Cat", isReverse: true, fsrsDataReverse: fsrs() }),
+      card({ front: "No history", fsrsData: undefined }),
+      card({
+        front: "The ==sun== is a ==star==.",
+        back: "",
+        fsrsData: undefined,
+        clozes: [
+          { clozeText: "sun", clozeOrder: 0, fsrsData: fsrs() },
+          { clozeText: "star", clozeOrder: 1 },
+        ],
+      }),
+    ];
+    const { injected } = await SrHistoryImporter.importHistory(
+      db,
+      [{ deckId: "deck_1", profileFsrs: PROFILE, cards }],
+      NOW
+    );
+    expect(LegacySrMigrator.countCards(cards)).toEqual({ cards: 6, withHistory: injected });
+    expect(injected).toBe(4);
+  });
+});
+
+describe("SrHistoryImporter.importHistory on a re-run", () => {
+  const REVIEWED = new Date("2026-06-25T00:00:00.000Z");
+  const RERUN = new Date("2026-07-10T00:00:00.000Z");
+  const cardId = generateFlashcardId("Front");
+  const deck = (cards: MigratedCard[]): MigrationDeckItem[] => [
+    { deckId: "deck_1", profileFsrs: PROFILE, cards },
+  ];
+
+  it("keeps the state of a card reviewed in Decks since it was migrated", async () => {
+    const { db, logs, updates } = makeDb();
+    await SrHistoryImporter.importHistory(db, deck([card()]), NOW);
+    reviewInDecks(logs, cardId, REVIEWED);
+    const firstRun = updates.length;
+
+    const { injected } = await SrHistoryImporter.importHistory(db, deck([card()]), RERUN);
+
+    expect(injected).toBe(0);
+    expect(updates.slice(firstRun)).toEqual([]);
+    expect(logs).toHaveLength(2);
+  });
+
+  it("gives a card never reviewed in Decks its legacy state again", async () => {
+    const { db, updates } = makeDb();
+    await SrHistoryImporter.importHistory(db, deck([card()]), NOW);
+    const firstRun = updates.length;
+
+    const { injected } = await SrHistoryImporter.importHistory(db, deck([card()]), RERUN);
+
+    expect(injected).toBe(0);
+    const rerun = updates.slice(firstRun);
+    expect(rerun).toHaveLength(1);
+    expect(rerun[0].id).toBe(cardId);
+    expect(rerun[0].updates.state).toBe("review");
+    expect(rerun[0].updates.stability).toBe(10);
+  });
+
+  it("gives the legacy state again when the Decks review is older than the migration log", async () => {
+    const { db, logs, updates } = makeDb();
+    reviewInDecks(logs, cardId, new Date("2026-06-01T00:00:00.000Z"));
+    await SrHistoryImporter.importHistory(db, deck([card()]), NOW);
+    const firstRun = updates.length;
+
+    await SrHistoryImporter.importHistory(db, deck([card()]), RERUN);
+
+    expect(updates.slice(firstRun).map((u) => u.updates.state)).toEqual(["review"]);
+  });
+
+  it("still suspends a #sr-skip card reviewed in Decks, leaving its state alone", async () => {
+    const { db, logs, updates } = makeDb();
+    const skipped = deck([card({ suspended: true })]);
+    await SrHistoryImporter.importHistory(db, skipped, NOW);
+    reviewInDecks(logs, cardId, REVIEWED);
+    const firstRun = updates.length;
+
+    const { suspended } = await SrHistoryImporter.importHistory(db, skipped, RERUN);
+
+    expect(suspended).toBe(1);
+    expect(updates.slice(firstRun)).toEqual([
+      { id: cardId, updates: { suspendedAt: RERUN.toISOString() } },
+    ]);
+  });
+
+  it("judges each direction of a reversed card on its own", async () => {
+    const { db, logs, updates } = makeDb();
+    const reversed = deck([card({ isReverse: true, fsrsDataReverse: fsrs({ stability: 50 }) })]);
+    await SrHistoryImporter.importHistory(db, reversed, NOW);
+    reviewInDecks(logs, generateReverseFlashcardId("Front"), REVIEWED);
+    const firstRun = updates.length;
+
+    await SrHistoryImporter.importHistory(db, reversed, RERUN);
+
+    expect(updates.slice(firstRun).map((u) => u.id)).toEqual([cardId]);
   });
 });
