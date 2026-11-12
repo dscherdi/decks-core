@@ -100,9 +100,10 @@ export const sq: Translations = {
   },
 
   mobileApp: {
-    heading: "DecksMD për iPhone dhe iPad",
+    heading: "DecksMD për iPhone, iPad dhe Android",
     body: "E njëjta kasafortë, i njëjti markdown, i përsëritur në telefon. Kartat, planifikimi dhe historiku mbeten në skedarët e tu.",
     cta: "Shkarkoje në App Store",
+    playCta: "Shkarkoje në Google Play",
   },
   pro: {
     heading: "DecksMD Pro",

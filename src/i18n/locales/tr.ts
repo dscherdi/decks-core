@@ -100,9 +100,10 @@ export const tr: Translations = {
   },
 
   mobileApp: {
-    heading: "iPhone ve iPad için DecksMD",
+    heading: "iPhone, iPad ve Android için DecksMD",
     body: "Aynı kasa, aynı markdown, telefonunda tekrar. Kartlar, planlama ve geçmiş dosyalarında kalır.",
     cta: "App Store’dan indirin",
+    playCta: "Google Play’den indirin",
   },
   pro: {
     heading: "DecksMD Pro",

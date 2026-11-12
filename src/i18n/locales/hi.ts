@@ -100,9 +100,10 @@ export const hi: Translations = {
   },
 
   mobileApp: {
-    heading: "iPhone और iPad के लिए DecksMD",
+    heading: "iPhone, iPad और Android के लिए DecksMD",
     body: "वही वॉल्ट, वही markdown, फ़ोन पर दोहराएँ। कार्ड, शेड्यूलिंग और इतिहास आपकी फ़ाइलों में ही रहते हैं।",
     cta: "App Store से डाउनलोड करें",
+    playCta: "इसे Google Play पर पाएं",
   },
   pro: {
     heading: "DecksMD Pro",

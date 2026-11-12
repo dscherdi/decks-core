@@ -98,9 +98,10 @@ export const en = {
 
   /** Shown in the release-notes tab and at the top of settings. */
   mobileApp: {
-    heading: "DecksMD for iPhone and iPad",
+    heading: "DecksMD for iPhone, iPad and Android",
     body: "The same vault, the same markdown, reviewed on your phone. Cards, scheduling and history stay in your files.",
     cta: "Download on the App Store",
+    playCta: "Get it on Google Play",
   },
   pro: {
     heading: "DecksMD Pro",

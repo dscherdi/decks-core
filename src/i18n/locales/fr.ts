@@ -100,9 +100,10 @@ export const fr: Translations = {
   },
 
   mobileApp: {
-    heading: "DecksMD pour iPhone et iPad",
+    heading: "DecksMD pour iPhone, iPad et Android",
     body: "Le même coffre, le même markdown, révisé sur votre téléphone. Cartes, planification et historique restent dans vos fichiers.",
     cta: "Télécharger dans l’App Store",
+    playCta: "Disponible sur Google Play",
   },
   pro: {
     heading: "DecksMD Pro",

@@ -100,9 +100,10 @@ export const zh: Translations = {
   },
 
   mobileApp: {
-    heading: "iPhone 和 iPad 版 DecksMD",
+    heading: "iPhone、iPad 和 Android 版 DecksMD",
     body: "同一个仓库、同样的 markdown，在手机上复习。卡片、排程与历史都留在你的文件里。",
     cta: "从 App Store 下载",
+    playCta: "从 Google Play 下载",
   },
   pro: {
     heading: "DecksMD Pro",

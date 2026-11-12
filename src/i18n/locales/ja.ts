@@ -100,9 +100,10 @@ export const ja: Translations = {
   },
 
   mobileApp: {
-    heading: "iPhone・iPad 版 DecksMD",
+    heading: "iPhone・iPad・Android 版 DecksMD",
     body: "同じVault、同じmarkdownを、スマホで復習。カードもスケジュールも履歴も、ファイルの中にとどまります。",
     cta: "App Store からダウンロード",
+    playCta: "Google Play で手に入れよう",
   },
   pro: {
     heading: "DecksMD Pro",
