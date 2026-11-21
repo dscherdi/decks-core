@@ -813,6 +813,8 @@ export const ru: Translations = {
     moreCardsAvailable: "Доступны ещё карточки",
     sessionComplete: "Сессия завершена",
     timeRemaining: "Осталось времени:",
+    sessionCount: "{done} из {total}",
+    timeLeft: "осталось {time}",
     finish: "Завершить",
     next: "Далее",
     previous: "Назад",

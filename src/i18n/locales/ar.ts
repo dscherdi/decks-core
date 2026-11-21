@@ -806,6 +806,8 @@ export const ar: Translations = {
     moreCardsAvailable: "مزيد من البطاقات متاحة",
     sessionComplete: "اكتملت الجلسة",
     timeRemaining: "الوقت المتبقي:",
+    sessionCount: "{done} من {total}",
+    timeLeft: "المتبقي {time}",
     finish: "إنهاء",
     next: "التالي",
     previous: "السابق",

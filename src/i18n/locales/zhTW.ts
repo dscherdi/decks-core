@@ -796,6 +796,8 @@ export const zhTW: Translations = {
     moreCardsAvailable: "還有更多卡片",
     sessionComplete: "階段完成",
     timeRemaining: "剩餘時間：",
+    sessionCount: "{done} / {total}",
+    timeLeft: "剩餘 {time}",
     finish: "完成",
     next: "下一張",
     previous: "上一張",

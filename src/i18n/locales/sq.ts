@@ -823,6 +823,8 @@ export const sq: Translations = {
     moreCardsAvailable: "Ka më shumë karta në dispozicion",
     sessionComplete: "Sesioni përfundoi",
     timeRemaining: "Koha e mbetur:",
+    sessionCount: "{done} nga {total}",
+    timeLeft: "mbeten {time}",
     finish: "Përfundo",
     next: "Tjetra",
     previous: "E mëparshmja",

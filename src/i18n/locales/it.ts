@@ -816,6 +816,8 @@ export const it: Translations = {
     moreCardsAvailable: "Altre schede disponibili",
     sessionComplete: "Sessione completata",
     timeRemaining: "Tempo rimanente:",
+    sessionCount: "{done} di {total}",
+    timeLeft: "mancano {time}",
     finish: "Termina",
     next: "Successiva",
     previous: "Precedente",

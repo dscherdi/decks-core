@@ -812,6 +812,8 @@ export const ja: Translations = {
     moreCardsAvailable: "さらにカードがあります",
     sessionComplete: "セッション完了",
     timeRemaining: "残り時間：",
+    sessionCount: "{done} / {total}",
+    timeLeft: "残り {time}",
     finish: "完了",
     next: "次へ",
     previous: "前へ",

@@ -818,6 +818,8 @@ export const hi: Translations = {
     moreCardsAvailable: "अधिक कार्ड उपलब्ध हैं",
     sessionComplete: "सत्र पूर्ण",
     timeRemaining: "शेष समय:",
+    sessionCount: "{total} में से {done}",
+    timeLeft: "{time} शेष",
     finish: "समाप्त",
     next: "अगला",
     previous: "पिछला",

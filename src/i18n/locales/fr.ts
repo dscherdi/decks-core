@@ -821,6 +821,8 @@ export const fr: Translations = {
     moreCardsAvailable: "Plus de cartes disponibles",
     sessionComplete: "Session terminée",
     timeRemaining: "Temps restant :",
+    sessionCount: "{done} sur {total}",
+    timeLeft: "il reste {time}",
     finish: "Terminer",
     next: "Suivante",
     previous: "Précédente",

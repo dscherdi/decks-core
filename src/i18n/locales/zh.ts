@@ -791,6 +791,8 @@ export const zh: Translations = {
     moreCardsAvailable: "还有更多卡片",
     sessionComplete: "会话完成",
     timeRemaining: "剩余时间：",
+    sessionCount: "{done} / {total}",
+    timeLeft: "剩余 {time}",
     finish: "完成",
     next: "下一张",
     previous: "上一张",
