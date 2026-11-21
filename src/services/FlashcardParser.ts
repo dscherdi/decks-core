@@ -16,6 +16,7 @@ import {
 } from "../utils/anchors";
 import type { TemplateRow } from "../database/types";
 import { scanClozeDeletions } from "../utils/cloze-scanner";
+import { fencedLines, replaceComments } from "../utils/comments";
 import { OcclusionV2Parser } from "./occlusion/OcclusionV2Parser";
 import { classifyExamBody } from "./ExamClassifier";
 
@@ -96,7 +97,7 @@ export class FlashcardParser {
 
   /**
    * Extract a header-paragraph card's notes from its body. Notes come from
-   * Obsidian comments (`%%…%%`, anywhere, multi-line) and/or content after a
+   * Obsidian comments (`%%…%%`, multi-line, outside code) and/or content after a
    * trailing thematic-break delimiter (`---` / `***` / `___` on its own line,
    * only when non-empty content follows it). Returns the cleaned back text plus
    * the combined notes (empty string when there are none).
@@ -107,9 +108,9 @@ export class FlashcardParser {
   } {
     const noteParts: string[] = [];
 
-    // 1. Obsidian comments anywhere in the body become notes; anchor tokens
-    //    (`dk:` comments) carry identity and are never notes.
-    let body = back.replace(/%%([\s\S]*?)%%/g, (_m, inner: string) => {
+    // 1. Obsidian comments in the body become notes; anchor tokens (`dk:`
+    //    comments) carry identity and are never notes. Code keeps its `%%`.
+    let body = replaceComments(back, ({ inner }) => {
       const trimmed = inner.trim();
       if (trimmed && !isAnchorCommentBody(trimmed)) noteParts.push(trimmed);
       return "";
@@ -117,7 +118,9 @@ export class FlashcardParser {
 
     // 2. A trailing thematic break with content after it splits body / notes.
     const lines = body.split("\n");
+    const inCode = fencedLines(lines);
     for (let i = lines.length - 1; i >= 0; i--) {
+      if (inCode[i]) continue;
       if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i])) {
         const after = lines.slice(i + 1).join("\n").trim();
         if (after) {

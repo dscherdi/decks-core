@@ -8,6 +8,7 @@
 
 import { isAnchorCommentBody } from "../utils/anchors";
 import { scanClozeDeletions } from "../utils/cloze-scanner";
+import { replaceComments } from "../utils/comments";
 
 export interface ExamOption {
   text: string;
@@ -141,7 +142,6 @@ function classifySingleList(back: string): ExamBodyClassification {
   };
 }
 
-const COMMENT_REGEX = /%%([\s\S]*?)%%/g;
 const NOTE_MARKER = "\u0000";
 const FENCE_REGEX = /^(`{3,}|~{3,})/;
 const RULE_REGEX = /^(-{3,}|\*{3,}|_{3,})$/;
@@ -158,17 +158,17 @@ type ExerciseLine =
 
 /**
  * Comments on lines of their own become note markers; inline ones are cut
- * from the text and kept as loose notes. Anchor comments are dropped.
+ * from the text and kept as loose notes. Anchor comments are dropped; code keeps its `%%`.
  */
 function extractComments(back: string): { text: string; notes: string[]; loose: string[] } {
   const notes: string[] = [];
   const loose: string[] = [];
-  const text = back.replace(COMMENT_REGEX, (match, inner: string, offset: number) => {
+  const text = replaceComments(back, ({ start, end, inner }) => {
     const body = inner.trim();
     if (isAnchorCommentBody(body)) return "";
-    const before = back.slice(back.lastIndexOf("\n", offset - 1) + 1, offset);
-    const afterEnd = back.indexOf("\n", offset + match.length);
-    const after = back.slice(offset + match.length, afterEnd === -1 ? back.length : afterEnd);
+    const before = back.slice(back.lastIndexOf("\n", start - 1) + 1, start);
+    const afterEnd = back.indexOf("\n", end);
+    const after = back.slice(end, afterEnd === -1 ? back.length : afterEnd);
     if (before.trim() === "" && after.trim() === "") {
       notes.push(body);
       return `${NOTE_MARKER}${notes.length - 1}`;

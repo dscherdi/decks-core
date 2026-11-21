@@ -605,6 +605,8 @@ export {
   hasClozeDeletion,
 } from "./utils/cloze-scanner";
 export type { ClozeDeletion } from "./utils/cloze-scanner";
+export { fencedLines, findComments, replaceComments } from "./utils/comments";
+export type { CommentSpan } from "./utils/comments";
 export {
   AnchorUpgrader,
   CARD_IDENTITY_VERSION,

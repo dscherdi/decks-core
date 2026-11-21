@@ -299,4 +299,14 @@ describe("classifyExamBody exercises", () => {
   it("ignores headings inside a code block", () => {
     expect(classifyExamBody(["```", "### not a heading", "```", "- [x] A", "- [ ] B"].join("\n")).kind).toBe("mcq");
   });
+
+  it("keeps the %% comments of a diagram in its code, not as notes", () => {
+    const diagram = ["```mermaid", "flowchart LR", "  A --> B", "  %% one", "  B --> C", "  %%two%%", "  C --> D", "```"];
+    const shared = exercise([...diagram, "", "Q1", "- [x] A", "- [ ] B", "Q2", "- [x] C", "- [ ] D"].join("\n"));
+    expect(shared.shared).toBe(diagram.join("\n"));
+    expect(shared.notes).toBe("");
+
+    const typed = exercise(["### Draw it", ...diagram, "%%a note%%", "", "### Name it", "Pele"].join("\n"));
+    expect(typed.items[0]).toMatchObject({ kind: "typed", answer: diagram.join("\n"), notes: "a note" });
+  });
 });
