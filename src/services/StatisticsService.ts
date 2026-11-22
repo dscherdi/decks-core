@@ -9,6 +9,8 @@ import {
   DEFAULT_DECK_PROFILE,
   type SimulatedCardState,
   type MaturityProgressionResult,
+  MATURE_STABILITY_DAYS,
+  isCardMature,
 } from "../database/types";
 import type { DecksSettings } from "../settings";
 import { FSRS, intervalStudyDays, reviewStateOf, type RatingLabel } from "../algorithm/fsrs";
@@ -675,7 +677,7 @@ export class StatisticsService {
     young: number;
     mature: number;
   }> {
-    const MATURITY_THRESHOLD = 30240; // 21 days in minutes
+    const MATURITY_THRESHOLD = MATURE_STABILITY_DAYS;
 
     let sql: string;
     let params: (string | number | null)[];
@@ -686,7 +688,7 @@ export class StatisticsService {
           state,
           CASE
             WHEN state = 'new' THEN 'new'
-            WHEN interval <= ? THEN 'young'
+            WHEN stability < ? THEN 'young'
             ELSE 'mature'
           END as maturity_type,
           COUNT(*) as count
@@ -701,7 +703,7 @@ export class StatisticsService {
           state,
           CASE
             WHEN state = 'new' THEN 'new'
-            WHEN interval <= ? THEN 'young'
+            WHEN stability < ? THEN 'young'
             ELSE 'mature'
           END as maturity_type,
           COUNT(*) as count
@@ -1224,7 +1226,7 @@ export class StatisticsService {
     mature: { passed: number; total: number; rate: number };
     all: { passed: number; total: number; rate: number };
   }> {
-    const MATURITY_THRESHOLD = 30240; // 21 days in minutes
+    const MATURITY_THRESHOLD = MATURE_STABILITY_DAYS;
     const MIN_INTERVAL = 1440; // 1 day in minutes
 
     let sql: string;
@@ -1234,7 +1236,7 @@ export class StatisticsService {
       sql = `
         SELECT
           CASE
-            WHEN COALESCE(old_interval_minutes, new_interval_minutes) <= ? THEN 'young'
+            WHEN old_stability < ? THEN 'young'
             ELSE 'mature'
           END as maturity_type,
           COUNT(*) as total,
@@ -1249,7 +1251,7 @@ export class StatisticsService {
       sql = `
         SELECT
           CASE
-            WHEN COALESCE(rl.old_interval_minutes, rl.new_interval_minutes) <= ? THEN 'young'
+            WHEN rl.old_stability < ? THEN 'young'
             ELSE 'mature'
           END as maturity_type,
           COUNT(*) as total,
@@ -1730,7 +1732,7 @@ export class StatisticsService {
     // Reset rating counter for deterministic results
     this.ratingCounter = 0;
 
-    const MATURITY_THRESHOLD_DAYS = 21; // Stability threshold (not interval)
+    const MATURITY_THRESHOLD_DAYS = MATURE_STABILITY_DAYS;
 
     if (!deckIds || deckIds.length === 0) {
       return {
@@ -2523,9 +2525,7 @@ export class StatisticsService {
     const newCards = await this.db.countNewCards(deckId);
     const dueCards = await this.db.countDueCards(deckId);
     const matureCards = await this.db.getFlashcardsByDeck(deckId);
-    const matureCount = matureCards.filter(
-      (card) => card.state === "review" && card.interval > 30240
-    ).length;
+    const matureCount = matureCards.filter(isCardMature).length;
 
     let finalNewCount = newCards;
     let finalDueCount = dueCards;

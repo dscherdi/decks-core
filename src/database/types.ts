@@ -688,16 +688,29 @@ export interface MaturityProgressionResult {
 }
 
 
-/**
- * Determine if a flashcard is mature (interval > 21 days)
- * TODO 19: Mature cards are flashcards that have an interval over 21 days
- */
-export function isCardMature(flashcard: Flashcard): boolean {
-  const MATURE_THRESHOLD_MINUTES = 21 * 24 * 60; // 21 days in minutes = 30,240
-  return (
-    flashcard.state === "review" &&
-    flashcard.interval > MATURE_THRESHOLD_MINUTES
-  );
+/** Stability in days from which a reviewed card counts as mature. */
+export const MATURE_STABILITY_DAYS = 21;
+
+/** Lowest stability in days of each level a reviewed card can reach. */
+export const MATURITY_LEVEL_DAYS = { young: 1, mature: MATURE_STABILITY_DAYS, strong: 90, mastered: 365 } as const;
+
+export type MaturityLevel = "new" | "learning" | "young" | "mature" | "strong" | "mastered";
+
+export const MATURITY_LEVELS: readonly MaturityLevel[] = ["new", "learning", "young", "mature", "strong", "mastered"];
+
+export function maturityLevelOf(card: Pick<Flashcard, "state" | "stability">): MaturityLevel {
+  if (card.state === "new") return "new";
+  const s = card.stability;
+  if (s >= MATURITY_LEVEL_DAYS.mastered) return "mastered";
+  if (s >= MATURITY_LEVEL_DAYS.strong) return "strong";
+  if (s >= MATURITY_LEVEL_DAYS.mature) return "mature";
+  if (s >= MATURITY_LEVEL_DAYS.young) return "young";
+  return "learning";
+}
+
+/** A reviewed card is mature once its stability reaches 21 days. */
+export function isCardMature(flashcard: Pick<Flashcard, "state" | "stability">): boolean {
+  return flashcard.state === "review" && flashcard.stability >= MATURE_STABILITY_DAYS;
 }
 
 /**

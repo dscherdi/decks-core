@@ -1822,7 +1822,7 @@ export const SQL_QUERIES = {
     SELECT
       CASE
         WHEN f.state = 'new' THEN 'new'
-        WHEN f.state = 'review' AND f.interval > 30240 THEN 'mature'
+        WHEN f.state = 'review' AND f.stability >= 21 THEN 'mature'
         ELSE 'review'
       END as card_type,
       COUNT(*) as count
