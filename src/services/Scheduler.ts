@@ -308,8 +308,8 @@ export class Scheduler {
   }
 
   /**
-   * A card rated Again in the current session, once due before the session's window closes.
-   * Offered only when nothing else is left, so it comes back rather than the session ending.
+   * A card whose latest rating in the current session is Again, due before the session's window
+   * closes. Offered only when nothing else is left; once recalled, it waits for its own due time.
    */
   private async getAgainCardInSession(now: Date): Promise<Flashcard | null> {
     const sessionId = this.currentSessionId;
@@ -321,7 +321,11 @@ export class Scheduler {
     );
     const rows = await this.db.querySql(
       `SELECT * FROM flashcards
-       WHERE id IN (SELECT flashcard_id FROM review_logs WHERE session_id = ? AND rating = 1)
+       WHERE id IN (
+           SELECT flashcard_id FROM review_logs WHERE session_id = ?
+           GROUP BY flashcard_id
+           HAVING MAX(reviewed_at) = MAX(CASE WHEN rating = 1 THEN reviewed_at END)
+         )
          AND due_date <= ?
          AND suspended_at IS NULL
          AND (buried_until IS NULL OR buried_until <= ?)
