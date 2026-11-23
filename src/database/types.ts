@@ -713,6 +713,45 @@ export function isCardMature(flashcard: Pick<Flashcard, "state" | "stability">):
   return flashcard.state === "review" && flashcard.stability >= MATURE_STABILITY_DAYS;
 }
 
+/** Stabilities at which the mastery curve is exactly log(1 + days) over log(1 + a year); straight between them. */
+const MASTERY_KNOTS = [0, 0.25, 0.5, 1, 1.5, 2, 3, 4, 5.5, 7, 10, 14, 21, 30, 45, 60, 90, 135, 180, 270, 365] as const;
+
+const MASTERY_FULL_DAYS = MATURITY_LEVEL_DAYS.mastered;
+
+const masteryAtKnot = (days: number): number => Math.log1p(days) / Math.log1p(MASTERY_FULL_DAYS);
+
+/** How far a stability has come on the way to a year, from 0 to 1. */
+export function masteryOfStability(stability: number): number {
+  if (!(stability > 0)) return 0;
+  if (stability >= MASTERY_FULL_DAYS) return 1;
+  for (let i = 1; i < MASTERY_KNOTS.length; i++) {
+    const hi = MASTERY_KNOTS[i];
+    if (stability >= hi) continue;
+    const lo = MASTERY_KNOTS[i - 1];
+    const from = masteryAtKnot(lo);
+    return from + ((masteryAtKnot(hi) - from) * (stability - lo)) / (hi - lo);
+  }
+  return 1;
+}
+
+/** A card's share of its deck's mastery score; a new card has none. */
+export function cardMastery(card: Pick<Flashcard, "state" | "stability">): number {
+  return card.state === "new" ? 0 : masteryOfStability(card.stability);
+}
+
+/** masteryOfStability as an SQL expression, since not every SQLite build has ln(). */
+export function masterySql(stabilityColumn: string): string {
+  const steps: string[] = [];
+  for (let i = 1; i < MASTERY_KNOTS.length; i++) {
+    const lo = MASTERY_KNOTS[i - 1];
+    const hi = MASTERY_KNOTS[i];
+    const slope = (masteryAtKnot(hi) - masteryAtKnot(lo)) / (hi - lo);
+    const start = masteryAtKnot(lo) - slope * lo;
+    steps.push(`WHEN ${stabilityColumn} < ${hi} THEN ${start} + ${slope} * ${stabilityColumn}`);
+  }
+  return `(CASE WHEN ${stabilityColumn} IS NULL OR ${stabilityColumn} <= 0 THEN 0 ${steps.join(" ")} ELSE 1 END)`;
+}
+
 /**
  * Get the card maturity type for classification
  */
